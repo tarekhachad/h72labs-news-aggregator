@@ -1,0 +1,10 @@
+# Obsidian session state — changes every time the vault is opened, no
+# meaningful content. Shared config (appearance/plugins) IS tracked on purpose.
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# macOS Finder metadata
+.DS_Store
+
+# Personal/local Claude Code settings — not meant to be shared (like .env.local).
+.claude/settings.local.json
