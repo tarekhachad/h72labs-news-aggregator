@@ -23,7 +23,12 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
 
   const response = await client.messages.parse({
     model: "claude-sonnet-5",
-    max_tokens: 1024,
+    max_tokens: 2048,
+    // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
+    // thinking + output combined — thinking was eating the budget and
+    // truncating this short, bounded writing task. Not worth the cost
+    // or latency here anyway.
+    thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
     messages: [
       {

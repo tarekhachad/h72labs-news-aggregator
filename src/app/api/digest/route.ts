@@ -22,9 +22,20 @@ export async function POST() {
     }))
   );
 
-  const cards: Card[] = await Promise.all(
+  // One verbose cluster failing to write shouldn't take down the rest of
+  // the digest — log it and drop that card instead of rejecting the batch.
+  const written = await Promise.allSettled(
     triaged.filter((t) => t.notable).map((t) => writeCard(t.cluster))
   );
+
+  const cards: Card[] = [];
+  for (const result of written) {
+    if (result.status === "fulfilled") {
+      cards.push(result.value);
+    } else {
+      console.error("[digest] writeCard failed:", result.reason);
+    }
+  }
 
   return Response.json({ cards });
 }
