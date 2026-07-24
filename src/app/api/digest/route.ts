@@ -15,11 +15,18 @@ export async function POST() {
   const articles = await ingestArticles(devProfile.topics);
   const clusters = await clusterArticles(articles);
 
+  // A single triage call failing (rate limit, network blip) shouldn't take
+  // down the whole digest and discard every other cluster that already
+  // succeeded — fail closed (treat as not notable) and keep going.
   const triaged = await Promise.all(
-    clusters.map(async (cluster) => ({
-      cluster,
-      notable: await triageCluster(cluster),
-    }))
+    clusters.map(async (cluster) => {
+      try {
+        return { cluster, notable: await triageCluster(cluster) };
+      } catch (err) {
+        console.error(`[digest] triageCluster failed for ${cluster.topic}:`, err);
+        return { cluster, notable: false };
+      }
+    })
   );
 
   // One verbose cluster failing to write shouldn't take down the rest of

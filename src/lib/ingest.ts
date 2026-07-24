@@ -51,5 +51,16 @@ export async function ingestArticles(topics: Topic[]): Promise<Article[]> {
   }
 
   const results = await Promise.all(jobs);
-  return results.flat();
+  const articles = results.flat();
+
+  // The same real-world story can appear in more than one feed we pull —
+  // e.g. a BBC article syndicated into both its Technology and World
+  // feeds when the profile includes both topics. Keep the first sighting
+  // only, so it doesn't end up double-counted in the same cluster.
+  const seen = new Set<string>();
+  return articles.filter((a) => {
+    if (seen.has(a.url)) return false;
+    seen.add(a.url);
+    return true;
+  });
 }

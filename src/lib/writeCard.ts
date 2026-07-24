@@ -39,9 +39,20 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
     output_config: { format: zodOutputFormat(CardSummary) },
   });
 
+  const shortSummary = response.parsed_output?.shortSummary ?? "";
+
+  // A summary that doesn't end on sentence-terminal punctuation is a cut-off
+  // response (e.g. still hit a token limit despite the headroom above) —
+  // better to drop the card than ship a card that trails off mid-sentence.
+  // The caller (the digest route) already treats a thrown writeCard as a
+  // droppable failure, not a fatal one.
+  if (!/[.!?]["')\]]?$/.test(shortSummary.trim())) {
+    throw new Error(`writeCard produced a truncated summary: "${shortSummary}"`);
+  }
+
   return {
     topic: cluster.topic,
-    shortSummary: response.parsed_output?.shortSummary ?? "",
+    shortSummary,
     sources: cluster.articles.map((a) => ({
       title: a.title,
       url: a.url,
