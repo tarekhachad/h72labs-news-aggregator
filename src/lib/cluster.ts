@@ -1,0 +1,76 @@
+import { pipeline } from "@xenova/transformers";
+import type { Article, Cluster } from "@/types";
+
+const SIMILARITY_THRESHOLD = 0.78;
+
+// Loading the model is slow (first call downloads + initializes it), so it's
+// cached across calls within the same server instance instead of reloaded
+// per request.
+let embedderPromise: ReturnType<typeof pipeline> | null = null;
+function getEmbedder() {
+  if (!embedderPromise) {
+    embedderPromise = pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2"
+    );
+  }
+  return embedderPromise;
+}
+
+async function embed(texts: string[]): Promise<number[][]> {
+  const embedder = await getEmbedder();
+  const output = await embedder(texts, { pooling: "mean", normalize: true });
+  const dims = output.dims as number[];
+  const data = output.data as Float32Array;
+  const [rows, cols] = dims;
+  const vectors: number[][] = [];
+  for (let i = 0; i < rows; i++) {
+    vectors.push(Array.from(data.slice(i * cols, (i + 1) * cols)));
+  }
+  return vectors;
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+  return dot; // vectors are already normalized, so dot product == cosine similarity
+}
+
+/**
+ * Greedy clustering: walk articles in order, attach each one to the first
+ * existing cluster whose centroid it's similar enough to, otherwise start
+ * a new cluster. Simple, and good enough at the article volume one digest
+ * pulls (dozens, not thousands) — no need for a fancier algorithm yet.
+ */
+export async function clusterArticles(articles: Article[]): Promise<Cluster[]> {
+  if (articles.length === 0) return [];
+
+  const vectors = await embed(
+    articles.map((a) => `${a.title}. ${a.snippet}`)
+  );
+
+  const clusters: { articles: Article[]; centroid: number[] }[] = [];
+
+  articles.forEach((article, i) => {
+    const vector = vectors[i];
+    const match = clusters.find(
+      (c) => cosineSimilarity(c.centroid, vector) >= SIMILARITY_THRESHOLD
+    );
+
+    if (match) {
+      match.articles.push(article);
+      // Re-average the centroid so it reflects the whole cluster so far.
+      const n = match.articles.length;
+      match.centroid = match.centroid.map(
+        (v, idx) => (v * (n - 1) + vector[idx]) / n
+      );
+    } else {
+      clusters.push({ articles: [article], centroid: vector });
+    }
+  });
+
+  return clusters.map((c) => ({
+    topic: c.articles[0].topic,
+    articles: c.articles,
+  }));
+}
