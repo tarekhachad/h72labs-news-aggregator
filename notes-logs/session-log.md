@@ -13,9 +13,19 @@ Bugs hit and fixed during build:
 
 Verified end-to-end in a real browser (Playwright): full "Give me today's news" flow works, cards render with real synthesized summaries from real RSS articles, expand/collapse works, source links are real and correct, zero console errors.
 
-**Open finding, not yet resolved:** Haiku's triage is currently quite permissive — ~47–50 of ~136 clusters passed as "notable" in test runs, which is a lot more cards than a curated daily briefing implies, and costs more per digest than the `TECH_STACK.md` estimate assumed. Worth a prompt-tuning pass before calling Phase 1 fully done — either tightening the triage bar or accepting this is genuinely how much news 2 topics × 3 sources produces in a day.
+**Triage tuning — resolved.** Rewrote the Haiku prompt with explicit include/reject criteria matching the "head of state's briefing" framing (reject when torn) and gave it article snippets, not just headlines. Went from ~47–50 of 136 clusters passing to 13 on the same article set — a real curated brief.
 
-**Next:** decide on triage tuning (see above), then either continue polishing Phase 1 or move to Phase 2 (real accounts) per the roadmap.
+**Workflow decision:** set up the QA/code-review workflow that was deferred at brainstorm time (see `CLAUDE.md` Process section). `/code-review` (user-invoked, independent review agent) runs against a diff on request. Per-feature QA is a `general-purpose` subagent with no context on how the feature was built, prompted to actually exercise the running app (not just read the code) and report bugs. No formal test suite (Vitest etc.) — decided against for now, revisit if the project grows enough to justify one.
+
+First real QA pass (against Phase 1) found two genuine bugs, both fixed:
+1. Articles appearing in more than one feed (e.g. a BBC story syndicated into both its Technology and World feeds) were ingested twice across topics with no cross-topic dedup, producing a card with the same source listed twice and — separately — a couple of truncated summaries. Fixed with URL-based dedup in `ingestArticles`.
+2. `triageCluster` calls used a plain `Promise.all` — one Haiku call failing would throw and discard the entire digest, including clusters that had already succeeded, unlike `writeCard` which was already resilient. Fixed with fail-closed per-cluster error handling (a failed triage is treated as not-notable, not fatal).
+
+Also added a truncation guard in `writeCard`: a summary that doesn't end on sentence-terminal punctuation is now treated as a failed write and dropped, instead of shipping mid-sentence.
+
+Re-verified end to end after fixes: 15 well-formed cards, zero duplicate-source cards, zero truncated summaries.
+
+**Phase 1 is done.** All 6+ commits pushed to `origin/master`. Per `CLAUDE.md`'s prime directive, stopping here — next session should go back to plan mode to scope Phase 2 (real accounts / Supabase) before any further building.
 
 ## 2026-07-24 — Brainstorm complete, design docs written
 Ran the `project-brainstorm` interview end to end. Key decisions:
