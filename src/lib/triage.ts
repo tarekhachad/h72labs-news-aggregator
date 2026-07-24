@@ -10,14 +10,22 @@ const TriageResult = z.object({
   reason: z.string(),
 });
 
-const SYSTEM_PROMPT = `You triage news clusters for a daily briefing, in the style a head-of-state's staff would use to decide what makes the cut. A cluster is "notable" if it represents a distinct, meaningful event — not routine coverage, listicles, opinion pieces, or minor updates. Be selective.`;
+const SYSTEM_PROMPT = `You triage news clusters for a head of state's morning briefing. That briefing is short — a handful of items the person genuinely needs to know before starting their day, not a comprehensive scan of everything published. Most clusters you see should be rejected.
+
+Mark "notable" only for: major geopolitical developments (conflict, diplomacy, war, elections, mass casualties); market- or industry-moving events at real scale (large M&A, major earnings surprises, landmark regulatory rulings, significant new laws or sanctions); and events that would visibly change public understanding or behavior (major product launches from dominant players, significant safety/security incidents, landmark court rulings).
+
+Reject: routine corporate updates (ordinary earnings, minor product tweaks, funding rounds below the largest deals, personnel changes at non-top-tier roles), incremental legal/political process stories with no resolution, opinion or analysis pieces, minor regional stories without broader stakes, and anything you'd only include for completeness rather than because a busy, well-informed person needs to hear it today.
+
+When genuinely torn, reject — the cost of missing a borderline story is much lower than the cost of a bloated, unfocused briefing.`;
 
 /**
  * One cheap Haiku call per cluster — filters out noise before the
  * expensive Sonnet writing step.
  */
 export async function triageCluster(cluster: Cluster): Promise<boolean> {
-  const headlines = cluster.articles.map((a) => `- ${a.title}`).join("\n");
+  const context = cluster.articles
+    .map((a) => `- ${a.title}\n  ${a.snippet.slice(0, 200)}`)
+    .join("\n");
 
   const response = await client.messages.parse({
     model: "claude-haiku-4-5",
@@ -26,7 +34,7 @@ export async function triageCluster(cluster: Cluster): Promise<boolean> {
     messages: [
       {
         role: "user",
-        content: `Topic: ${cluster.topic}\n\nHeadlines covering this cluster:\n${headlines}\n\nIs this a distinct, notable story worth a briefing card?`,
+        content: `Topic: ${cluster.topic}\n\nCoverage of this cluster:\n${context}\n\nDoes this belong in today's briefing?`,
       },
     ],
     output_config: { format: zodOutputFormat(TriageResult) },
