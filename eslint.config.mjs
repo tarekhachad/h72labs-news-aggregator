@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // This app lives at the root of the vault sub-folder alongside
+    // Obsidian's own config/plugins and the project's design docs —
+    // scope linting to the app code only.
+    ".obsidian/**",
+    ".claude/**",
+    "docs/**",
+    "notes-logs/**",
   ]),
 ]);
 

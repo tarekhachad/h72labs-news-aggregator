@@ -1,4 +1,4 @@
-import { pipeline } from "@xenova/transformers";
+import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 import type { Article, Cluster } from "@/types";
 
 const SIMILARITY_THRESHOLD = 0.78;
@@ -6,8 +6,8 @@ const SIMILARITY_THRESHOLD = 0.78;
 // Loading the model is slow (first call downloads + initializes it), so it's
 // cached across calls within the same server instance instead of reloaded
 // per request.
-let embedderPromise: ReturnType<typeof pipeline> | null = null;
-function getEmbedder() {
+let embedderPromise: Promise<FeatureExtractionPipeline> | null = null;
+function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!embedderPromise) {
     embedderPromise = pipeline(
       "feature-extraction",
@@ -20,9 +20,8 @@ function getEmbedder() {
 async function embed(texts: string[]): Promise<number[][]> {
   const embedder = await getEmbedder();
   const output = await embedder(texts, { pooling: "mean", normalize: true });
-  const dims = output.dims as number[];
+  const [rows, cols] = output.dims;
   const data = output.data as Float32Array;
-  const [rows, cols] = dims;
   const vectors: number[][] = [];
   for (let i = 0; i < rows; i++) {
     vectors.push(Array.from(data.slice(i * cols, (i + 1) * cols)));
