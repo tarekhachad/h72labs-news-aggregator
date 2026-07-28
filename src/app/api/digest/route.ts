@@ -1,9 +1,10 @@
-import { devProfile } from "@/config/devProfile";
+import { createClient } from "@/lib/supabase/server";
+import { getUserProfile } from "@/lib/profile";
 import { ingestArticles } from "@/lib/ingest";
 import { clusterArticles } from "@/lib/cluster";
 import { triageCluster } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
-import type { Card } from "@/types";
+import type { Card, Source, Topic } from "@/types";
 
 // The embedding model needs Node APIs (not available on the Edge runtime).
 export const runtime = "nodejs";
@@ -21,16 +22,20 @@ type DigestEvent =
   | { stage: "clustering"; articleCount: number }
   | { stage: "triaging"; clusterCount: number }
   | { stage: "writing"; notableCount: number }
-  | { stage: "done"; cards: Card[] }
+  // `topics` is the user's full selected topic list (not just the ones
+  // that produced a card) — the client needs it to render one tab per
+  // topic, including an explicit "nothing notable" state for topics that
+  // genuinely had no notable news today, instead of those topics silently
+  // vanishing from a flat merged list.
+  | { stage: "done"; cards: Card[]; topics: Topic[] }
   | { stage: "error"; message: string };
 
-async function* runDigestPipeline(sinceIso: string | null): AsyncGenerator<DigestEvent> {
+async function* runDigestPipeline(
+  profile: { topics: Topic[]; preferredSources: Source[] },
+  sinceIso: string | null
+): AsyncGenerator<DigestEvent> {
   yield { stage: "ingesting" };
-  const articles = await ingestArticles(
-    devProfile.topics,
-    devProfile.preferredSources,
-    sinceIso
-  );
+  const articles = await ingestArticles(profile.topics, profile.preferredSources, sinceIso);
 
   yield { stage: "clustering", articleCount: articles.length };
   const clusters = await clusterArticles(articles);
@@ -67,7 +72,7 @@ async function* runDigestPipeline(sinceIso: string | null): AsyncGenerator<Diges
 
   cards.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
-  yield { stage: "done", cards };
+  yield { stage: "done", cards, topics: profile.topics };
 }
 
 function toNdjsonStream(events: AsyncGenerator<DigestEvent>): ReadableStream<Uint8Array> {
@@ -105,10 +110,33 @@ function toNdjsonStream(events: AsyncGenerator<DigestEvent>): ReadableStream<Uin
 }
 
 export async function POST(req: Request) {
+  const supabase = await createClient();
+  // Network-verified — this is the one place that's actually
+  // authorization-critical (gates real user data and real Claude spend),
+  // unlike the proxy/middleware's cheaper getClaims() check. Never trusts
+  // a client-supplied user ID; there isn't one in the request body.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const profile = await getUserProfile(supabase, user.id);
+  // Gate on both topics and preferred sources — a profile with topics but
+  // zero sources would otherwise pass this check and then silently
+  // produce an empty digest (ingestArticles filters strictly by source).
+  if (profile.topics.length === 0 || profile.preferredSources.length === 0) {
+    // Defense-in-depth against a direct API hit that bypasses the
+    // page-level redirect to /onboarding — shouldn't happen via the UI.
+    return new Response("Onboarding incomplete", { status: 400 });
+  }
+
   const body = await req.json().catch(() => null);
   const since = body && typeof body.since === "string" ? body.since : null;
 
-  return new Response(toNdjsonStream(runDigestPipeline(since)), {
+  return new Response(toNdjsonStream(runDigestPipeline(profile, since)), {
     headers: { "Content-Type": "application/x-ndjson" },
   });
 }

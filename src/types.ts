@@ -1,6 +1,73 @@
-export type Topic = "Tech/AI" | "Geopolitics";
+// Single runtime source of truth for the curated topic/source lists — the
+// onboarding multi-select, its zod validation, and FEEDS all read from
+// these arrays instead of the type system silently drifting from what's
+// actually selectable.
+export const TOPICS = [
+  "Tech/AI",
+  "US Politics",
+  "Morocco Politics",
+  "French Politics",
+  "Geopolitics",
+  "Morocco",
+  "Morocco Finance",
+  "US Finance",
+  "World Finance",
+  "European Football",
+  "Basketball",
+  "Tennis",
+  "American Football",
+] as const;
+export type Topic = (typeof TOPICS)[number];
 
-export type Source = "NYT" | "BBC" | "TechCrunch";
+export const SOURCES = [
+  "NYT",
+  "BBC",
+  "TechCrunch",
+  "The Verge",
+  "Ars Technica",
+  "Engadget",
+  "Wired",
+  "ZDNet",
+  "The Hill",
+  "Politico",
+  "Axios",
+  "Hespress (EN)",
+  "Hespress (FR)",
+  "Le360",
+  "Le Monde",
+  "Le Figaro",
+  "France24",
+  "RFI (EN)",
+  "RFI (FR)",
+  "The Guardian",
+  "Al Jazeera",
+  "DW",
+  "The North Africa Post",
+  "Medias24",
+  "Challenge.ma",
+  "Le Boursier",
+  "CNBC",
+  "MarketWatch",
+  "Yahoo Finance",
+  "Bloomberg",
+  "Financial Times",
+  "The Economist",
+  "Sky Sports",
+  "ESPN",
+  "Football Italia",
+  "Marca",
+  "RMC Sport",
+  "Kicker",
+  "Yahoo Sports",
+  "CBS Sports",
+  "RotoWire",
+  "Hoops Rumors",
+  "Tennis365",
+  "Tennis Majors",
+  "UbiTennis",
+  "Pro Football Talk",
+] as const;
+export type Source = (typeof SOURCES)[number];
 
 export interface Article {
   title: string;

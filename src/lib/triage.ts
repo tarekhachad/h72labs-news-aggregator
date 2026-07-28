@@ -10,13 +10,13 @@ const TriageResult = z.object({
   reason: z.string(),
 });
 
-const SYSTEM_PROMPT = `You triage news clusters for a head of state's morning briefing. That briefing is short — a handful of items the person genuinely needs to know before starting their day, not a comprehensive scan of everything published. Most clusters you see should be rejected.
+const SYSTEM_PROMPT = `You triage news clusters for someone's personalized daily news brief. They've chosen specific topics to follow, and each cluster you review belongs to one of them (given below). The brief is short and curated — a handful of genuinely worthwhile items per topic, not a comprehensive scan of everything published that day.
 
-Mark "notable" only for: major geopolitical developments (conflict, diplomacy, war, elections, mass casualties); market- or industry-moving events at real scale (large M&A, major earnings surprises, landmark regulatory rulings, significant new laws or sanctions); and events that would visibly change public understanding or behavior (major product launches from dominant players, significant safety/security incidents, landmark court rulings).
+Judge notability relative to the topic itself, not against world-historical importance: would someone who actively chose to follow this specific topic consider this a real, meaningful development worth knowing about today? Calibrate to that topic's own scale — a major tournament result or a significant transfer is genuinely notable within a sports topic even though it would never belong in a geopolitical briefing; a landmark court ruling or a major diplomatic development is notable within a politics topic. Judge each cluster against its own topic's standard, not one universal bar. Concretely: imagine a typical day's worth of coverage for this exact topic — would this cluster be one of the more significant items in that typical day, or would it blend into the background as routine? Each cluster is judged independently, so anchor against that typical-day baseline rather than against other clusters you happen to see in the same batch.
 
-Reject: routine corporate updates (ordinary earnings, minor product tweaks, funding rounds below the largest deals, personnel changes at non-top-tier roles), incremental legal/political process stories with no resolution, opinion or analysis pieces, minor regional stories without broader stakes, and anything you'd only include for completeness rather than because a busy, well-informed person needs to hear it today.
+Reject: routine or incremental updates with nothing new resolved, opinion or analysis pieces, minor process stories with no real development, and anything you'd only include for completeness rather than because someone following this topic needs to hear it today.
 
-When genuinely torn, reject — the cost of missing a borderline story is much lower than the cost of a bloated, unfocused briefing.`;
+When genuinely torn, reject — a focused, honest brief beats a padded one. If a topic genuinely has nothing worth including today, that's a true and useful signal to surface, not a failure to correct — don't stretch to fill a quota.`;
 
 /**
  * One cheap Haiku call per cluster — filters out noise before the
@@ -40,5 +40,13 @@ export async function triageCluster(cluster: Cluster): Promise<boolean> {
     output_config: { format: zodOutputFormat(TriageResult) },
   });
 
-  return response.parsed_output?.notable ?? false;
+  const result = response.parsed_output ?? { notable: false, reason: "(no parsed output)" };
+  // Reason is otherwise discarded — logging it is cheap and is the only
+  // way to inspect the model's calibration without re-running Haiku calls
+  // by hand, especially useful while the topic-relative bar is still new.
+  console.log(
+    `[triage] ${cluster.topic} — ${result.notable ? "PASS" : "reject"} — ${result.reason}`
+  );
+
+  return result.notable;
 }

@@ -24,15 +24,30 @@ function getEmbedder(): Promise<FeatureExtractionPipeline> {
   return embedderPromise;
 }
 
+// A transformer model pads every sequence in a batch to match the longest
+// one in that same batch, and attention memory scales with roughly
+// batch_size × longest_sequence². Embedding a large digest's worth of
+// articles (a full topic/source selection can pull 1000+) in one single
+// batch combined with even one unusually long article's text is enough to
+// blow memory up catastrophically — this crashed a real machine. Chunking
+// into bounded batches caps peak memory to one chunk's worth, regardless
+// of how many articles a digest ends up pulling in total.
+const EMBED_BATCH_SIZE = 64;
+
 async function embed(texts: string[]): Promise<number[][]> {
   const embedder = await getEmbedder();
-  const output = await embedder(texts, { pooling: "mean", normalize: true });
-  const [rows, cols] = output.dims;
-  const data = output.data as Float32Array;
   const vectors: number[][] = [];
-  for (let i = 0; i < rows; i++) {
-    vectors.push(Array.from(data.slice(i * cols, (i + 1) * cols)));
+
+  for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
+    const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
+    const output = await embedder(batch, { pooling: "mean", normalize: true });
+    const [rows, cols] = output.dims;
+    const data = output.data as Float32Array;
+    for (let r = 0; r < rows; r++) {
+      vectors.push(Array.from(data.slice(r * cols, (r + 1) * cols)));
+    }
   }
+
   return vectors;
 }
 
@@ -45,8 +60,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
 /**
  * Greedy clustering: walk articles in order, attach each one to the first
  * existing cluster whose centroid it's similar enough to, otherwise start
- * a new cluster. Simple, and good enough at the article volume one digest
- * pulls (dozens, not thousands) — no need for a fancier algorithm yet.
+ * a new cluster. Simple, and fine for how this is actually used — a
+ * user's topic/source selection can realistically pull anywhere from
+ * dozens to (at a large selection) 1000+ articles; revisit if this
+ * O(articles × clusters) scan becomes the bottleneck rather than
+ * embedding memory.
  */
 export async function clusterArticles(articles: Article[]): Promise<Cluster[]> {
   if (articles.length === 0) return [];
