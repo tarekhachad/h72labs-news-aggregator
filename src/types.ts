@@ -20,4 +20,6 @@ export interface Card {
   topic: Topic;
   shortSummary: string;
   sources: Pick<Article, "title" | "url" | "source">[];
+  /** Most recent publishedAt across the cluster's source articles. */
+  publishedAt: string;
 }

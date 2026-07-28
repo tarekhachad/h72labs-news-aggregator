@@ -54,7 +54,7 @@ Personalized News Aggregator/
 
 ## Current Status
 
-> **Last updated:** 2026-07-24
-> **Status:** Phase 1 built and verified end-to-end (core pipeline, hardcoded profile, no auth).
+> **Last updated:** 2026-07-28
+> **Status:** Phase 1 built, QA'd, and revalidated against real usage (core pipeline, hardcoded profile, no auth).
 
-Design docs are in `docs/`: `ARCHITECTURE.md`, `TECH_STACK.md`, `ROADMAP.md`, `DATABASE_SCHEMA.md`, `GLOSSARY.md`, `DATA_HANDLING.md`. Phase 0 (scaffold) and Phase 1 (RSS ingest → local embedding clustering → Haiku triage → Sonnet card writing → feed UI) are done — see `notes-logs/session-log.md` for the full build log. Not yet started: Phase 2 (real accounts/Supabase), Phase 3 (history/bookmarking), Phase 4 (ad-hoc chat requests), Phase 5 (cost/quality pass + friends testing). Next: run the QA subagent pass (per Process above) on Phase 1, then decide whether to keep polishing Phase 1 or move to Phase 2.
+Design docs are in `docs/`: `ARCHITECTURE.md`, `TECH_STACK.md`, `ROADMAP.md`, `DATABASE_SCHEMA.md`, `GLOSSARY.md`, `DATA_HANDLING.md`. Phase 0 (scaffold) and Phase 1 (RSS ingest → local embedding clustering → Haiku triage → Sonnet card writing → feed UI) are done — see `notes-logs/session-log.md` for the full build log, including a 2026-07-28 pass where Tarek tested a real digest and 6 real issues (no pointer cursor, no progress feedback, stale articles, no sort rule, zero multi-source cards from an over-strict clustering threshold, `preferredSources` never wired in) were found and fixed, then verified live in a real browser via Playwright (now a project devDependency). Not yet started: Phase 2 (real accounts/Supabase), Phase 3 (history/bookmarking), Phase 4 (ad-hoc chat requests), Phase 5 (cost/quality pass + friends testing). Next: decide whether Phase 1 needs anything else before moving on, or go into plan mode to scope Phase 2.

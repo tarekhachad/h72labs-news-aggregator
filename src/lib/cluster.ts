@@ -1,7 +1,14 @@
 import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 import type { Article, Cluster } from "@/types";
 
-const SIMILARITY_THRESHOLD = 0.78;
+// Empirically tuned against real RSS pulls: at 0.78, genuine same-story
+// cross-source pairs (e.g. NYT/BBC both covering the France/Spain
+// wildfires) scored as low as 0.70-0.777 — just under the old threshold —
+// so cross-source stories almost never merged. 0.65 catches those while
+// sitting above the one observed false-positive (0.634, a generic NYT
+// live-blog title "Here's the latest." coincidentally matching an
+// unrelated story). Revisit if real digests start over-merging.
+const SIMILARITY_THRESHOLD = 0.65;
 
 // Loading the model is slow (first call downloads + initializes it), so it's
 // cached across calls within the same server instance instead of reloaded

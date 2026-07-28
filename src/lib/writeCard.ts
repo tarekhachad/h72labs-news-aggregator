@@ -50,6 +50,15 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
     throw new Error(`writeCard produced a truncated summary: "${shortSummary}"`);
   }
 
+  // Freshest coverage across the cluster's sources — what a reader means by
+  // "how new is this," not an average of unrelated outlets' publish times.
+  // Articles' publishedAt isn't guaranteed to be ISO (RSS pubDate can be
+  // RFC 822), so compare parsed timestamps rather than raw strings.
+  const publishedAt = cluster.articles.reduce(
+    (latest, a) => (new Date(a.publishedAt) > new Date(latest.publishedAt) ? a : latest),
+    cluster.articles[0]
+  ).publishedAt;
+
   return {
     topic: cluster.topic,
     shortSummary,
@@ -58,5 +67,6 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
       url: a.url,
       source: a.source,
     })),
+    publishedAt,
   };
 }
