@@ -1,6 +1,16 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-07-30 — Added Transfermarkt and The Athletic as European Football sources
+
+Tarek asked whether Transfermarkt, Footmercato, and The Athletic had RSS feeds, in the context of a question about how sourcing/keyword-matching works. Checked live (same verification standard as the original 46-source curation): Transfermarkt (`transfermarkt.com/rss/news`) and The Athletic (`nytimes.com/athletic/rss/football/`, now fully under the NYT domain) both have real, current RSS feeds. Footmercato does not — no feed-discovery link on its homepage, and every common RSS path (`/rss`, `/feed`, `/rss.xml`) 404s; its only XML endpoint is a Google News sitemap, a different schema not usable as a content feed.
+
+Added both as new `Source` values under `"European Football"` in `src/types.ts` / `src/config/feeds.ts`. While verifying with the real `rss-parser` library (the one `ingest.ts` actually uses, not just raw curl), found that Transfermarkt's feed pretty-prints its XML with a literal newline inside `<title>`/`<link>` tags, which `rss-parser` doesn't trim — so titles and URLs would have carried stray leading/trailing whitespace into cards. Fixed defensively in `ingest.ts`'s `fetchFeed()` by trimming `title`/`url` for every source, not just the two new ones.
+
+Verified end-to-end with a real digest run (not just isolated RSS parsing): signed up a fresh account with only "European Football" + Transfermarkt/The Athletic selected, ran a real `/api/digest` request, got 10 well-triaged cards back, and confirmed both new sources' links render clean (`https://...`, no embedded whitespace) when a card's sources are expanded in the UI.
+
+**Next:** back to the queued items — the password-reset/forgot-password decision, and the roadmap (Phase 3 history/bookmarking, Phase 4 ad-hoc chat, Phase 5 cost/quality + friends testing).
+
 ## 2026-07-30 — Built the profile/settings page (edit preferences + change password)
 
 Built the queued profile/settings page: a logged-in user can now edit their topic/preferred-source selections (pre-populated with current picks, reusing the onboarding multi-select UI) and change their password, both from `/profile`.

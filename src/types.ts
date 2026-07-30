@@ -58,6 +58,8 @@ export const SOURCES = [
   "Marca",
   "RMC Sport",
   "Kicker",
+  "Transfermarkt",
+  "The Athletic",
   "Yahoo Sports",
   "CBS Sports",
   "RotoWire",

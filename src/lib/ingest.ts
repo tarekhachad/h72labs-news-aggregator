@@ -27,9 +27,12 @@ async function fetchFeed(
 ): Promise<Article[]> {
   const feed = await parser.parseURL(feedUrl);
   return (feed.items ?? []).map((item) => ({
-    title: item.title ?? "",
+    // Some feeds (e.g. Transfermarkt) pretty-print their XML with a
+    // newline inside <title>/<link> itself — rss-parser doesn't trim that,
+    // so it'd otherwise leak into card titles and hrefs verbatim.
+    title: (item.title ?? "").trim(),
     snippet: stripHtml(item.contentSnippet ?? item.content ?? ""),
-    url: item.link ?? "",
+    url: (item.link ?? "").trim(),
     source,
     topic,
     publishedAt: normalizePublishedAt(item.isoDate ?? item.pubDate),

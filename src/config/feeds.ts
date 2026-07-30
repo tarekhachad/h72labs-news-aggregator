@@ -11,6 +11,11 @@ import type { Source, Topic } from "@/types";
  * or frozen (e.g. Reuters, AP, WSJ Markets, CNN Business, Morocco World
  * News, L'Economiste, Goal.com, NBA.com, ATP/WTA official) were excluded
  * rather than guessed.
+ *
+ * Transfermarkt and The Athletic (European Football) added 2026-07-30,
+ * same live-verification standard. Footmercato was checked too but has no
+ * public RSS feed (no feed-discovery link, every common path 404s) — left
+ * out rather than guessed at.
  */
 export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
   "Tech/AI": {
@@ -92,6 +97,8 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     Marca: "https://e00-marca.uecdn.es/rss/en/football.xml",
     "RMC Sport": "https://rmcsport.bfmtv.com/rss/football/",
     Kicker: "https://newsfeed.kicker.de/news/bundesliga",
+    Transfermarkt: "https://www.transfermarkt.com/rss/news",
+    "The Athletic": "https://www.nytimes.com/athletic/rss/football/",
   },
 
   Basketball: {
