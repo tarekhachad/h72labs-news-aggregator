@@ -27,7 +27,13 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
-      <div className="mx-auto flex max-w-2xl justify-end px-6 pt-6">
+      <div className="mx-auto flex max-w-2xl items-center justify-end gap-4 px-6 pt-6">
+        <a
+          href="/profile"
+          className="text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+        >
+          Settings
+        </a>
         <form action={signOutAction}>
           <button
             type="submit"
