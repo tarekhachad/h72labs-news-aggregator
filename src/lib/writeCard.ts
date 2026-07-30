@@ -11,12 +11,9 @@ const CardSummary = z.object({
 
 const SYSTEM_PROMPT = `You write the short, always-visible summary for one card in a daily news briefing — the kind of briefing a head of state's staff would prepare. Given several source articles about the same story, write a single tight paragraph (2-4 sentences) capturing what happened and why it matters. Synthesize across sources; don't just paraphrase one. No headline, no bullet points, no preamble like "This story is about" — just the briefing text itself. Always write the summary in English, even when the source articles are in another language.`;
 
-/**
- * One Sonnet call per triaged cluster — the only step that genuinely
- * needs a capable model, since turning multi-source text into clean
- * briefing prose is a real writing task.
- */
-export async function writeCard(cluster: Cluster): Promise<Card> {
+async function generateSummary(
+  cluster: Cluster
+): Promise<{ shortSummary: string; stop_reason: string | null }> {
   const sourceText = cluster.articles
     .map((a) => `Source: ${a.source}\nTitle: ${a.title}\n${a.snippet}`)
     .join("\n\n");
@@ -39,36 +36,60 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
     output_config: { format: zodOutputFormat(CardSummary) },
   });
 
-  const shortSummary = response.parsed_output?.shortSummary ?? "";
+  return {
+    shortSummary: response.parsed_output?.shortSummary ?? "",
+    stop_reason: response.stop_reason,
+  };
+}
+
+function looksComplete(summary: string): boolean {
+  return /[.!?]["')\]]?$/.test(summary.trim());
+}
+
+/**
+ * One Sonnet call per triaged cluster — the only step that genuinely needs
+ * a capable model, since turning multi-source text into clean briefing
+ * prose is a real writing task. A second call only happens on the rare
+ * ambiguous-completion retry below, not on the normal path.
+ */
+export async function writeCard(cluster: Cluster): Promise<Card> {
+  const initial = await generateSummary(cluster);
+  let shortSummary = initial.shortSummary;
+  const stop_reason = initial.stop_reason;
 
   // Empty output has no real content regardless of why (a refusal, or a
   // parse failure that left parsed_output undefined) — nothing to salvage,
   // always drop. The caller (the digest route) already treats a thrown
   // writeCard as a droppable failure, not a fatal one.
   if (shortSummary.trim().length === 0) {
-    throw new Error(`writeCard produced an empty summary (stop_reason: ${response.stop_reason})`);
+    throw new Error(`writeCard produced an empty summary (stop_reason: ${stop_reason})`);
   }
 
-  // A summary that doesn't end on sentence-terminal punctuation usually just
-  // means the model ended the sentence on something this regex doesn't
-  // recognize (a number, abbreviation, ellipsis) — not that it was cut off.
-  // Only keep the card when stop_reason is a confirmed-normal completion
-  // ("end_turn" is the only one realistic here — no tools, no stop
-  // sequences, thinking disabled). Everything else — max_tokens (genuine
-  // cutoff), refusal (the model declined; its text can still look complete
-  // and non-empty, e.g. "I can't help with that."), or anything unexpected
-  // — is treated as unsafe to keep. Allowlisting the known-safe case rather
-  // than denylisting max_tokens alone, so a refusal can't slip through just
-  // because it isn't specifically a token-limit cutoff.
-  if (!/[.!?]["')\]]?$/.test(shortSummary.trim())) {
-    if (response.stop_reason !== "end_turn") {
+  if (!looksComplete(shortSummary)) {
+    if (stop_reason !== "end_turn") {
+      // A confirmed-bad completion (genuine max_tokens cutoff, a refusal,
+      // or anything unexpected) — retrying wouldn't change that this
+      // specific response is already a known-bad signal, so drop directly.
       throw new Error(
-        `writeCard produced a truncated summary (stop_reason: ${response.stop_reason}): "${shortSummary}"`
+        `writeCard produced a truncated summary (stop_reason: ${stop_reason}): "${shortSummary}"`
       );
     }
+
+    // Genuinely ambiguous: the model believes it finished normally, but the
+    // text doesn't look complete. stop_reason "end_turn" alone can't tell a
+    // one-off bad generation from content that's actually fine — retrying
+    // is cheap relative to either showing broken text or discarding an
+    // otherwise-good story, so get a fresh attempt before giving up.
     console.warn(
-      `[writeCard] summary didn't end in expected punctuation (stop_reason: end_turn) — keeping card: "${shortSummary.slice(0, 200)}${shortSummary.length > 200 ? "…" : ""}"`
+      `[writeCard] summary looked incomplete (stop_reason: end_turn) — retrying once: "${shortSummary.slice(0, 200)}${shortSummary.length > 200 ? "…" : ""}"`
     );
+    const retry = await generateSummary(cluster);
+    if (retry.shortSummary.trim().length === 0 || !looksComplete(retry.shortSummary)) {
+      throw new Error(
+        `writeCard produced an incomplete summary even after retry (stop_reason: ${retry.stop_reason}): "${retry.shortSummary}"`
+      );
+    }
+    shortSummary = retry.shortSummary;
   }
 
   // Freshest coverage across the cluster's sources — what a reader means by

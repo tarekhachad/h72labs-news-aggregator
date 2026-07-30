@@ -1,6 +1,16 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-07-30 — writeCard retries once instead of trusting an ambiguous stop_reason
+
+Third round of the same-day `writeCard` completeness fix. Tarek tested the previous round live and found a few cards with text cut off mid-sentence — exactly the residual gap both subagent passes had already flagged: `stop_reason: "end_turn"` only means the model believes it finished, not that the content is actually complete, and the prior fix trusted that signal outright.
+
+Asked Tarek to choose between three fix directions (revert to always-drop, retry once, or tighten the heuristic without retrying) — he picked retry. Implemented: extracted the Sonnet call into a `generateSummary()` helper; the two confirmed-bad cases (empty summary; regex fails with a non-`end_turn` stop_reason) are unchanged and still drop immediately with no retry, but the genuinely ambiguous case (regex fails, `stop_reason === "end_turn"`) now calls `generateSummary` a second time and re-validates the retry's result with the same checks — using the retry's text if it now looks complete, dropping the card only if the retry is still bad. Only the ambiguous branch ever costs a second Sonnet call.
+
+`qa` mocked the Anthropic SDK and called the real `writeCard` directly (6/6 passed, including confirming the retry path correctly reads `sources`/`publishedAt` from the original cluster, not stale first-attempt state) but left a `writeCard.retry.test.ts` file behind with an unresolvable `vitest` import (vitest isn't an installed dependency in this project) — this silently broke `npx tsc --noEmit`. Caught it during the standard type-check/lint verification pass and deleted the file; worth remembering that a subagent's "no bugs found, tests pass" can still leave the working tree in a broken state if it adds files outside what was asked. `code-reviewer` passed clean, with one non-blocking observability note (no aggregate count of how often the retry branch fires, just the existing per-occurrence `console.warn`) — not acted on, logging is already sufficient for now.
+
+**Next:** still open — Tarek's password-reset decision, whether/when to retune the clustering similarity threshold with real duplicate examples, and the Phase 3/4/5 roadmap.
+
 ## 2026-07-30 — Made writeCard's truncation check non-fatal on false positives
 
 Follow-up to the same-day `writeCard` diagnostic fix: adding `stop_reason` to the log only made false positives *visible*, it didn't stop them from still dropping a good card. Tarek asked to fix that properly instead of waiting to observe it.
