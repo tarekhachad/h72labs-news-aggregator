@@ -41,13 +41,34 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
 
   const shortSummary = response.parsed_output?.shortSummary ?? "";
 
-  // A summary that doesn't end on sentence-terminal punctuation is a cut-off
-  // response (e.g. still hit a token limit despite the headroom above) —
-  // better to drop the card than ship a card that trails off mid-sentence.
-  // The caller (the digest route) already treats a thrown writeCard as a
-  // droppable failure, not a fatal one.
+  // Empty output has no real content regardless of why (a refusal, or a
+  // parse failure that left parsed_output undefined) — nothing to salvage,
+  // always drop. The caller (the digest route) already treats a thrown
+  // writeCard as a droppable failure, not a fatal one.
+  if (shortSummary.trim().length === 0) {
+    throw new Error(`writeCard produced an empty summary (stop_reason: ${response.stop_reason})`);
+  }
+
+  // A summary that doesn't end on sentence-terminal punctuation usually just
+  // means the model ended the sentence on something this regex doesn't
+  // recognize (a number, abbreviation, ellipsis) — not that it was cut off.
+  // Only keep the card when stop_reason is a confirmed-normal completion
+  // ("end_turn" is the only one realistic here — no tools, no stop
+  // sequences, thinking disabled). Everything else — max_tokens (genuine
+  // cutoff), refusal (the model declined; its text can still look complete
+  // and non-empty, e.g. "I can't help with that."), or anything unexpected
+  // — is treated as unsafe to keep. Allowlisting the known-safe case rather
+  // than denylisting max_tokens alone, so a refusal can't slip through just
+  // because it isn't specifically a token-limit cutoff.
   if (!/[.!?]["')\]]?$/.test(shortSummary.trim())) {
-    throw new Error(`writeCard produced a truncated summary: "${shortSummary}"`);
+    if (response.stop_reason !== "end_turn") {
+      throw new Error(
+        `writeCard produced a truncated summary (stop_reason: ${response.stop_reason}): "${shortSummary}"`
+      );
+    }
+    console.warn(
+      `[writeCard] summary didn't end in expected punctuation (stop_reason: end_turn) — keeping card: "${shortSummary.slice(0, 200)}${shortSummary.length > 200 ? "…" : ""}"`
+    );
   }
 
   // Freshest coverage across the cluster's sources — what a reader means by

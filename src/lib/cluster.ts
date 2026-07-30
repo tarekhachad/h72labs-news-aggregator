@@ -58,13 +58,14 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Greedy clustering: walk articles in order, attach each one to the first
- * existing cluster whose centroid it's similar enough to, otherwise start
- * a new cluster. Simple, and fine for how this is actually used — a
- * user's topic/source selection can realistically pull anywhere from
- * dozens to (at a large selection) 1000+ articles; revisit if this
- * O(articles × clusters) scan becomes the bottleneck rather than
- * embedding memory.
+ * Greedy clustering: walk articles in order, attach each one to the
+ * best-matching existing cluster whose centroid it's similar enough to
+ * (highest cosine similarity among all clusters clearing the threshold,
+ * not just the first one found), otherwise start a new cluster. Simple,
+ * and fine for how this is actually used — a user's topic/source
+ * selection can realistically pull anywhere from dozens to (at a large
+ * selection) 1000+ articles; revisit if this O(articles × clusters) scan
+ * becomes the bottleneck rather than embedding memory.
  */
 export async function clusterArticles(articles: Article[]): Promise<Cluster[]> {
   if (articles.length === 0) return [];
@@ -77,9 +78,20 @@ export async function clusterArticles(articles: Article[]): Promise<Cluster[]> {
 
   articles.forEach((article, i) => {
     const vector = vectors[i];
-    const match = clusters.find(
-      (c) => cosineSimilarity(c.centroid, vector) >= SIMILARITY_THRESHOLD
-    );
+    // Best-match, not first-match: an article near the threshold can clear
+    // it against more than one existing cluster (centroids drift as
+    // clusters grow), and always taking whichever comes first in insertion
+    // order — rather than the one it's actually closest to — was a source
+    // of order-dependent inconsistency in how same-story articles grouped.
+    let match: { articles: Article[]; centroid: number[] } | null = null;
+    let bestSimilarity = -Infinity;
+    for (const c of clusters) {
+      const similarity = cosineSimilarity(c.centroid, vector);
+      if (similarity >= SIMILARITY_THRESHOLD && similarity > bestSimilarity) {
+        match = c;
+        bestSimilarity = similarity;
+      }
+    }
 
     if (match) {
       match.articles.push(article);

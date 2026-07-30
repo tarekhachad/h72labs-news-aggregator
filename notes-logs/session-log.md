@@ -1,6 +1,32 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-07-30 — Made writeCard's truncation check non-fatal on false positives
+
+Follow-up to the same-day `writeCard` diagnostic fix: adding `stop_reason` to the log only made false positives *visible*, it didn't stop them from still dropping a good card. Tarek asked to fix that properly instead of waiting to observe it.
+
+Changed `writeCard.ts`'s decision logic: an empty/whitespace-only summary always throws (new safety net — covers a refusal or parse-failure producing no real content). Otherwise, if the summary doesn't end in terminal punctuation, it only throws (drops the card) when `stop_reason` is confirmed **not** `"end_turn"` — i.e. an allowlist of the one known-safe completion state, not a denylist of just `"max_tokens"`.
+
+That allowlist-vs-denylist distinction came from the `code-reviewer` subagent pass, independently confirmed by `qa`'s test suite: my first version only special-cased `max_tokens` as "drop it," which meant `stop_reason: "refusal"` (a real Anthropic stop reason for policy-blocked responses) would have fallen through to "keep it" — exactly backwards, since a refusal's text can be short and non-empty ("I can't help with that") without being a truncation. Fixed by flipping the condition to only trust `end_turn` specifically. Also applied the review's minor log-truncation suggestion (cap the logged summary text at 200 chars).
+
+Verified via a throwaway logic-mirroring script (empty summary, bad-punctuation+max_tokens, bad-punctuation+end_turn, bad-punctuation+refusal, good-punctuation — all correct) since forcing a real Sonnet call into a specific stop_reason isn't practical on demand; `qa` separately verified the same branches by mocking the Anthropic SDK and calling the real `writeCard` function directly (11/11 passed), which is stronger evidence than my mirrored-logic script alone. Both `qa` and code review flagged the same fundamental, pre-existing scope limit as a non-blocking note: `stop_reason: "end_turn"` only means the model believes it finished — it can't catch a well-formed-looking response that's still substantively wrong (wrong language, off-topic, self-truncated without hitting the token limit) at least given it's a surface-form check only. That's out of scope for this fix, not a new gap it introduced.
+
+**Next:** still open — Tarek's password-reset decision, whether/when to retune the clustering similarity threshold with real duplicate examples, and the Phase 3/4/5 roadmap.
+
+## 2026-07-30 — First manual testing pass: 4 findings, 2 real fixes
+
+Tarek did his first hands-on exploration of the app (not automated QA) and raised four observations.
+
+Two needed no code change, just diagnosis: (1) expanding a card shows no "full report," only the sources list — confirmed this feature was designed (`expanded_report` column, lazily generated + cached per `docs/(C) DATABASE_SCHEMA.md`/`ARCHITECTURE.md`) but never built, since the whole `digests`/`cards`/`bookmarks` persistence layer is Phase 3 (history/bookmarking), not yet started — not a regression, correctly waiting on that phase. (2) Dark mode is implemented (`globals.css`'s `@media (prefers-color-scheme: dark)` + `dark:` Tailwind classes throughout) but follows the OS/browser setting automatically — there's no in-app toggle, which is expected, not missing.
+
+Two were real gaps, both fixed: (3) `writeCard.ts`'s truncation-detection (a regex checking Sonnet's summary ends in terminal punctuation, dropping the card if not) couldn't tell a genuine token-limit cutoff from a false positive — a fine summary that just ends in something the regex doesn't recognize. Fixed by including the Anthropic SDK's `response.stop_reason` in the error/log, so the next occurrence will show which one happened. (4) Tarek noticed inconsistent duplicate story cards — same real event covered by two separate cards instead of one merged cluster. Root-caused to `cluster.ts`'s greedy clustering picking the FIRST existing cluster that cleared the similarity threshold, not the *best*-matching one — an order-dependent correctness bug, independent of where the threshold is set. Fixed by scanning all clusters and picking the highest-similarity match.
+
+Ran a real live digest (10 European Football sources, 29 cards back) to sanity-check the clustering fix — confirmed it's a genuine improvement, but also saw with my own eyes that duplicates still happen (3 clear same-story pairs stayed split, e.g. two cards both about Eddie Howe leaving Newcastle). Expected: the deeper issue (a single fixed similarity threshold can't cleanly separate "same story, worded differently" from "different but related" across every topic/language/outlet) is a separate, harder problem this pass didn't attempt. Documented as a new entry in `docs/(C) ROADMAP.md`'s "Explicitly deferred" list with concrete next steps if it keeps showing up: retune the threshold against real examples first, then consider a secondary dedup signal (e.g. named-entity overlap) if that's not enough.
+
+`qa` and `code-reviewer` subagent passes both came back clean on the two fixes — `qa` went further than asked, patching a throwaway copy back to the old first-match logic and confirming it actually fails the exact tie-break scenario the new code passes (real evidence the fix works, not just theoretically correct).
+
+**Next:** still open — Tarek's password-reset decision, whether/when to retune the clustering threshold with real duplicate examples, and the Phase 3/4/5 roadmap.
+
 ## 2026-07-30 — Added Transfermarkt and The Athletic as European Football sources
 
 Tarek asked whether Transfermarkt, Footmercato, and The Athletic had RSS feeds, in the context of a question about how sourcing/keyword-matching works. Checked live (same verification standard as the original 46-source curation): Transfermarkt (`transfermarkt.com/rss/news`) and The Athletic (`nytimes.com/athletic/rss/football/`, now fully under the NYT domain) both have real, current RSS feeds. Footmercato does not — no feed-discovery link on its homepage, and every common RSS path (`/rss`, `/feed`, `/rss.xml`) 404s; its only XML endpoint is a Google News sitemap, a different schema not usable as a content feed.
