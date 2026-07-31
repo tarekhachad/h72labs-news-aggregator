@@ -40,7 +40,16 @@ Phased build plan. **MVP end-to-end before polish** — each phase should leave 
 - Chat-style input for requests outside default topics ("what's happening with the Fed today") — runs the same pipeline for that one topic and appends the resulting card(s) to the current feed.
 - **Done when:** an off-topic ask produces new cards appended to the feed, without disturbing the existing default-topic cards.
 
-## Phase 5 — Cost/quality pass + friends testing
+## Phase 5 — UI/UX design pass
+
+_Added 2026-07-31, per a prior session's discussion of doing dedicated UI/UX work before shipping to friends, and a design-tooling tip surfaced on social media. Inserted here because it makes more sense to design deliberately before putting the product in front of testers, rather than after._
+
+- Establish an actual visual design system for the feed/card UI, which was built functionally through Phases 1–4 with no deliberate visual identity — either adapt a reference `DESIGN.md` from the [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) collection (73+ specs reverse-engineered from real products like Stripe, Linear, Vercel) or hand-write one for the product (color palette, type scale, spacing, card/component styling), then bring the existing UI in line with it.
+- Run [Emil Kowalski's design-engineering skill](https://emilkowal.ski/skill) (`npx skills add emilkowalski/skill`) as an audit pass over the feed: animation-review + opportunity-finder to decide where motion actually earns its place (card expand/collapse, digest-generation loading state, topic tabs, empty states), then apply the improvement pass. It automates his design *judgment* as a checklist/audit, not a substitute for actually looking at the result.
+- Optional, contingent — not committed to in advance: if the design pass surfaces a concrete asset gap (e.g., an empty-state illustration, a landing/marketing hero image), use [Higgsfield](https://higgsfield.ai/skills) (`npx skills add higgsfield-ai/skills`, MCP-based, account auth required) to generate it. The product is a text-heavy feed with no known asset gap today, so this isn't a required deliverable of the phase.
+- **Done when:** the feed, cards, and onboarding/profile screens have a coherent, intentionally-designed look (not default functional styling) and have been through an applied Emil Kowalski review pass — verified live in the browser, not just code-reviewed.
+
+## Phase 6 — Cost/quality pass + friends testing
 
 - Confirm the lazy expanded-report generation is actually lazy (not accidentally pre-generating for every card).
 - Instrument real Claude API usage/cost against the estimate in `(C) TECH_STACK.md` — correct the estimate with real numbers.
