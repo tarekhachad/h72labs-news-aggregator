@@ -93,6 +93,30 @@ export async function getTodayDigest(
   return getDigestForDate(supabase, userId, todayDateString());
 }
 
+/**
+ * Today's already-persisted card summaries (topic + short_summary only) for
+ * this digest — used by the cross-run duplicate check (src/lib/dedup.ts) to
+ * compare a fresh run's candidate clusters against what earlier runs today
+ * already covered, before spending a triage/writing call on them. Not the
+ * full rowToCard shape — nothing here needs sources, bookmarks, or ids.
+ */
+export async function getTodaysCardSummaries(
+  supabase: SupabaseClient,
+  digestId: string
+): Promise<{ topic: Topic; shortSummary: string }[]> {
+  const { data, error } = await supabase
+    .from("cards")
+    .select("topic, short_summary")
+    .eq("digest_id", digestId);
+
+  if (error) throw new Error(`getTodaysCardSummaries: ${error.message}`);
+
+  return (data ?? []).map((row) => ({
+    topic: row.topic as Topic,
+    shortSummary: row.short_summary as string,
+  }));
+}
+
 export interface DigestDateSummary {
   date: string;
   cardCount: number;

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { ingestArticles } from "@/lib/ingest";
 import { clusterArticles } from "@/lib/cluster";
+import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageCluster } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
 import {
@@ -10,6 +11,7 @@ import {
   saveGeneratedCards,
   claimDigestForGeneration,
   releaseDigestGeneration,
+  getTodaysCardSummaries,
 } from "@/lib/digests";
 import type { Card, Source, Topic } from "@/types";
 
@@ -55,12 +57,36 @@ async function* runDigestPipeline(
     yield { stage: "clustering", articleCount: articles.length };
     const clusters = await clusterArticles(articles);
 
-    yield { stage: "triaging", clusterCount: clusters.length };
+    // Cross-run duplicate check: on a second/third same-day run, a fresh
+    // article about a story already covered earlier today (a follow-up, an
+    // update, or just another outlet picking it up late) has a publishedAt
+    // after the since-cursor and forms its own cluster — the ingest filter
+    // only excludes stale articles, it has no notion of "already covered."
+    // Skipped entirely on the first run of the day (sinceIso === null):
+    // nothing persisted yet to compare against, so no point fetching/embedding.
+    //
+    // Best-effort, not required for success: unlike triageCluster/writeCard
+    // (which fail closed per-cluster), a failure here (DB blip, embedding
+    // error) falls back to the un-deduplicated cluster list rather than
+    // failing the whole run — occasionally showing a duplicate is a much
+    // smaller cost than losing an entire digest generation over what's
+    // fundamentally a quality-of-life check, not core pipeline logic.
+    let survivingClusters = clusters;
+    if (sinceIso !== null) {
+      try {
+        const existingCards = await getTodaysCardSummaries(supabase, digestId);
+        survivingClusters = await filterAlreadyCovered(clusters, existingCards);
+      } catch (err) {
+        console.error("[digest] cross-run dedup failed, proceeding without it:", err);
+      }
+    }
+
+    yield { stage: "triaging", clusterCount: survivingClusters.length };
     // A single triage call failing (rate limit, network blip) shouldn't take
     // down the whole digest and discard every other cluster that already
     // succeeded — fail closed (treat as not notable) and keep going.
     const triaged = await Promise.all(
-      clusters.map(async (cluster) => {
+      survivingClusters.map(async (cluster) => {
         try {
           return { cluster, notable: await triageCluster(cluster) };
         } catch (err) {
