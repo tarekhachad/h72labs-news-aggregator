@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { TOPICS, type Card, type Topic } from "@/types";
-
-// Namespaced by user ID, not a single global key — localStorage is scoped
-// to the browser, not the account. A shared key would leak one account's
-// "since last digest" timestamp into another account's first-ever digest
-// on the same browser (e.g. switching test accounts), filtering out
-// almost everything instead of correctly falling back to a fresh window.
-function lastDigestKey(userId: string): string {
-  return `h72-last-digest-at-${userId}`;
-}
+import { TOPICS, type Card, type Digest, type Topic } from "@/types";
+import { CardItem } from "@/components/CardItem";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
 // strings here since the client doesn't need the payload types, just the
@@ -45,17 +37,6 @@ function stageLabel(stage: Stage, event: Record<string, unknown>): string {
   return STAGE_LABEL[stage];
 }
 
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
 // Canonical TOPICS order, filtered to the topics actually present in this
 // digest — stable across re-renders (and across days), unlike sorting by
 // card count, which would shuffle tab order depending on what happened to
@@ -65,35 +46,43 @@ function orderTopics(topics: Topic[]): Topic[] {
   return TOPICS.filter((t) => present.has(t));
 }
 
-export function Feed({ userId }: { userId: string }) {
-  const [cards, setCards] = useState<Card[] | null>(null);
-  const [topics, setTopics] = useState<Topic[] | null>(null);
-  const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
+export function Feed({
+  initialDigest,
+}: {
+  /** Today's already-persisted digest, if one exists — null on a brand-new day. */
+  initialDigest: Digest | null;
+}) {
+  const [cards, setCards] = useState<Card[] | null>(initialDigest?.cards ?? null);
+  const [topics, setTopics] = useState<Topic[] | null>(
+    initialDigest ? orderTopics(initialDigest.cards.map((c) => c.topic)) : null
+  );
+  const [activeTopic, setActiveTopic] = useState<Topic | null>(() => {
+    if (!initialDigest) return null;
+    const ordered = orderTopics(initialDigest.cards.map((c) => c.topic));
+    return ordered[0] ?? null;
+  });
   const [loading, setLoading] = useState(false);
   const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const hasDigest = cards !== null;
 
   async function loadDigest() {
     setLoading(true);
     setError(null);
-    setCards(null);
-    setTopics(null);
-    setActiveTopic(null);
-    setExpanded(null);
     setStageEvent({ stage: "ingesting" });
 
-    const requestStartedAt = new Date().toISOString();
-    const since = localStorage.getItem(lastDigestKey(userId));
     let reachedTerminalEvent = false;
 
     try {
-      const res = await fetch("/api/digest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ since }),
-      });
-      if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`);
+      const res = await fetch("/api/digest", { method: "POST" });
+      if (!res.ok || !res.body) {
+        // Plain-text error routes (e.g. the 409 when another tab/click is
+        // already generating this digest) aren't NDJSON — surface their
+        // body directly rather than a bare status code.
+        const message = await res.text().catch(() => "");
+        throw new Error(message || `Request failed (${res.status})`);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -136,28 +125,45 @@ export function Feed({ userId }: { userId: string }) {
       }
       if (event.stage === "done") {
         reachedTerminalEvent = true;
-        const doneCards = event.cards as Card[];
+        const newCards = event.cards as Card[];
+        // Additive, not a replace: the server's since-cursor (see
+        // upsertDigestForToday) only ever returns cards published after the
+        // last run that day, so this run's cards and the ones already on
+        // screen can't overlap the same underlying article.
+        setCards((prev) => [...(prev ?? []), ...newCards]);
         // Union with the topics actually present on cards, not just the
         // server's reported topic list — defends against a card silently
         // becoming invisible (matching no tab) if that invariant ever
         // breaks, rather than trusting the two always agree.
-        const doneTopics = orderTopics([
-          ...(event.topics as Topic[]),
-          ...doneCards.map((c) => c.topic),
-        ]);
-        setCards(doneCards);
-        setTopics(doneTopics);
-        // Default to the first topic that actually has a card, so opening
-        // the digest doesn't land on an empty tab when other topics have
-        // real news — falls back to the first topic if every one is empty.
-        const firstWithCards = doneTopics.find((t) => doneCards.some((c) => c.topic === t));
-        setActiveTopic(firstWithCards ?? doneTopics[0] ?? null);
-        localStorage.setItem(lastDigestKey(userId), requestStartedAt);
+        setTopics((prevTopics) =>
+          orderTopics([
+            ...(prevTopics ?? []),
+            ...(event.topics as Topic[]),
+            ...newCards.map((c) => c.topic),
+          ])
+        );
+        // Only pick a default tab the very first time a digest ever loads
+        // (activeTopic still null) — once one's already selected, later
+        // appended cards shouldn't yank the user to a different tab. If
+        // activeTopic is null, topics must be null too (no earlier digest),
+        // so this run's own topics are the full set, no prior state needed.
+        setActiveTopic(
+          (prevActive) =>
+            prevActive ??
+            orderTopics([...(event.topics as Topic[]), ...newCards.map((c) => c.topic)])[0] ??
+            null
+        );
       } else {
         // "error" and "done" are handled above — only progress stages reach here.
         setStageEvent(event as StageEvent);
       }
     }
+  }
+
+  function handleBookmarkChange(cardId: string, bookmarked: boolean) {
+    setCards((prev) =>
+      prev ? prev.map((c) => (c.id === cardId ? { ...c, bookmarked } : c)) : prev
+    );
   }
 
   const stageIndex = stageEvent ? STAGE_ORDER.indexOf(stageEvent.stage) : -1;
@@ -176,7 +182,7 @@ export function Feed({ userId }: { userId: string }) {
           disabled={loading}
           className="cursor-pointer rounded-full bg-black px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
         >
-          Give me today&apos;s news
+          {hasDigest ? "Complete today's news" : "Give me today's news"}
         </button>
 
         {loading && (
@@ -225,48 +231,9 @@ export function Feed({ userId }: { userId: string }) {
       )}
 
       <div className="flex flex-col gap-4">
-        {activeCards.map((card, i) => {
-          const cardKey = `${card.topic}-${i}`;
-          return (
-            <div
-              key={cardKey}
-              className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950"
-            >
-              <div className="flex items-center justify-between">
-                <span className="inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  {card.topic}
-                </span>
-                <span className="text-xs text-zinc-400">{formatRelativeTime(card.publishedAt)}</span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-zinc-800 dark:text-zinc-200">
-                {card.shortSummary}
-              </p>
-              <button
-                onClick={() => setExpanded(expanded === cardKey ? null : cardKey)}
-                className="mt-3 cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
-              >
-                {expanded === cardKey ? "Hide sources" : `Sources (${card.sources.length})`}
-              </button>
-              {expanded === cardKey && (
-                <ul className="mt-3 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                  {card.sources.map((s, j) => (
-                    <li key={j} className="text-xs text-zinc-500">
-                      <span className="font-medium">{s.source}</span> —{" "}
-                      <a
-                        href={s.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-zinc-800 dark:hover:text-zinc-200"
-                      >
-                        {s.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+        {activeCards.map((card) => (
+          <CardItem key={card.id} card={card} onBookmarkChange={handleBookmarkChange} />
+        ))}
       </div>
     </div>
   );

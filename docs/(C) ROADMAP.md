@@ -28,9 +28,12 @@ Phased build plan. **MVP end-to-end before polish** — each phase should leave 
 
 ## Phase 3 — History and bookmarking
 
-- Persist each day's digest so past days are retrievable; add the calendar view to browse them.
+- Persist each day's digest so past days are retrievable; add a history view to browse them.
+- Same-day generation is additive, not duplicate-or-replace: one `digests` row per user per calendar date, appended to across multiple runs that day (server-owned `last_generated_at` cursor replaces the old client-`localStorage` one) rather than creating a second digest or silently redoing the whole day.
 - Add bookmarking: a join table linking a user to a card ID, plus a "Saved" view.
-- **Done when:** you can revisit yesterday's digest via the calendar, and bookmark a card and find it again later in Saved.
+- Also shipped alongside this phase (not originally scoped here, but the natural moment for it — see "Explicitly deferred" below): the lazy expanded-report generation described in `ARCHITECTURE.md`/`TECH_STACK.md`, since cards only got real persistent IDs to cache it against in this phase.
+- **Done when:** you can revisit yesterday's digest via the history view, and bookmark a card and find it again later in Saved.
+- **Built as:** a simple reverse-chronological date list, not a real calendar-grid widget — see "Explicitly deferred" below.
 
 ## Phase 4 — Ad-hoc requests
 
@@ -48,6 +51,8 @@ Phased build plan. **MVP end-to-end before polish** — each phase should leave 
 
 ## Explicitly deferred (not v1)
 
+- **Real calendar-grid history view** (scoped down during Phase 3, 2026-07-30): Phase 3 ships a simple reverse-chronological date list instead of an actual month-view calendar component — faster to ship and already satisfies the "revisit a past digest" done-condition. Deliberately built so upgrading later is a small extension, not a rewrite: `src/lib/digests.ts`'s `listDigestDatesForUser()` already takes an optional `{ from, to }` date range; a future month-grid view just calls it bounded to that month instead of leaving it unbounded.
+- **Retrying individual clusters that failed triage/writing across generation runs** (flagged by `code-reviewer` during Phase 3's review pass, 2026-07-30): the pipeline already fails closed per-cluster — a triage call that throws is treated as "not notable," and a `writeCard` rejection just drops that cluster — so a transient blip (rate limit, network hiccup) loses that one story for the run, which was low-stakes when digests were fully ephemeral. Now that persistence advances `digests.last_generated_at` to "now" unconditionally once a run finishes (`src/app/api/digest/route.ts`'s `saveGeneratedCards` call), a story lost to a transient failure is excluded **permanently** — the next run's since-cutoff has already moved past its source articles, so it's never retried. Consciously accepted rather than fixed now: the trigger (a transient API/network failure landing on a specific cluster) is already rare per the existing fail-closed comments, and a real fix (track failed clusters separately and retry them on the next run, or advance the cursor only to the oldest surviving article's timestamp rather than "now") is a genuine design change, not a quick patch. Revisit if missed stories from transient failures turn out to be a real, recurring complaint rather than a theoretical edge case.
 - Free-text topic/source entry (v2).
 - Social media sources, e.g. X (v2).
 - Ads or a paid tier (post-monetization decision, once real usage data exists).

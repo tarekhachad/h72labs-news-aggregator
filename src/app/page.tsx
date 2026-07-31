@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
+import { getTodayDigest } from "@/lib/digests";
 import { signOutAction } from "@/app/auth/actions";
 import { Feed } from "./Feed";
 
@@ -25,15 +27,29 @@ export default async function Home() {
     redirect("/onboarding");
   }
 
+  const digest = await getTodayDigest(supabase, user.id);
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <div className="mx-auto flex max-w-2xl items-center justify-end gap-4 px-6 pt-6">
-        <a
+        <Link
+          href="/history"
+          className="text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+        >
+          History
+        </Link>
+        <Link
+          href="/saved"
+          className="text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+        >
+          Saved
+        </Link>
+        <Link
           href="/profile"
           className="text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
         >
           Settings
-        </a>
+        </Link>
         <form action={signOutAction}>
           <button
             type="submit"
@@ -43,7 +59,7 @@ export default async function Home() {
           </button>
         </form>
       </div>
-      <Feed userId={user.id} />
+      <Feed initialDigest={digest} />
     </div>
   );
 }

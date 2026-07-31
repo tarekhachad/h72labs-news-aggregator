@@ -86,9 +86,27 @@ export interface Cluster {
 }
 
 export interface Card {
+  id: string;
   topic: Topic;
   shortSummary: string;
-  sources: Pick<Article, "title" | "url" | "source">[];
+  /**
+   * Null until the first time a user expands the card; generated once by
+   * generateExpandedReport() and cached on the row from then on. Includes
+   * snippet (not just title/url/source) so a lazy report written days
+   * after the original cluster is gone from memory still has real source
+   * text to work from, without re-fetching source URLs.
+   */
+  expandedReport: string | null;
+  sources: Pick<Article, "title" | "url" | "source" | "snippet">[];
   /** Most recent publishedAt across the cluster's source articles. */
   publishedAt: string;
+  bookmarked: boolean;
+}
+
+export interface Digest {
+  id: string;
+  date: string;
+  /** Null if this digest's first generation run hasn't completed successfully yet. */
+  lastGeneratedAt: string | null;
+  cards: Card[];
 }
