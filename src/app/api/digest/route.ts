@@ -76,16 +76,33 @@ async function* runDigestPipeline(
     // the digest — log it and drop that card instead of rejecting the batch.
     const written = await Promise.allSettled(notableClusters.map(writeCard));
 
+    // One canonical timestamp for the whole run — every card gets stamped
+    // with this exact value (not each writeCard() call's own clock reading)
+    // so cards from the same run are byte-identical on generatedAt, which is
+    // what lets the feed detect run boundaries and draw a divider between
+    // them, in both this live response and on every later reload.
+    const generatedAt = new Date().toISOString();
+
     const cards: Card[] = [];
     for (const result of written) {
       if (result.status === "fulfilled") {
-        cards.push(result.value);
+        cards.push({ ...result.value, generatedAt });
       } else {
         console.error("[digest] writeCard failed:", result.reason);
       }
     }
 
-    cards.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    // Secondary key on id: matches getDigestForDate's tiebreaker (see
+    // digests.ts) so ties between cards sharing a publishedAt resolve the
+    // same way in this live view as they will on every later reload. Plain
+    // ordinal comparison, not localeCompare — Postgres compares uuid values
+    // byte-by-byte, and localeCompare's locale-aware collation isn't
+    // guaranteed to agree with that for every runtime/ICU configuration.
+    cards.sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime() ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    );
 
     // Persist before telling the client we're done — a persistence failure
     // becomes a thrown error here, caught by toNdjsonStream's try/catch below
@@ -98,7 +115,7 @@ async function* runDigestPipeline(
     // next run's since-cutoff and won't be retried. Consciously accepted for
     // now (documented in ROADMAP.md's deferred section) rather than adding
     // per-cluster retry tracking; see that entry for the reasoning.
-    await saveGeneratedCards(supabase, digestId, cards);
+    await saveGeneratedCards(supabase, digestId, cards, generatedAt);
 
     yield { stage: "done", cards, topics: profile.topics };
   } finally {

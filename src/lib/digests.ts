@@ -11,6 +11,7 @@ export interface CardRow {
   expanded_report: string | null;
   sources: Card["sources"];
   published_at: string;
+  created_at: string;
 }
 
 /** Shared DB-row -> Card mapper — also used by bookmarks.ts's getSavedCards
@@ -23,6 +24,7 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
     expandedReport: row.expanded_report,
     sources: row.sources,
     publishedAt: row.published_at,
+    generatedAt: row.created_at,
     bookmarked: bookmarkedIds.has(row.id),
   };
 }
@@ -60,9 +62,15 @@ export async function getDigestForDate(
   const [{ data: cardRows, error: cardsError }, bookmarkedIds] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, topic, short_summary, expanded_report, sources, published_at")
+      .select("id, topic, short_summary, expanded_report, sources, published_at, created_at")
       .eq("digest_id", digestRow.id)
-      .order("published_at", { ascending: false }),
+      // Secondary key on id: published_at ties are common (minute-granularity
+      // RSS timestamps, or writeCard's now()-fallback for undated items), and
+      // without a tiebreaker Postgres doesn't guarantee stable order for tied
+      // rows across separate query executions — cards would visibly swap
+      // places between reloads even though nothing about them changed.
+      .order("published_at", { ascending: false })
+      .order("id", { ascending: true }),
     getBookmarkedCardIds(supabase, userId),
   ]);
 
@@ -175,11 +183,17 @@ export async function upsertDigestForToday(
  * leave a real gap where a crash between them persists cards but never
  * advances the cursor, causing the next run to re-ingest the same window
  * and insert a near-duplicate batch.
+ *
+ * generatedAt is passed in (not computed here) so the caller can stamp the
+ * exact same value onto the in-memory Card objects it returns to the client
+ * — that's what lets the feed draw a run divider immediately after a
+ * second same-day generation, without needing a reload to see it.
  */
 export async function saveGeneratedCards(
   supabase: SupabaseClient,
   digestId: string,
-  cards: Card[]
+  cards: Card[],
+  generatedAt: string
 ): Promise<void> {
   const { error } = await supabase.rpc("persist_generated_cards", {
     p_digest_id: digestId,
@@ -190,7 +204,7 @@ export async function saveGeneratedCards(
       sources: card.sources,
       publishedAt: card.publishedAt,
     })),
-    p_generated_at: new Date().toISOString(),
+    p_generated_at: generatedAt,
   });
 
   if (error) {

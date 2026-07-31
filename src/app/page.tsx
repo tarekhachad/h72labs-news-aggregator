@@ -59,7 +59,7 @@ export default async function Home() {
           </button>
         </form>
       </div>
-      <Feed initialDigest={digest} />
+      <Feed initialDigest={digest} userTopics={topics} />
     </div>
   );
 }

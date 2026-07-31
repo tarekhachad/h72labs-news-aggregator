@@ -77,6 +77,11 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
       snippet: a.snippet,
     })),
     publishedAt,
+    // Placeholder — the digest route overwrites this on every card with the
+    // one canonical timestamp for the whole run before persisting/returning
+    // it, the same way it doesn't trust each parallel writeCard() call's own
+    // clock reading for anything run-identifying.
+    generatedAt: new Date().toISOString(),
     bookmarked: false,
   };
 }

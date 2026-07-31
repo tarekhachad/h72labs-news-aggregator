@@ -100,6 +100,13 @@ export interface Card {
   sources: Pick<Article, "title" | "url" | "source" | "snippet">[];
   /** Most recent publishedAt across the cluster's source articles. */
   publishedAt: string;
+  /**
+   * When this card's generation run persisted it — distinct from
+   * publishedAt (source-article recency). Every card from the same
+   * same-day run shares an identical value (see persist_generated_cards),
+   * which is what lets the feed draw a divider between runs.
+   */
+  generatedAt: string;
   bookmarked: boolean;
 }
 

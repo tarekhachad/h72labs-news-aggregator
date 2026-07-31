@@ -98,7 +98,7 @@ export async function getSavedCards(
   const { data, error } = await supabase
     .from("bookmarks")
     .select(
-      "cards(id, topic, short_summary, expanded_report, sources, published_at, digests(date))"
+      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, digests(date))"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false });

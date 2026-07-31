@@ -198,14 +198,20 @@ language plpgsql
 security invoker
 as $$
 begin
-  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at)
+  -- created_at is set explicitly to p_generated_at (not left to its own
+  -- `default now()`) so every card in this run shares the exact same value
+  -- as digests.last_generated_at below, byte-for-byte — that's what the
+  -- feed's run-divider relies on to group a run's cards, rather than
+  -- trusting two separate now() calls to agree.
+  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at)
   select
     (c->>'id')::uuid,
     p_digest_id,
     c->>'topic',
     c->>'shortSummary',
     c->'sources',
-    (c->>'publishedAt')::timestamptz
+    (c->>'publishedAt')::timestamptz,
+    p_generated_at
   from jsonb_array_elements(p_cards) as c;
 
   update public.digests

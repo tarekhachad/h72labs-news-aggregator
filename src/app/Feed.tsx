@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { TOPICS, type Card, type Digest, type Topic } from "@/types";
 import { CardItem } from "@/components/CardItem";
+import { RunDivider } from "@/components/RunDivider";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
 // strings here since the client doesn't need the payload types, just the
@@ -48,18 +49,30 @@ function orderTopics(topics: Topic[]): Topic[] {
 
 export function Feed({
   initialDigest,
+  userTopics,
 }: {
   /** Today's already-persisted digest, if one exists — null on a brand-new day. */
   initialDigest: Digest | null;
+  /**
+   * The user's full topic preferences (not just topics with cards) — the
+   * tab list is derived from this, not from initialDigest.cards, so a topic
+   * with zero notable stories today still shows its tab (with the "no
+   * notable news" empty state) instead of silently disappearing on reload.
+   */
+  userTopics: Topic[];
 }) {
   const [cards, setCards] = useState<Card[] | null>(initialDigest?.cards ?? null);
   const [topics, setTopics] = useState<Topic[] | null>(
-    initialDigest ? orderTopics(initialDigest.cards.map((c) => c.topic)) : null
+    initialDigest ? orderTopics(userTopics) : null
   );
   const [activeTopic, setActiveTopic] = useState<Topic | null>(() => {
     if (!initialDigest) return null;
-    const ordered = orderTopics(initialDigest.cards.map((c) => c.topic));
-    return ordered[0] ?? null;
+    const ordered = orderTopics(userTopics);
+    // Prefer landing on a topic that actually has a story today — falling
+    // back to ordered[0] only matters when every selected topic came up
+    // empty, so the tab list still has to show *something* as active.
+    const withCards = ordered.find((t) => initialDigest.cards.some((c) => c.topic === t));
+    return withCards ?? ordered[0] ?? null;
   });
   const [loading, setLoading] = useState(false);
   const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
@@ -129,8 +142,22 @@ export function Feed({
         // Additive, not a replace: the server's since-cursor (see
         // upsertDigestForToday) only ever returns cards published after the
         // last run that day, so this run's cards and the ones already on
-        // screen can't overlap the same underlying article.
-        setCards((prev) => [...(prev ?? []), ...newCards]);
+        // screen can't overlap the same underlying article. Re-sorted after
+        // merging (not just appended) so a second same-day run — newer
+        // publishedAt, but arriving after the older cards in this array —
+        // lands in the same recency order a reload would show, matching
+        // getDigestForDate's ORDER BY exactly; without this, the run divider
+        // below would end up pointing the wrong way, labeling the newer
+        // block "earlier."
+        setCards((prev) => {
+          const merged = [...(prev ?? []), ...newCards];
+          merged.sort(
+            (a, b) =>
+              new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime() ||
+              (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+          );
+          return merged;
+        });
         // Union with the topics actually present on cards, not just the
         // server's reported topic list — defends against a card silently
         // becoming invisible (matching no tab) if that invariant ever
@@ -147,12 +174,15 @@ export function Feed({
         // appended cards shouldn't yank the user to a different tab. If
         // activeTopic is null, topics must be null too (no earlier digest),
         // so this run's own topics are the full set, no prior state needed.
-        setActiveTopic(
-          (prevActive) =>
-            prevActive ??
-            orderTopics([...(event.topics as Topic[]), ...newCards.map((c) => c.topic)])[0] ??
-            null
-        );
+        setActiveTopic((prevActive) => {
+          if (prevActive) return prevActive;
+          const ordered = orderTopics([
+            ...(event.topics as Topic[]),
+            ...newCards.map((c) => c.topic),
+          ]);
+          const withCards = ordered.find((t) => newCards.some((c) => c.topic === t));
+          return withCards ?? ordered[0] ?? null;
+        });
       } else {
         // "error" and "done" are handled above — only progress stages reach here.
         setStageEvent(event as StageEvent);
@@ -231,9 +261,20 @@ export function Feed({
       )}
 
       <div className="flex flex-col gap-4">
-        {activeCards.map((card) => (
-          <CardItem key={card.id} card={card} onBookmarkChange={handleBookmarkChange} />
-        ))}
+        {activeCards.map((card, i) => {
+          // activeCards is already sorted by recency (see getDigestForDate /
+          // route.ts) — a divider marks each point where that order crosses
+          // from one same-day generation run into an earlier one, not a
+          // full regroup-by-run (which would fight the recency ordering
+          // Fix 3 just made stable).
+          const isNewRun = i > 0 && card.generatedAt !== activeCards[i - 1].generatedAt;
+          return (
+            <Fragment key={card.id}>
+              {isNewRun && <RunDivider generatedAt={card.generatedAt} />}
+              <CardItem card={card} onBookmarkChange={handleBookmarkChange} />
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );

@@ -2,17 +2,7 @@
 
 import { useState } from "react";
 import type { Card } from "@/types";
-
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
+import { formatRelativeTime } from "@/lib/time";
 
 /**
  * Renders one story card: the always-visible short summary, the lazy
@@ -30,6 +20,7 @@ export function CardItem({
   onBookmarkChange?: (cardId: string, bookmarked: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [sourcesVisible, setSourcesVisible] = useState(false);
   const [report, setReport] = useState<string | null>(card.expandedReport);
   const [loadingReport, setLoadingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -103,12 +94,20 @@ export function CardItem({
       <p className="mt-3 text-sm leading-6 text-zinc-800 dark:text-zinc-200">
         {card.shortSummary}
       </p>
-      <button
-        onClick={handleExpandToggle}
-        className="mt-3 cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
-      >
-        {expanded ? "Hide full report" : "Read full report"}
-      </button>
+      <div className="mt-3 flex items-center gap-4">
+        <button
+          onClick={handleExpandToggle}
+          className="cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+        >
+          {expanded ? "Hide full report" : "Read full report"}
+        </button>
+        <button
+          onClick={() => setSourcesVisible((v) => !v)}
+          className="cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+        >
+          {sourcesVisible ? "Hide sources" : `Sources (${card.sources.length})`}
+        </button>
+      </div>
       {expanded && (
         <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
           {loadingReport && (
@@ -120,22 +119,24 @@ export function CardItem({
               {report}
             </p>
           )}
-          <ul className="flex flex-col gap-1">
-            {card.sources.map((s, j) => (
-              <li key={j} className="text-xs text-zinc-500">
-                <span className="font-medium">{s.source}</span> —{" "}
-                <a
-                  href={s.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-zinc-800 dark:hover:text-zinc-200"
-                >
-                  {s.title}
-                </a>
-              </li>
-            ))}
-          </ul>
         </div>
+      )}
+      {sourcesVisible && (
+        <ul className="mt-3 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+          {card.sources.map((s, j) => (
+            <li key={j} className="text-xs text-zinc-500">
+              <span className="font-medium">{s.source}</span> —{" "}
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-zinc-800 dark:hover:text-zinc-200"
+              >
+                {s.title}
+              </a>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
