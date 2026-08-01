@@ -1,6 +1,20 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-07-31 — Ad-hoc requests (Phase 4) researched, then deferred in favor of UI/UX first
+
+Scoped Phase 4 (ad-hoc chat-style topic queries) before building it. Research (three parallel Explore passes over the design docs, the pipeline code's coupling to the curated topic model, and the Feed UI) surfaced that the roadmap's original phrasing — "runs the same pipeline for that one topic" — doesn't actually work: `ingestArticles()` is fundamentally curated-RSS-driven with no fallback for a free-text topic, and GNews (the docs' implied fallback) is entirely unbuilt. Also found: `cluster.ts`/`triage.ts`/`writeCard.ts`/`dedup.ts` are all genuinely topic-agnostic and would work unmodified; the `Topic` type is a pervasive 13-value union in app code but the DB already stores `topic` as unconstrained text and has an unused `digests.requested_topic` column that looks like it was anticipating this feature.
+
+Worked out a reframe with Tarek: don't build a GNews client or force this through the batch pipeline (which exists to sift a large multi-source scan, not answer one specific question) — instead use Claude's server-side `web_search` tool for a lightweight one-shot search-and-synthesize flow. Estimated cost (not measured): ~$0.04–0.05 per typical query, up to $0.10–0.20 for broad ones — cheaper than or comparable to the pipeline's own measured $0.17 full digest run.
+
+**Decision:** Tarek wants a functional v1 with a good-quality UI before taking on this more architecturally-different feature. Moved ad-hoc requests out of the numbered roadmap phases entirely and into `ROADMAP.md`'s "Explicitly deferred" section, with the full research writeup preserved there (sourcing problem, pipeline/type coupling findings, the web-search reframe, cost estimate, and the open UI/persistence/rate-limiting questions still unresolved) so the next pass doesn't start from zero. Renumbered: Phase 4 is now the UI/UX design pass (was Phase 5), Phase 5 is cost/quality + friends testing (was Phase 6) — fixed the two cross-references in `TECH_STACK.md` and `DATA_HANDLING.md` accordingly.
+
+Also researched (separate side question, not project-specific): Claude's `web_search` tool details — current version `web_search_20260318`, $10 per 1,000 searches plus standard token costs, citations always included, dynamic filtering (code-execution-backed result filtering) requires Claude 4.6-generation models or later.
+
+**Note for later:** this creates a minor discrepancy with the vault-level `CLAUDE.md`'s product description, which lists "ad-hoc topic requests" as part of the v1 chat-style pitch — not fixed now, just flagged since it wasn't asked for this session.
+
+**Next session:** Phase 4 (UI/UX design pass) per the renumbered `ROADMAP.md`.
+
 ## 2026-07-31 — Cross-run duplicate-story detection, plus a real test suite
 
 Tarek noticed running "Complete today's news" a second time the same day produced cards covering stories already covered by an earlier run. Root cause, confirmed by reading `ingest.ts`/`cluster.ts`/`triage.ts`: the since-cursor filter only excludes articles by publish time, with no concept of "story already covered" — a follow-up article, an update, or a different outlet picking up an already-covered story late sails straight through, gets clustered on its own (no visibility into earlier runs' clusters), and triage correctly judges it notable in isolation since it has no idea it's a repeat. Distinct from the already-deferred same-*run* near-duplicate issue in `ROADMAP.md` (that one's about the embedding-clustering threshold not merging two articles in one run); this is zero cross-run memory at all, a different bug.

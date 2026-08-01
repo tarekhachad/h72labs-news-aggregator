@@ -20,7 +20,7 @@ All of it sits in Supabase (Postgres + Auth), a managed provider — not self-ho
 
 - Nothing is sold or shared with third parties.
 - News source content (articles pulled via RSS/GNews) is used only to generate a user's own digest — not redistributed or resold.
-- No tracking/analytics beyond what's needed to see whether the product is actually being used (return visits) — see the instrumentation step in `(C) ROADMAP.md` Phase 6.
+- No tracking/analytics beyond what's needed to see whether the product is actually being used (return visits) — see the instrumentation step in `(C) ROADMAP.md` Phase 5.
 
 ## Retention
 

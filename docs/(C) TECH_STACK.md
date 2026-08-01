@@ -47,7 +47,7 @@ What's chosen, and why, in plain language. Every non-obvious term also lives in 
 
 **Cost estimate (rough, to validate once built):** roughly $0.20–$0.30 per full digest generation at current Sonnet pricing (~$2–3/M input tokens, ~$10–15/M output tokens). For you plus a handful of friends checking once a day, that's roughly **$15–50/month** — the only real variable cost in this stack, everything else above is $0. Actual number depends heavily on real usage patterns; instrument it once live rather than trusting this estimate blindly.
 
-**Real number (measured 2026-07-28):** a real digest run against the dev profile (2 topics, 3 sources) cost **$0.17** — 14¢ Haiku triage + 3¢ Sonnet writing. In line with the estimate above, slightly under. At once-a-day usage that's ~$5/month — comfortable headroom before the Phase 6 cost/quality pass needs to revisit this.
+**Real number (measured 2026-07-28):** a real digest run against the dev profile (2 topics, 3 sources) cost **$0.17** — 14¢ Haiku triage + 3¢ Sonnet writing. In line with the estimate above, slightly under. At once-a-day usage that's ~$5/month — comfortable headroom before the Phase 5 cost/quality pass needs to revisit this.
 
 ---
 
