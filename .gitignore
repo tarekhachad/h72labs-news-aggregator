@@ -1,7 +1,6 @@
 # Obsidian session state — changes every time the vault is opened, no
 # meaningful content. Shared config (appearance/plugins) IS tracked on purpose.
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
+.obsidian
 
 # macOS Finder metadata
 .DS_Store
