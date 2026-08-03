@@ -37,12 +37,35 @@ Phased build plan. **MVP end-to-end before polish** — each phase should leave 
 
 ## Phase 4 — UI/UX design pass
 
-_Added 2026-07-31, per a prior session's discussion of doing dedicated UI/UX work before shipping to friends, and a design-tooling tip surfaced on social media. Inserted here because it makes more sense to design deliberately before putting the product in front of testers, rather than after._
+_Added 2026-07-31, per a prior session's discussion of doing dedicated UI/UX work before shipping to friends, and a design-tooling tip surfaced on social media. Inserted here because it makes more sense to design deliberately before putting the product in front of testers, rather than after. Split into sub-phases 2026-08-01 — this phase bundles four genuinely different kinds of work (open-ended brainstorm, tool/workflow selection, concrete implementation planning, execution) and running it as one Plan Mode round → single execute wouldn't be efficient for a phase this heavy._
 
-- Establish an actual visual design system for the feed/card UI, which was built functionally through Phases 1–3 with no deliberate visual identity — either adapt a reference `DESIGN.md` from the [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) collection (73+ specs reverse-engineered from real products like Stripe, Linear, Vercel) or hand-write one for the product (color palette, type scale, spacing, card/component styling), then bring the existing UI in line with it.
-- Run [Emil Kowalski's design-engineering skill](https://emilkowal.ski/skill) (`npx skills add emilkowalski/skill`) as an audit pass over the feed: animation-review + opportunity-finder to decide where motion actually earns its place (card expand/collapse, digest-generation loading state, topic tabs, empty states), then apply the improvement pass. It automates his design *judgment* as a checklist/audit, not a substitute for actually looking at the result.
-- Optional, contingent — not committed to in advance: if the design pass surfaces a concrete asset gap (e.g., an empty-state illustration, a landing/marketing hero image), use [Higgsfield](https://higgsfield.ai/skills) (`npx skills add higgsfield-ai/skills`, MCP-based, account auth required) to generate it. The product is a text-heavy feed with no known asset gap today, so this isn't a required deliverable of the phase.
+### 4.1 — Brainstorm: visual identity, interaction model, UI behavior
+
+Conversational, not Plan Mode. Tarek dumps his existing notes; structure them together into a written design brief covering: visual identity (mood, palette direction, tone), interaction model (how a user moves through onboarding → feed → card expand/collapse → history/saved), and UI behavior (loading, empty, and transition states). Either adapt a reference `DESIGN.md` from the [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) collection (73+ specs reverse-engineered from real products like Stripe, Linear, Vercel) as a template for this brief, or hand-write one.
+- **Done when:** a structured design brief exists, concrete enough to drive tool and build decisions.
+
+### 4.2 — Tooling, workflow, and tech-stack structuring
+
+Conversational. Given the 4.1 brief, decide which already-scoped or other recommended tool does what, in what order — open to suggesting additional tools here if something relevant surfaces, not limited to the ones already listed:
+- [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) (`uipro init --ai claude --global`) — a searchable design-intelligence skill (84 styles, 192 color palettes, 74 font pairings, UX guidelines, motion presets) to firm up concrete palette/type-scale/font values consistent with the brief, rather than inventing them from scratch.
+- [21st MCP](https://21st.dev/mcp) (formerly Magic MCP) — generates/searches React+Tailwind components from natural-language prompts, a fit for this stack (Next.js 16 + Tailwind 4). MCP-based, account required, free tier has usage limits (heavier use needs a paid plan).
+- [Emil Kowalski's design-engineering skill](https://emilkowal.ski/skill) (`npx skills add emilkowalski/skill`) — a post-build animation/motion audit: animation-review + opportunity-finder to decide where motion actually earns its place (card expand/collapse, digest-generation loading state, topic tabs, empty states), then apply the improvement pass. Automates his design *judgment* as a checklist/audit, not a substitute for actually looking at the result.
+- Optional, contingent — not committed to in advance: [Higgsfield](https://higgsfield.ai/skills) (`npx skills add higgsfield-ai/skills`, MCP-based, account auth required), only if the brainstorm or build surfaces a concrete asset gap (e.g., an empty-state illustration, a landing/marketing hero image). The product is a text-heavy feed with no known asset gap today, so this isn't a required deliverable.
+
+Also settle any tech-approach questions this raises (e.g. adopting shadcn primitives via 21st, how design tokens land in the Tailwind config).
+- **Done when:** an ordered, concrete tool-to-step workflow exists, ready to turn into an implementation plan.
+
+### 4.3 — Plan the build
+
+This is where a real Plan Mode round belongs. Turn 4.2's workflow into a concrete implementation plan: which files/components change (`Feed.tsx`, `CardItem.tsx`, `RunDivider.tsx`, onboarding/profile screens, Tailwind theme/config), in what order, what "done" looks like per component.
+- **Done when:** an approved implementation plan exists, specific enough to execute without further design decisions mid-build.
+
+### 4.4 — Execute
+
+Implement the approved plan: update design tokens/Tailwind theme, rebuild/restyle components (using 21st-generated code where useful), run the Emil Kowalski audit pass and apply its findings, optionally generate assets via Higgsfield if a gap surfaced. Verify live in the browser. Goes through this project's standard qa/code-reviewer fix→re-verify loop per `CLAUDE.md`'s process, same as any other meaningfully-sized feature.
 - **Done when:** the feed, cards, and onboarding/profile screens have a coherent, intentionally-designed look (not default functional styling) and have been through an applied Emil Kowalski review pass — verified live in the browser, not just code-reviewed.
+
+**Done when (Phase 4 overall):** all four sub-phases above are complete.
 
 ## Phase 5 — Cost/quality pass + friends testing
 
