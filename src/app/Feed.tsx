@@ -8,7 +8,7 @@ import { RunDivider } from "@/components/RunDivider";
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
 // strings here since the client doesn't need the payload types, just the
 // stage name and its position for the progress bar.
-const STAGE_ORDER = ["ingesting", "clustering", "triaging", "writing", "done"] as const;
+const STAGE_ORDER = ["ingesting", "clustering", "triaging", "writing", "ranking", "done"] as const;
 type Stage = (typeof STAGE_ORDER)[number];
 type StageEvent = { stage: Stage } & Record<string, unknown>;
 // The wire format also includes an "error" stage, which is handled and
@@ -21,6 +21,7 @@ const STAGE_LABEL: Record<Stage, string> = {
   clustering: "Grouping articles into stories…",
   triaging: "Checking stories for notability…",
   writing: "Writing cards…",
+  ranking: "Picking today's front page…",
   done: "Done",
 };
 

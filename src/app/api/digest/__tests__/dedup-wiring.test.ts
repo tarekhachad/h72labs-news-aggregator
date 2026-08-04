@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   filterAlreadyCovered: vi.fn(),
   triageCluster: vi.fn(),
   writeCard: vi.fn(),
+  rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
   saveGeneratedCards: vi.fn(),
   claimDigestForGeneration: vi.fn(),
@@ -52,6 +53,10 @@ vi.mock("@/lib/triage", () => ({
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
+}));
+
+vi.mock("@/lib/rank", () => ({
+  rankFrontPage: mocks.rankFrontPage,
 }));
 
 vi.mock("@/lib/digests", () => ({
@@ -92,8 +97,11 @@ beforeEach(() => {
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   // Not notable -> skips writeCard entirely, keeping the rest of the
   // pipeline trivial for this wiring-focused test.
-  mocks.triageCluster.mockResolvedValue(false);
+  mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
   mocks.writeCard.mockResolvedValue(undefined);
+  // Empty candidate pool by default (no existing cards, no notable clusters
+  // in this suite's trivial setup) -- irrelevant to what these tests assert.
+  mocks.rankFrontPage.mockResolvedValue([]);
   mocks.claimDigestForGeneration.mockResolvedValue(true);
   mocks.releaseDigestGeneration.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
@@ -123,7 +131,7 @@ async function runPostLines(): Promise<Array<Record<string, unknown>>> {
 }
 
 describe("digest route: dedup step wiring on first run vs. later runs", () => {
-  it("fully skips the dedup step on the first digest of the day (lastGeneratedAt === null)", async () => {
+  it("fully skips the dedup filter step on the first digest of the day (lastGeneratedAt === null), but still fetches existing cards for ranking", async () => {
     mocks.upsertDigestForToday.mockResolvedValue({
       digestId: "digest-1",
       lastGeneratedAt: null,
@@ -132,9 +140,13 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
     await runPost();
 
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
-    expect(mocks.getTodaysCardSummaries).not.toHaveBeenCalled();
+    // Unlike filterAlreadyCovered, getTodaysCardSummaries is no longer
+    // gated on sinceIso -- the front-page ranking pass needs today's
+    // existing cards on every run, including the first, so this now always
+    // fires (it's just guaranteed to resolve empty on a genuine first run).
+    expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(1);
     // The clusters produced by clusterArticles should flow straight through
-    // to triage unfiltered when dedup is skipped.
+    // to triage unfiltered when the dedup filter itself is skipped.
     expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
   });
 
@@ -165,7 +177,7 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
 });
 
 describe("digest route: dedup step failure falls back to un-deduplicated clusters", () => {
-  it("completes the digest using original clusters when getTodaysCardSummaries throws", async () => {
+  it("falls back to an empty existing-cards list (and still runs the dedup filter against it) when getTodaysCardSummaries throws", async () => {
     mocks.upsertDigestForToday.mockResolvedValue({
       digestId: "digest-1",
       lastGeneratedAt: "2026-07-31T10:00:00Z",
@@ -180,10 +192,13 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     expect(lines.some((l) => l.stage === "error")).toBe(false);
     expect(lines[lines.length - 1].stage).toBe("done");
 
-    // getTodaysCardSummaries throwing means filterAlreadyCovered is never
-    // even reached (route.ts awaits it first) -- the original,
-    // un-deduplicated clusters must still flow through to triage.
-    expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
+    // The fetch failure is caught by its own dedicated try/catch, separate
+    // from the dedup filter's -- existingCards falls back to [], and the
+    // dedup gate (still sinceIso !== null here) proceeds to call
+    // filterAlreadyCovered against that empty fallback rather than being
+    // skipped outright.
+    expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
+    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(FAKE_CLUSTERS, []);
     expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
 
     // The generation-mutex claim must still be released even on this

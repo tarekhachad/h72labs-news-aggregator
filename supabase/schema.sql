@@ -135,7 +135,19 @@ create table public.cards (
   -- the row was written) because the app displays "2h ago" relative to the
   -- underlying news, not to when this card happened to be saved to the DB.
   published_at timestamptz not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- 1-5, graded by triage relative to this card's own topic's typical-day
+  -- baseline. Nullable, no CHECK constraint — the DB layer stays
+  -- permissive (same pattern as user_topics/user_preferred_sources
+  -- above), the real guarantee lives in the write path (writeCard always
+  -- receives a severity from triage), not a migration-triggering
+  -- constraint here.
+  severity smallint,
+  -- 1-6 if this card is one of today's front-page picks, null otherwise.
+  -- Reassigned across a day's generation runs by rank.ts, applied via
+  -- persist_generated_cards() below (not just set once) — a card's rank
+  -- can be cleared back to null if a later run's bigger stories bump it.
+  front_page_rank smallint
 );
 
 -- Postgres doesn't auto-index FK columns — this is the hottest new read
@@ -180,19 +192,43 @@ create policy "delete own bookmarks"
   on public.bookmarks for delete
   using (auth.uid() = user_id);
 
--- Persists a generation run's cards and advances the digest's since-cursor
--- as one atomic transaction (a Postgres function body is one transaction).
--- Doing this as two separate supabase-js calls (insert, then update) would
--- leave a real gap: if the process died between them, the digest would
--- have new cards but a stale cursor, and the next run would re-ingest the
--- same window and insert a near-duplicate batch. security invoker (the
--- default, stated explicitly) keeps this scoped by the caller's own RLS —
--- this app has no service-role usage anywhere, and this function doesn't
--- introduce one.
+-- Persists a generation run's cards, applies this same run's front-page
+-- re-ranking to already-existing cards, and advances the digest's
+-- since-cursor — all as one atomic transaction (a Postgres function body is
+-- one transaction). p_existing_rank_updates defaults to an empty array so
+-- older call sites (and a rank.ts failure, which passes []) don't need a
+-- special case. Originally the existing-card rank update was a separate,
+-- best-effort RPC called after this one — code review caught a real
+-- correctness gap in that split: if this insert succeeded but the second
+-- call failed, a newly-inserted card and a stale existing card could
+-- simultaneously claim the same front_page_rank until the next successful
+-- run overwrote both. Folding both writes into one transaction closes that
+-- window entirely rather than just documenting it as accepted risk.
+--
+-- Doing all of this as several separate supabase-js calls would leave
+-- real gaps: if the process died mid-sequence, the digest could end up
+-- with new cards but a stale cursor (causing the next run to re-ingest the
+-- same window and insert a near-duplicate batch), or with the rank
+-- inconsistency described above. security invoker (the default, stated
+-- explicitly) keeps this scoped by the caller's own RLS — this app has no
+-- service-role usage anywhere, and this function doesn't introduce one.
+--
+-- The drop below is required, not defensive boilerplate: Postgres
+-- identifies a function by its parameter type signature, so `create or
+-- replace` on a signature that GAINED a parameter (the 3-arg version below
+-- becoming 4-arg) defines a second overload instead of replacing the first
+-- — it does NOT drop the old one. Since this file is applied by hand in
+-- the Supabase SQL editor (not a real migration tool), re-running it after
+-- this signature change would otherwise leave both overloads live
+-- simultaneously. Safe to leave in permanently: a no-op once only the
+-- 4-arg version exists.
+drop function if exists public.persist_generated_cards(uuid, jsonb, timestamptz);
+
 create or replace function public.persist_generated_cards(
   p_digest_id uuid,
   p_cards jsonb,
-  p_generated_at timestamptz
+  p_generated_at timestamptz,
+  p_existing_rank_updates jsonb default '[]'::jsonb
 ) returns void
 language plpgsql
 security invoker
@@ -203,7 +239,7 @@ begin
   -- as digests.last_generated_at below, byte-for-byte — that's what the
   -- feed's run-divider relies on to group a run's cards, rather than
   -- trusting two separate now() calls to agree.
-  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at)
+  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank)
   select
     (c->>'id')::uuid,
     p_digest_id,
@@ -211,8 +247,28 @@ begin
     c->>'shortSummary',
     c->'sources',
     (c->>'publishedAt')::timestamptz,
-    p_generated_at
+    p_generated_at,
+    (c->>'severity')::smallint,
+    (c->>'frontPageRank')::smallint
   from jsonb_array_elements(p_cards) as c;
+
+  -- rank.ts's cross-topic front-page ranking pass, applied to cards already
+  -- persisted in an earlier run today (this run's own new cards get their
+  -- rank set directly in the insert above instead). An empty array here
+  -- (ranking failed, or there was nothing new to rank this run) makes this
+  -- a correct no-op — no rows match jsonb_array_elements('[]'). The
+  -- digest_id guard isn't load-bearing today (the caller only ever builds
+  -- p_existing_rank_updates from this same digest's own cards), but this
+  -- function exists specifically to close correctness windows rather than
+  -- rely on caller discipline — without it, a future bug upstream that fed
+  -- in a stale/wrong id list would silently update a *different* digest's
+  -- card with no error, since RLS only checks card ownership, not which
+  -- digest it belongs to.
+  update public.cards as c
+  set front_page_rank = (u->>'frontPageRank')::smallint
+  from jsonb_array_elements(p_existing_rank_updates) as u
+  where c.id = (u->>'id')::uuid
+    and c.digest_id = p_digest_id;
 
   update public.digests
   set last_generated_at = p_generated_at

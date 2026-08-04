@@ -50,7 +50,7 @@ async function generateSummary(cluster: Cluster) {
  * ambiguous-completion retry inside generateWithRetryOnAmbiguousTruncation,
  * not on the normal path.
  */
-export async function writeCard(cluster: Cluster): Promise<Card> {
+export async function writeCard(cluster: Cluster, severity: number): Promise<Card> {
   const shortSummary = await generateWithRetryOnAmbiguousTruncation(
     () => generateSummary(cluster),
     "writeCard"
@@ -83,5 +83,12 @@ export async function writeCard(cluster: Cluster): Promise<Card> {
     // clock reading for anything run-identifying.
     generatedAt: new Date().toISOString(),
     bookmarked: false,
+    // Known at call time (triage already graded this cluster before
+    // writeCard runs), so it's a real parameter copied straight through —
+    // unlike generatedAt above, this isn't a placeholder to be overwritten.
+    severity,
+    // Genuine placeholder: unknown until rank.ts's cross-topic ranking pass
+    // runs (not yet built), which happens after writeCard in the pipeline.
+    frontPageRank: null,
   };
 }

@@ -6,6 +6,7 @@ import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageCluster } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
+import { rankFrontPage } from "@/lib/rank";
 import {
   upsertDigestForToday,
   saveGeneratedCards,
@@ -31,6 +32,7 @@ type DigestEvent =
   | { stage: "clustering"; articleCount: number }
   | { stage: "triaging"; clusterCount: number }
   | { stage: "writing"; notableCount: number }
+  | { stage: "ranking" }
   // `topics` is the user's full selected topic list (not just the ones
   // that produced a card) — the client needs it to render one tab per
   // topic, including an explicit "nothing notable" state for topics that
@@ -57,24 +59,41 @@ async function* runDigestPipeline(
     yield { stage: "clustering", articleCount: articles.length };
     const clusters = await clusterArticles(articles);
 
+    // Today's already-persisted cards (empty on a first run, since nothing's
+    // saved yet) — fetched once and reused by two independent consumers
+    // below: cross-run dedup (topic/shortSummary only) and the front-page
+    // ranking pass further down (also needs severity, and the id so a
+    // re-ranked existing card's row can be updated). A failure here degrades
+    // dedup gracefully (it just skips, same as its own empty-array early
+    // return) but must NOT let ranking proceed on an incomplete view — see
+    // existingCardsFetchFailed below, used to gate ranking specifically.
+    let existingCards: Awaited<ReturnType<typeof getTodaysCardSummaries>> = [];
+    let existingCardsFetchFailed = false;
+    try {
+      existingCards = await getTodaysCardSummaries(supabase, digestId);
+    } catch (err) {
+      existingCardsFetchFailed = true;
+      console.error("[digest] failed to load today's existing cards, proceeding without them:", err);
+    }
+
     // Cross-run duplicate check: on a second/third same-day run, a fresh
     // article about a story already covered earlier today (a follow-up, an
     // update, or just another outlet picking it up late) has a publishedAt
     // after the since-cursor and forms its own cluster — the ingest filter
     // only excludes stale articles, it has no notion of "already covered."
-    // Skipped entirely on the first run of the day (sinceIso === null):
-    // nothing persisted yet to compare against, so no point fetching/embedding.
+    // Skipped entirely on the first run of the day (sinceIso === null): the
+    // fetch above is guaranteed empty then anyway (nothing persisted yet),
+    // so there's nothing to compare against.
     //
     // Best-effort, not required for success: unlike triageCluster/writeCard
-    // (which fail closed per-cluster), a failure here (DB blip, embedding
-    // error) falls back to the un-deduplicated cluster list rather than
-    // failing the whole run — occasionally showing a duplicate is a much
-    // smaller cost than losing an entire digest generation over what's
-    // fundamentally a quality-of-life check, not core pipeline logic.
+    // (which fail closed per-cluster), a failure here (embedding error)
+    // falls back to the un-deduplicated cluster list rather than failing the
+    // whole run — occasionally showing a duplicate is a much smaller cost
+    // than losing an entire digest generation over what's fundamentally a
+    // quality-of-life check, not core pipeline logic.
     let survivingClusters = clusters;
     if (sinceIso !== null) {
       try {
-        const existingCards = await getTodaysCardSummaries(supabase, digestId);
         survivingClusters = await filterAlreadyCovered(clusters, existingCards);
       } catch (err) {
         console.error("[digest] cross-run dedup failed, proceeding without it:", err);
@@ -88,19 +107,22 @@ async function* runDigestPipeline(
     const triaged = await Promise.all(
       survivingClusters.map(async (cluster) => {
         try {
-          return { cluster, notable: await triageCluster(cluster) };
+          const outcome = await triageCluster(cluster);
+          return { cluster, notable: outcome.notable, severity: outcome.severity };
         } catch (err) {
           console.error(`[digest] triageCluster failed for ${cluster.topic}:`, err);
-          return { cluster, notable: false };
+          return { cluster, notable: false, severity: 1 };
         }
       })
     );
-    const notableClusters = triaged.filter((t) => t.notable).map((t) => t.cluster);
+    const notableClusters = triaged.filter((t) => t.notable);
 
     yield { stage: "writing", notableCount: notableClusters.length };
     // One verbose cluster failing to write shouldn't take down the rest of
     // the digest — log it and drop that card instead of rejecting the batch.
-    const written = await Promise.allSettled(notableClusters.map(writeCard));
+    const written = await Promise.allSettled(
+      notableClusters.map((nc) => writeCard(nc.cluster, nc.severity))
+    );
 
     // One canonical timestamp for the whole run — every card gets stamped
     // with this exact value (not each writeCard() call's own clock reading)
@@ -130,18 +152,78 @@ async function* runDigestPipeline(
         (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     );
 
+    yield { stage: "ranking" };
+    // Cross-topic front-page ranking, re-run against the FULL cumulative
+    // pool every run (today's already-persisted cards + this run's brand
+    // new ones) — not just this run's new cards — so a bigger story landing
+    // on a later same-day run can still dethrone an earlier run's top-6
+    // pick. Deliberately NOT skipped when this run produces zero new cards
+    // (an earlier version of this code tried that as a cost optimization,
+    // but it created a real bug: a card left unranked by an earlier run's
+    // rankFrontPage failure could never be reconsidered if every following
+    // run happened to add no new cards — this run always gives it another
+    // chance). What DOES gate ranking is existingCardsFetchFailed above:
+    // ranking needs an accurate view of what's already ranked to avoid two
+    // cards colliding on the same rank number, so a failed fetch means we
+    // genuinely don't have that view and skip rather than guess. existingCards'
+    // order is fixed before this run's cards, so indices
+    // 0..existingCards.length-1 in the candidate pool below map to
+    // existingCards, and the rest map 1:1 to `cards` (same array, same
+    // order) — that alignment is what lets the results below be applied
+    // back to the right row.
+    let rankResult: (number | null)[] | null = null;
+    if (!existingCardsFetchFailed) {
+      const candidatePool = [
+        ...existingCards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
+        ...cards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
+      ];
+      try {
+        rankResult = await rankFrontPage(candidatePool);
+      } catch (err) {
+        // rankFrontPage already fails open internally (catches its own SDK
+        // errors and returns null) — this second layer is defense-in-depth
+        // against anything else going wrong building/awaiting the call itself.
+        console.error("[digest] rankFrontPage threw unexpectedly, leaving today's front page unchanged:", err);
+      }
+    }
+
+    // rankResult === null means ranking either didn't run at all (existing
+    // cards couldn't be fetched, so ranking would be unsafe) or failed (the
+    // fail-open case) — either way, every existing card's frontPageRank is
+    // left exactly as it was (an empty update list, not a null-filled one),
+    // and this run's new cards keep the frontPageRank: null that writeCard
+    // already set them to. Only when ranking actually succeeded do we touch
+    // anything, and then we touch EVERY candidate (including writing null
+    // over a previously-ranked existing card that got bumped this run) —
+    // not just the ones that changed, so demotions are handled correctly,
+    // not just promotions.
+    const existingCardRankUpdates: { id: string; frontPageRank: number | null }[] = [];
+    if (rankResult !== null) {
+      const ranks = rankResult;
+      existingCards.forEach((existing, i) => {
+        existingCardRankUpdates.push({ id: existing.id, frontPageRank: ranks[i] });
+      });
+      cards.forEach((card, i) => {
+        card.frontPageRank = ranks[existingCards.length + i];
+      });
+    }
+
     // Persist before telling the client we're done — a persistence failure
     // becomes a thrown error here, caught by toNdjsonStream's try/catch below
     // and surfaced as a normal { stage: "error" } event, same as any other
     // pipeline failure. No partial-success path: the client never sees a
-    // card it can't reliably bookmark or find again on reload.
+    // card it can't reliably bookmark or find again on reload. The
+    // existing-card rank updates are folded into this same atomic call (see
+    // saveGeneratedCards/persist_generated_cards) rather than a separate
+    // best-effort RPC, closing a real rank-collision window a prior version
+    // of this code had between two non-atomic writes.
     //
     // Note: the cursor advances to "now" even if some clusters above failed
     // triage/writing — a transiently-failed story's articles fall before the
     // next run's since-cutoff and won't be retried. Consciously accepted for
     // now (documented in ROADMAP.md's deferred section) rather than adding
     // per-cluster retry tracking; see that entry for the reasoning.
-    await saveGeneratedCards(supabase, digestId, cards, generatedAt);
+    await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates);
 
     yield { stage: "done", cards, topics: profile.topics };
   } finally {

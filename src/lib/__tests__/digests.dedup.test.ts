@@ -12,10 +12,10 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
 }
 
 describe("getTodaysCardSummaries", () => {
-  it("queries the cards table, selecting topic + short_summary, scoped to one digest_id", async () => {
+  it("queries the cards table, selecting id + topic + short_summary + severity, scoped to one digest_id", async () => {
     const rows = [
-      { topic: "Tech/AI", short_summary: "AI story" },
-      { topic: "US Finance", short_summary: "Finance story" },
+      { id: "card-1", topic: "Tech/AI", short_summary: "AI story", severity: 4 },
+      { id: "card-2", topic: "US Finance", short_summary: "Finance story", severity: null },
     ];
     const { client, from, select, eq } = makeFakeSupabase({ data: rows, error: null });
 
@@ -23,12 +23,14 @@ describe("getTodaysCardSummaries", () => {
     const result = await getTodaysCardSummaries(client as any, "digest-123");
 
     expect(from).toHaveBeenCalledWith("cards");
-    expect(select).toHaveBeenCalledWith("topic, short_summary");
+    expect(select).toHaveBeenCalledWith("id, topic, short_summary, severity");
     expect(eq).toHaveBeenCalledWith("digest_id", "digest-123");
 
     expect(result).toEqual([
-      { topic: "Tech/AI", shortSummary: "AI story" },
-      { topic: "US Finance", shortSummary: "Finance story" },
+      { id: "card-1", topic: "Tech/AI", shortSummary: "AI story", severity: 4 },
+      // Null severity (a row persisted before the column existed) defaults
+      // to the lowest tier, same fallback rowToCard uses.
+      { id: "card-2", topic: "US Finance", shortSummary: "Finance story", severity: 1 },
     ]);
   });
 

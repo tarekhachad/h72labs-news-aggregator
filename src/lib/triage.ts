@@ -7,8 +7,17 @@ const client = new Anthropic();
 
 const TriageResult = z.object({
   notable: z.boolean(),
+  // 1-5. Only meaningful when notable is true — a rejected cluster's
+  // severity is never persisted (writeCard is never called for it), so
+  // there's no need to constrain what the model returns for a reject.
+  severity: z.number().int().min(1).max(5),
   reason: z.string(),
 });
+
+export interface TriageOutcome {
+  notable: boolean;
+  severity: number;
+}
 
 const SYSTEM_PROMPT = `You triage news clusters for someone's personalized daily news brief. They've chosen specific topics to follow, and each cluster you review belongs to one of them (given below). The brief is short and curated — a handful of genuinely worthwhile items per topic, not a comprehensive scan of everything published that day.
 
@@ -16,13 +25,22 @@ Judge notability relative to the topic itself, not against world-historical impo
 
 Reject: routine or incremental updates with nothing new resolved, opinion or analysis pieces, minor process stories with no real development, and anything you'd only include for completeness rather than because someone following this topic needs to hear it today.
 
-When genuinely torn, reject — a focused, honest brief beats a padded one. If a topic genuinely has nothing worth including today, that's a true and useful signal to surface, not a failure to correct — don't stretch to fill a quota.`;
+When genuinely torn, reject — a focused, honest brief beats a padded one. If a topic genuinely has nothing worth including today, that's a true and useful signal to surface, not a failure to correct — don't stretch to fill a quota.
+
+If the cluster is notable, also grade how significant it is relative to this topic's own typical-day baseline, on a 1-5 scale:
+5 = the most significant kind of development this topic sees even at its rarest peak.
+4 = a major development, clearly above a typical day's best story.
+3 = a clear highlight of a typical day — the kind of thing that anchors the brief for this topic today.
+2 = solidly notable, but a lesser item on a day that also has bigger news for this topic.
+1 = the least significant thing that still genuinely clears the notability bar above.
+If you reject the cluster, severity doesn't matter — return 1.`;
 
 /**
  * One cheap Haiku call per cluster — filters out noise before the
- * expensive Sonnet writing step.
+ * expensive Sonnet writing step, and grades what survives so the frontend
+ * can size it relative to other stories in the same topic.
  */
-export async function triageCluster(cluster: Cluster): Promise<boolean> {
+export async function triageCluster(cluster: Cluster): Promise<TriageOutcome> {
   const context = cluster.articles
     .map((a) => `- ${a.title}\n  ${a.snippet.slice(0, 200)}`)
     .join("\n");
@@ -34,19 +52,23 @@ export async function triageCluster(cluster: Cluster): Promise<boolean> {
     messages: [
       {
         role: "user",
-        content: `Topic: ${cluster.topic}\n\nCoverage of this cluster:\n${context}\n\nDoes this belong in today's briefing?`,
+        content: `Topic: ${cluster.topic}\n\nCoverage of this cluster:\n${context}\n\nDoes this belong in today's briefing? If so, how significant is it relative to this topic's own typical-day baseline?`,
       },
     ],
     output_config: { format: zodOutputFormat(TriageResult) },
   });
 
-  const result = response.parsed_output ?? { notable: false, reason: "(no parsed output)" };
+  const result = response.parsed_output ?? {
+    notable: false,
+    severity: 1,
+    reason: "(no parsed output)",
+  };
   // Reason is otherwise discarded — logging it is cheap and is the only
   // way to inspect the model's calibration without re-running Haiku calls
   // by hand, especially useful while the topic-relative bar is still new.
   console.log(
-    `[triage] ${cluster.topic} — ${result.notable ? "PASS" : "reject"} — ${result.reason}`
+    `[triage] ${cluster.topic} — ${result.notable ? `PASS (severity ${result.severity})` : "reject"} — ${result.reason}`
   );
 
-  return result.notable;
+  return { notable: result.notable, severity: result.severity };
 }

@@ -108,6 +108,20 @@ export interface Card {
    */
   generatedAt: string;
   bookmarked: boolean;
+  /**
+   * 1-5, graded by triage relative to this card's own topic's typical-day
+   * baseline (same independence philosophy as the old boolean `notable`
+   * gate, just more granular). Drives topic-page box sizing.
+   */
+  severity: number;
+  /**
+   * 1-6 if this card is one of today's front-page picks, null otherwise.
+   * Set by rank.ts's cross-topic ranking pass, which re-runs against the
+   * full cumulative pool of today's cards on every digest generation — so
+   * this can change (including being cleared back to null) on a later run
+   * of the same day, not just assigned once.
+   */
+  frontPageRank: number | null;
 }
 
 export interface Digest {

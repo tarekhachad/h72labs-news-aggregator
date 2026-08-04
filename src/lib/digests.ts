@@ -12,6 +12,8 @@ export interface CardRow {
   sources: Card["sources"];
   published_at: string;
   created_at: string;
+  severity: number | null;
+  front_page_rank: number | null;
 }
 
 /** Shared DB-row -> Card mapper — also used by bookmarks.ts's getSavedCards
@@ -26,6 +28,10 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
     publishedAt: row.published_at,
     generatedAt: row.created_at,
     bookmarked: bookmarkedIds.has(row.id),
+    // Rows persisted before this column existed have no severity — default
+    // to the lowest tier rather than letting a null flow into gridTiers.ts.
+    severity: row.severity ?? 1,
+    frontPageRank: row.front_page_rank,
   };
 }
 
@@ -62,7 +68,9 @@ export async function getDigestForDate(
   const [{ data: cardRows, error: cardsError }, bookmarkedIds] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, topic, short_summary, expanded_report, sources, published_at, created_at")
+      .select(
+        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank"
+      )
       .eq("digest_id", digestRow.id)
       // Secondary key on id: published_at ties are common (minute-granularity
       // RSS timestamps, or writeCard's now()-fallback for undated items), and
@@ -94,26 +102,30 @@ export async function getTodayDigest(
 }
 
 /**
- * Today's already-persisted card summaries (topic + short_summary only) for
- * this digest — used by the cross-run duplicate check (src/lib/dedup.ts) to
- * compare a fresh run's candidate clusters against what earlier runs today
- * already covered, before spending a triage/writing call on them. Not the
- * full rowToCard shape — nothing here needs sources, bookmarks, or ids.
+ * Today's already-persisted card summaries for this digest — used by two
+ * independent consumers: the cross-run duplicate check (src/lib/dedup.ts,
+ * which only reads topic/shortSummary) and the cross-topic front-page
+ * ranking pass (src/lib/rank.ts, which additionally needs id + severity to
+ * fold earlier runs' cards into today's re-ranked candidate pool and know
+ * which row to update). One shared query rather than two near-duplicate
+ * ones — dedup.ts's structural typing just ignores the extra fields.
  */
 export async function getTodaysCardSummaries(
   supabase: SupabaseClient,
   digestId: string
-): Promise<{ topic: Topic; shortSummary: string }[]> {
+): Promise<{ id: string; topic: Topic; shortSummary: string; severity: number }[]> {
   const { data, error } = await supabase
     .from("cards")
-    .select("topic, short_summary")
+    .select("id, topic, short_summary, severity")
     .eq("digest_id", digestId);
 
   if (error) throw new Error(`getTodaysCardSummaries: ${error.message}`);
 
   return (data ?? []).map((row) => ({
+    id: row.id as string,
     topic: row.topic as Topic,
     shortSummary: row.short_summary as string,
+    severity: (row.severity as number | null) ?? 1,
   }));
 }
 
@@ -201,23 +213,38 @@ export async function upsertDigestForToday(
 /**
  * Persists a batch of freshly generated cards under an existing digest, and
  * advances that digest's since-cursor to now — called once per successful
- * generation run, after writeCard has produced the final card list. Both
- * writes happen inside one Postgres function (persist_generated_cards, see
- * schema.sql) so they're atomic: two separate supabase-js calls here would
- * leave a real gap where a crash between them persists cards but never
- * advances the cursor, causing the next run to re-ingest the same window
- * and insert a near-duplicate batch.
+ * generation run, applies rank.ts's cross-topic ranking pass to cards
+ * already persisted in an earlier run today (this run's own new cards get
+ * their frontPageRank set directly via the `cards` param instead), and
+ * advances the digest's since-cursor. All three happen inside one Postgres
+ * function (persist_generated_cards, see schema.sql) so they're atomic —
+ * originally the existing-card rank update was a separate best-effort RPC
+ * called after this one, but code review caught a real gap in that split:
+ * if this call succeeded and the second one then failed, a newly-inserted
+ * card and a stale existing card could simultaneously claim the same
+ * front_page_rank until the next successful run overwrote both. Folding
+ * both writes into one transaction here closes that window rather than
+ * just documenting it as accepted risk. (The insert+cursor-advance
+ * atomicity has the same underlying reasoning: two separate supabase-js
+ * calls would leave a real gap where a crash between them persists cards
+ * but never advances the cursor, causing the next run to re-ingest the
+ * same window and insert a near-duplicate batch.)
  *
  * generatedAt is passed in (not computed here) so the caller can stamp the
  * exact same value onto the in-memory Card objects it returns to the client
  * — that's what lets the feed draw a run divider immediately after a
  * second same-day generation, without needing a reload to see it.
+ *
+ * existingRankUpdates is rank.ts's fail-open contract made concrete: an
+ * empty array (ranking failed, or there was nothing new to rank this run)
+ * is a correct no-op in the underlying SQL, not a special case here.
  */
 export async function saveGeneratedCards(
   supabase: SupabaseClient,
   digestId: string,
   cards: Card[],
-  generatedAt: string
+  generatedAt: string,
+  existingRankUpdates: { id: string; frontPageRank: number | null }[]
 ): Promise<void> {
   const { error } = await supabase.rpc("persist_generated_cards", {
     p_digest_id: digestId,
@@ -227,8 +254,11 @@ export async function saveGeneratedCards(
       shortSummary: card.shortSummary,
       sources: card.sources,
       publishedAt: card.publishedAt,
+      severity: card.severity,
+      frontPageRank: card.frontPageRank,
     })),
     p_generated_at: generatedAt,
+    p_existing_rank_updates: existingRankUpdates,
   });
 
   if (error) {
