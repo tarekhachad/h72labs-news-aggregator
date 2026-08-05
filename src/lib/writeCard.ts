@@ -88,7 +88,7 @@ export async function writeCard(cluster: Cluster, severity: number): Promise<Car
     // unlike generatedAt above, this isn't a placeholder to be overwritten.
     severity,
     // Genuine placeholder: unknown until rank.ts's cross-topic ranking pass
-    // runs (not yet built), which happens after writeCard in the pipeline.
+    // runs, which happens after writeCard in the pipeline.
     frontPageRank: null,
   };
 }
