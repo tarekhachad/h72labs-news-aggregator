@@ -102,6 +102,53 @@ export async function getTodayDigest(
 }
 
 /**
+ * Cards for one topic on one date — the query behind each topic-page route.
+ * Deliberately scoped server-side to just this topic (a join through
+ * `digests` on user_id+date, filtered by topic), not a fetch-everything-
+ * then-filter-in-memory reuse of getDigestForDate: each topic page is now
+ * its own route (see docs/(C) IMPLEMENTATION_PLAN_4.4.md's B5), so there's
+ * no longer a single client holding the whole day's digest to filter from.
+ * Returns an empty array (not null) for a topic with no cards today or no
+ * digest at all yet — both render the same "no notable news" empty state,
+ * so the caller doesn't need to distinguish them.
+ */
+export async function getCardsForTopicOnDate(
+  supabase: SupabaseClient,
+  userId: string,
+  date: string,
+  topic: Topic
+): Promise<Card[]> {
+  const { data: digestRow, error: digestError } = await supabase
+    .from("digests")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("date", date)
+    .maybeSingle();
+
+  if (digestError) throw new Error(`getCardsForTopicOnDate: ${digestError.message}`);
+  if (!digestRow) return [];
+
+  const [{ data: cardRows, error: cardsError }, bookmarkedIds] = await Promise.all([
+    supabase
+      .from("cards")
+      .select(
+        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank"
+      )
+      .eq("digest_id", digestRow.id)
+      .eq("topic", topic)
+      .order("published_at", { ascending: false })
+      .order("id", { ascending: true }),
+    getBookmarkedCardIds(supabase, userId),
+  ]);
+
+  if (cardsError) {
+    throw new Error(`getCardsForTopicOnDate: failed to load cards: ${cardsError.message}`);
+  }
+
+  return (cardRows ?? []).map((row) => rowToCard(row as CardRow, bookmarkedIds));
+}
+
+/**
  * Today's already-persisted card summaries for this digest — used by two
  * independent consumers: the cross-run duplicate check (src/lib/dedup.ts,
  * which only reads topic/shortSummary) and the cross-topic front-page

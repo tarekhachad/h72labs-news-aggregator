@@ -1,4 +1,4 @@
-/** Shared by CardItem (source recency) and RunDivider (run recency) so both read the same relative-time scale. */
+/** Shared by CardItem and NewsCard so every card reads recency on the same relative-time scale. */
 export function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diffMs / 60_000);

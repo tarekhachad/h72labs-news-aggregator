@@ -9,13 +9,11 @@ export default async function OnboardingPage({
   const { error } = await searchParams;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+    <div className="min-h-screen">
       <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-16">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            Set up your briefing
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500">
+          <h1 className="text-2xl font-semibold">Set up your briefing</h1>
+          <p className="mt-2 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
             Pick the topics and sources you want your daily digest built from.
           </p>
         </div>

@@ -75,63 +75,76 @@ export function CardItem({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <div
+      className="rounded-2xl p-5"
+      style={{
+        border: "1px solid var(--color-border)",
+        background: "var(--color-card)",
+        color: "var(--color-card-foreground)",
+      }}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+        <span
+          className="inline-block rounded-full px-3 py-1 text-xs font-medium"
+          style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
+        >
           {card.topic}
         </span>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-400">{formatRelativeTime(card.publishedAt)}</span>
+          <span className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+            {formatRelativeTime(card.publishedAt)}
+          </span>
           <button
             onClick={handleBookmarkToggle}
             disabled={bookmarkPending}
-            className="cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-zinc-200"
+            className="cursor-pointer text-xs font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
           >
             {bookmarked ? "★ Saved" : "☆ Save"}
           </button>
         </div>
       </div>
-      <p className="mt-3 text-sm leading-6 text-zinc-800 dark:text-zinc-200">
-        {card.shortSummary}
-      </p>
+      <p className="mt-3 text-sm leading-6">{card.shortSummary}</p>
       <div className="mt-3 flex items-center gap-4">
         <button
           onClick={handleExpandToggle}
-          className="cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+          className="cursor-pointer text-xs font-medium underline"
         >
           {expanded ? "Hide full report" : "Read full report"}
         </button>
         <button
           onClick={() => setSourcesVisible((v) => !v)}
-          className="cursor-pointer text-xs font-medium text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200"
+          className="cursor-pointer text-xs font-medium underline"
         >
           {sourcesVisible ? "Hide sources" : `Sources (${card.sources.length})`}
         </button>
       </div>
       {expanded && (
-        <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        <div
+          className="mt-3 flex flex-col gap-3 border-t pt-3"
+          style={{ borderColor: "var(--color-border)" }}
+        >
           {loadingReport && (
-            <p className="text-xs text-zinc-500">Loading the full report…</p>
-          )}
-          {reportError && <p className="text-xs text-red-600">{reportError}</p>}
-          {report && (
-            <p className="whitespace-pre-line text-sm leading-6 text-zinc-800 dark:text-zinc-200">
-              {report}
+            <p className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+              Loading the full report…
             </p>
           )}
+          {reportError && (
+            <p className="text-xs" style={{ color: "var(--color-destructive)" }}>
+              {reportError}
+            </p>
+          )}
+          {report && <p className="whitespace-pre-line text-sm leading-6">{report}</p>}
         </div>
       )}
       {sourcesVisible && (
-        <ul className="mt-3 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        <ul
+          className="mt-3 flex flex-col gap-1 border-t pt-3"
+          style={{ borderColor: "var(--color-border)" }}
+        >
           {card.sources.map((s, j) => (
-            <li key={j} className="text-xs text-zinc-500">
+            <li key={j} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
               <span className="font-medium">{s.source}</span> —{" "}
-              <a
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-zinc-800 dark:hover:text-zinc-200"
-              >
+              <a href={s.url} target="_blank" rel="noopener noreferrer" className="underline">
                 {s.title}
               </a>
             </li>
