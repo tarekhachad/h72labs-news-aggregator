@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronDown, Newspaper } from "lucide-react";
 import type { Topic } from "@/types";
 import { topicToSlug } from "@/lib/topicSlug";
+import { buildPageOrder } from "@/lib/pageOrder";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,12 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePageTransitionActions } from "@/components/newspaper/PageTransitionContext";
 
 /**
  * Topic page's top-right dropdown — lists every topic plus "Front Page,"
  * per docs/(C) UI_DESIGN.md's Topic navigation controls. Selecting an entry
- * is plain navigation in B5; B8 intercepts it to trigger the page-flip
- * (flipping through intervening pages for a multi-page jump) instead.
+ * triggers the page-flip transition (B8), flipping through intervening
+ * pages for a multi-page jump.
  */
 export function TopicNavBox({
   topics,
@@ -33,6 +35,15 @@ export function TopicNavBox({
    */
   basePath?: string;
 }) {
+  const { navigate } = usePageTransitionActions();
+  const pageOrder = buildPageOrder(topics, basePath);
+
+  function handleClick(e: React.MouseEvent, href: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(href, pageOrder);
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -46,19 +57,30 @@ export function TopicNavBox({
       <DropdownMenuContent align="end">
         <DropdownMenuItem
           render={
-            <Link href={basePath || "/"} className="flex items-center gap-2">
+            <Link
+              href={basePath || "/"}
+              onClick={(e) => handleClick(e, basePath || "/")}
+              className="flex items-center gap-2"
+            >
               <Newspaper className="size-4" /> Front Page
             </Link>
           }
         />
         <DropdownMenuSeparator />
-        {topics.map((topic) => (
-          <DropdownMenuItem
-            key={topic}
-            disabled={topic === activeTopic}
-            render={<Link href={`${basePath}/topic/${topicToSlug(topic)}`}>{topic}</Link>}
-          />
-        ))}
+        {topics.map((topic) => {
+          const href = `${basePath}/topic/${topicToSlug(topic)}`;
+          return (
+            <DropdownMenuItem
+              key={topic}
+              disabled={topic === activeTopic}
+              render={
+                <Link href={href} onClick={(e) => handleClick(e, href)}>
+                  {topic}
+                </Link>
+              }
+            />
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
