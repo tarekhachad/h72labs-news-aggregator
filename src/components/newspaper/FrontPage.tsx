@@ -5,6 +5,7 @@ import type { Card, Digest, Topic } from "@/types";
 import { TopicBand } from "@/components/newspaper/TopicBand";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
+import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForFrontPageRank } from "@/lib/gridTiers";
 import { Button } from "@/components/ui/button";
 
@@ -193,16 +194,18 @@ export function FrontPage({
               : "No edition that day."}
           </p>
         ) : (
-          <PageGrid>
-            {frontPageCards.map((card) => (
-              <NewsCard
-                key={card.id}
-                card={card}
-                tier={tierForFrontPageRank(card.frontPageRank as number)}
-                showTopicBadge
-              />
-            ))}
-          </PageGrid>
+          <FocusModeProvider>
+            <PageGrid>
+              {frontPageCards.map((card) => (
+                <NewsCard
+                  key={card.id}
+                  card={card}
+                  tier={tierForFrontPageRank(card.frontPageRank as number)}
+                  showTopicBadge
+                />
+              ))}
+            </PageGrid>
+          </FocusModeProvider>
         )}
       </div>
     </div>

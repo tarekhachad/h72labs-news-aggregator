@@ -2,6 +2,7 @@ import type { Card, Topic } from "@/types";
 import { TopicNavBox } from "@/components/newspaper/TopicNavBox";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
+import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForSeverity } from "@/lib/gridTiers";
 
 // Severity descending (box size), tiebreak publishedAt desc + id — matches
@@ -50,16 +51,18 @@ export function TopicPage({
             {basePath ? `No notable ${topic} news that day.` : `No notable ${topic} news today.`}
           </p>
         ) : (
-          <PageGrid>
-            {ordered.map((card) => (
-              <NewsCard
-                key={card.id}
-                card={card}
-                tier={tierForSeverity(card.severity)}
-                showTopicBadge={false}
-              />
-            ))}
-          </PageGrid>
+          <FocusModeProvider>
+            <PageGrid>
+              {ordered.map((card) => (
+                <NewsCard
+                  key={card.id}
+                  card={card}
+                  tier={tierForSeverity(card.severity)}
+                  showTopicBadge={false}
+                />
+              ))}
+            </PageGrid>
+          </FocusModeProvider>
         )}
       </div>
     </div>
