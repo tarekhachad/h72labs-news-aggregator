@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import type { Card, Digest, Topic } from "@/types";
 import { TopicBand } from "@/components/newspaper/TopicBand";
 import { PageGrid } from "@/components/newspaper/PageGrid";
@@ -72,6 +73,11 @@ export function FrontPage({
   const [loading, setLoading] = useState(false);
   const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Cards present on the initial (SSR) render never animate in — only ones
+  // that land live via this session's own generation runs, so a page
+  // reload doesn't replay an entrance for content that was already there.
+  const [recentlyAddedIds, setRecentlyAddedIds] = useState<Set<string>>(new Set());
+  const prefersReducedMotion = useReducedMotion();
 
   const hasDigest = cards !== null;
 
@@ -139,6 +145,11 @@ export function FrontPage({
         // getDigestForDate. Acceptable for v1: the common case (generate
         // once per day) never hits this staleness window.
         setCards((prev) => [...(prev ?? []), ...newCards]);
+        setRecentlyAddedIds((prev) => {
+          const next = new Set(prev);
+          newCards.forEach((c) => next.add(c.id));
+          return next;
+        });
       } else {
         setStageEvent(event as StageEvent);
       }
@@ -160,7 +171,12 @@ export function FrontPage({
           </Button>
 
           {loading && (
-            <div className="w-full max-w-xs">
+            <motion.div
+              className="w-full max-w-xs"
+              initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
               <div
                 className="h-1.5 w-full overflow-hidden rounded-full"
                 style={{ background: "var(--color-muted)" }}
@@ -173,7 +189,7 @@ export function FrontPage({
               <p className="mt-2 text-xs" style={{ color: "var(--color-muted-foreground)" }}>
                 {stageEvent ? stageLabel(stageEvent.stage, stageEvent) : STAGE_LABEL.ingesting}
               </p>
-            </div>
+            </motion.div>
           )}
 
           {error && (
@@ -196,12 +212,18 @@ export function FrontPage({
         ) : (
           <FocusModeProvider>
             <PageGrid>
-              {frontPageCards.map((card) => (
+              {frontPageCards.map((card, i) => (
                 <NewsCard
                   key={card.id}
                   card={card}
                   tier={tierForFrontPageRank(card.frontPageRank as number)}
                   showTopicBadge
+                  // Only cards that landed live this session (via loadDigest's
+                  // stream, not the initial SSR render) get an entrance —
+                  // otherwise every page load would replay the "just
+                  // arrived" animation for content that's already there.
+                  isNew={recentlyAddedIds.has(card.id)}
+                  entranceDelay={i * 0.04}
                 />
               ))}
             </PageGrid>

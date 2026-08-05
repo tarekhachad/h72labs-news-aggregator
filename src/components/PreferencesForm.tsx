@@ -22,12 +22,12 @@ export function PreferencesForm({
           {TOPICS.map((topic) => (
             <label
               key={topic}
-              className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm"
-              style={{
-                border: "1px solid var(--color-border)",
-                background: "var(--color-card)",
-                color: "var(--color-card-foreground)",
-              }}
+              // Colors are Tailwind arbitrary-value classes here, not the
+              // inline `style` this codebase otherwise defaults to for
+              // design-token colors — an inline style would always win
+              // over the has-[:checked]: class below regardless of
+              // specificity, silently defeating the checked-state toggle.
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-card-foreground)] transition-colors duration-150 has-[:checked]:border-[var(--color-primary)] has-[:checked]:bg-[var(--color-primary)] has-[:checked]:text-[var(--color-on-primary)]"
             >
               <input
                 type="checkbox"
@@ -48,12 +48,7 @@ export function PreferencesForm({
           {SOURCES.map((source) => (
             <label
               key={source}
-              className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm"
-              style={{
-                border: "1px solid var(--color-border)",
-                background: "var(--color-card)",
-                color: "var(--color-card-foreground)",
-              }}
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-card-foreground)] transition-colors duration-150 has-[:checked]:border-[var(--color-primary)] has-[:checked]:bg-[var(--color-primary)] has-[:checked]:text-[var(--color-on-primary)]"
             >
               <input
                 type="checkbox"

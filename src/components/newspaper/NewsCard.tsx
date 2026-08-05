@@ -42,11 +42,17 @@ export function NewsCard({
   card,
   tier,
   showTopicBadge,
+  isNew = false,
+  entranceDelay = 0,
 }: {
   card: Card;
   tier: GridTier;
   /** Front page spans multiple topics (badge needed); a topic page's cards are all the same topic (badge is redundant there). */
   showTopicBadge: boolean;
+  /** True only for cards that landed live via this session's own digest generation, not ones already on the page from the initial server render — see FrontPage.tsx. Plays a short fade/scale-in. */
+  isNew?: boolean;
+  /** Stagger offset (seconds) so a multi-card generation reads as cards arriving one after another, not all at once. */
+  entranceDelay?: number;
 }) {
   const [flipped, setFlipped] = useState(false);
   // The full-report fetch is owned entirely here, not in FocusOverlay —
@@ -71,6 +77,15 @@ export function NewsCard({
   const fetchStarted = useRef(false);
   const [bookmarked, setBookmarked] = useState(card.bookmarked);
   const [bookmarkPending, setBookmarkPending] = useState(false);
+  // Gates the bookmark glyph's pop animation (below) to real toggles only —
+  // false on both the server render and the client's first render (no SSR/
+  // hydration divergence, unlike gating on prefersReducedMotion alone,
+  // which is null during SSR and would otherwise make a reduced-motion
+  // user's server HTML disagree with their client HTML). Flipped true in
+  // the same event handler that flips `bookmarked`, so React's automatic
+  // batching lands both in the same render — the pop is live from the
+  // first real click onward, never on mount.
+  const [hasToggledBookmark, setHasToggledBookmark] = useState(false);
   const prefersReducedMotion = useReducedMotion();
   const sourcesButtonRef = useRef<HTMLButtonElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
@@ -155,6 +170,7 @@ export function NewsCard({
     e.stopPropagation();
     if (bookmarkPending) return;
     const next = !bookmarked;
+    setHasToggledBookmark(true);
     setBookmarkPending(true);
     setBookmarked(next); // Optimistic — reverted below on failure.
     try {
@@ -222,6 +238,23 @@ export function NewsCard({
           onKeyDown={handleOpenKeyDown}
           className={cn(TIER_SPAN[tier], "relative cursor-pointer")}
           style={{ perspective: "1200px" }}
+          initial={isNew && !prefersReducedMotion ? { opacity: 0, scale: 0.97 } : false}
+          animate={isNew && !prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
+          // Scoped per-property (not a blanket transition on the whole
+          // element) so the entrance's duration/delay can't leak into this
+          // same element's OTHER animatable changes — layoutId enables
+          // Motion's layout tracking here too, and a bare `transition`
+          // prop would otherwise also govern a later grid-position reflow
+          // (e.g. a second same-session generation reordering the front
+          // page), giving an ordinary layout catch-up a stale entrance delay.
+          transition={
+            isNew
+              ? {
+                  opacity: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
+                  scale: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
+                }
+              : undefined
+          }
         >
           <motion.div
             className="relative h-full w-full"
@@ -263,7 +296,22 @@ export function NewsCard({
                   disabled={bookmarkPending}
                   className="cursor-pointer text-xs font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {bookmarked ? "★ Saved" : "☆ Save"}
+                  {/* key={bookmarked} forces a remount on every toggle so the
+                      pop-in plays each time, not just on first mount. Gated
+                      on hasToggledBookmark (not just prefersReducedMotion,
+                      which is null during SSR) so the very first render —
+                      server and client alike — never plays this: it's a
+                      response to a real state change, not something that
+                      should fire just because the card mounted. */}
+                  <motion.span
+                    key={String(bookmarked)}
+                    className="inline-block"
+                    initial={hasToggledBookmark && !prefersReducedMotion ? { scale: 0.9 } : false}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.14, ease: "easeOut" }}
+                  >
+                    {bookmarked ? "★ Saved" : "☆ Save"}
+                  </motion.span>
                 </button>
                 <button
                   ref={sourcesButtonRef}
