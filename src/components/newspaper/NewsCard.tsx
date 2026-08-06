@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
 import type { Card } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
-import { TIER_SPAN, type GridTier } from "@/lib/gridTiers";
+import type { GridTier } from "@/lib/gridTiers";
+import type { GridPosition } from "@/lib/packGrid";
 import { cn } from "@/lib/utils";
 import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
 import { useFocusMode } from "@/components/newspaper/FocusModeContext";
@@ -41,12 +42,15 @@ const CARD_FACE_STYLE = {
 export function NewsCard({
   card,
   tier,
+  gridPosition,
   showTopicBadge,
   isNew = false,
   entranceDelay = 0,
 }: {
   card: Card;
   tier: GridTier;
+  /** This card's explicit grid-column/grid-row placement, computed by packGrid.ts (see FrontPage.tsx/TopicPage.tsx) — replaces tier-driven Tailwind span classes so a row can be widened to close a gap. Undefined only if packGrid didn't return a position for this id (shouldn't happen; PageGrid's `dense` auto-flow is kept as a defensive fallback for exactly this case). */
+  gridPosition?: GridPosition;
   /** Front page spans multiple topics (badge needed); a topic page's cards are all the same topic (badge is redundant there). */
   showTopicBadge: boolean;
   /** True only for cards that landed live via this session's own digest generation, not ones already on the page from the initial server render — see FrontPage.tsx. Plays a short fade/scale-in. */
@@ -227,7 +231,7 @@ export function NewsCard({
         // has moved into the portal below, but PageGrid's dense auto-flow
         // would repack every other card into this gap if the DOM node
         // just disappeared, causing a visible reflow behind the overlay.
-        <div className={cn(TIER_SPAN[tier], "relative")} aria-hidden />
+        <div className="relative" style={gridPosition} aria-hidden />
       ) : (
         <motion.div
           ref={cardRef}
@@ -236,8 +240,8 @@ export function NewsCard({
           tabIndex={0}
           onClick={handleOpen}
           onKeyDown={handleOpenKeyDown}
-          className={cn(TIER_SPAN[tier], "relative cursor-pointer")}
-          style={{ perspective: "1200px" }}
+          className="relative cursor-pointer"
+          style={{ ...gridPosition, perspective: "1200px" }}
           initial={isNew && !prefersReducedMotion ? { opacity: 0, scale: 0.97 } : false}
           animate={isNew && !prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
           // Scoped per-property (not a blanket transition on the whole

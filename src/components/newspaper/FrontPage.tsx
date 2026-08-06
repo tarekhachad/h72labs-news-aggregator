@@ -8,6 +8,7 @@ import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForFrontPageRank } from "@/lib/gridTiers";
+import { packGrid } from "@/lib/packGrid";
 import { Button } from "@/components/ui/button";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
@@ -159,6 +160,12 @@ export function FrontPage({
   const stageIndex = stageEvent ? STAGE_ORDER.indexOf(stageEvent.stage) : -1;
   const progressPercent = stageIndex >= 0 ? (stageIndex / (STAGE_ORDER.length - 1)) * 100 : 0;
   const frontPageCards = cards ? frontPageCardsOf(cards) : [];
+  const gridPositions = packGrid(
+    frontPageCards.map((card) => ({
+      id: card.id,
+      tier: tierForFrontPageRank(card.frontPageRank as number),
+    }))
+  );
 
   return (
     <div className="flex flex-col">
@@ -217,6 +224,7 @@ export function FrontPage({
                   key={card.id}
                   card={card}
                   tier={tierForFrontPageRank(card.frontPageRank as number)}
+                  gridPosition={gridPositions.get(card.id)}
                   showTopicBadge
                   // Only cards that landed live this session (via loadDigest's
                   // stream, not the initial SSR render) get an entrance —

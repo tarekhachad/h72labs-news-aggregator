@@ -34,7 +34,7 @@ export function TopicBand({
 
   return (
     <nav
-      className="flex flex-wrap gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10"
+      className="flex flex-wrap justify-center gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10"
       style={{ borderColor: "var(--color-border)" }}
       aria-label="Topics"
     >

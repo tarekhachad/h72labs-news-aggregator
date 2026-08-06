@@ -4,6 +4,7 @@ import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForSeverity } from "@/lib/gridTiers";
+import { packGrid } from "@/lib/packGrid";
 
 // Severity descending (box size), tiebreak publishedAt desc + id — matches
 // the front-page/topic-page ordering convention documented in
@@ -37,6 +38,9 @@ export function TopicPage({
   basePath?: string;
 }) {
   const ordered = orderBySeverity(cards);
+  const gridPositions = packGrid(
+    ordered.map((card) => ({ id: card.id, tier: tierForSeverity(card.severity) }))
+  );
 
   return (
     <div className="flex flex-col">
@@ -58,6 +62,7 @@ export function TopicPage({
                   key={card.id}
                   card={card}
                   tier={tierForSeverity(card.severity)}
+                  gridPosition={gridPositions.get(card.id)}
                   showTopicBadge={false}
                 />
               ))}

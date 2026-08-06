@@ -77,7 +77,54 @@ Implement the approved plan: update design tokens/Tailwind theme, rebuild/restyl
 
 **Done when (Phase 4 overall):** all four sub-phases above are complete.
 
-## Phase 5 — Cost/quality pass + friends testing
+## Phase 5 — Fix iterations
+
+_Added 2026-08-06, after Tarek tested the shipped Phase 4 UI live in the browser and found 12 real issues/requests spanning layout, navigation, interaction polish, and one new content feature. Split into sub-phases the same way Phase 4 was, since it bundles genuinely independent fixes of different sizes and risk — each sub-phase is independently buildable and goes through the standard qa/code-reviewer convergence loop before the next starts. Ordered low-risk/isolated first, higher-risk/coupled later. Full file-level plan: `/Users/tarekhachad/.claude/plans/i-have-gone-through-replicated-cray.md` (Claude Code plan-mode artifact — not part of this repo; copy into a durable doc here if it needs to survive session restarts the way `(C) IMPLEMENTATION_PLAN_4.4.md` did for Phase 4)._
+
+Three open decisions were resolved with Tarek before finalizing the plan: run-differentiation UI uses a **run divider** (chosen over tint/badge/section-headers); the new card labels use a **free-form, LLM-generated** taxonomy (chosen over a curated per-topic or shared cross-topic list), colors assigned via a deterministic hash-to-palette function; and the "cards render uniformly sized on some pages" report was diagnosed to pre-severity-grading history rows (before commit `7976306`) defaulting to the smallest tier via `rowToCard()`'s `severity ?? 1` fallback — confirmed inert legacy-data behavior, not a live pipeline bug, so **documented only, no code fix**.
+
+### 5.1 — Topic-band centering + grid full-width packing fix
+
+Center `TopicBand`'s topic list (currently left-aligned). Diagnose and fix story boxes not consistently filling the full page width: `PageGrid`'s CSS `grid-auto-flow: dense` reorders later items into exact-fit gaps but never resizes an item to close a leftover gap, so mixing row-span-1/row-span-2 tiers can leave a trailing row underfilled.
+
+Replaced CSS auto dense-placement with an explicit JS pre-pass, `src/lib/packGrid.ts`. Went through **3 full qa/code-reviewer rounds**, the first two each finding a real, structurally distinct gap bug in a "widen the last item placed in a row" occupancy-bitmap design: round 1 found out-of-order tier input (a rowSpan-1 card before rowSpan-2 cards) could leave a mid-row hole nothing could reach; round 2 found that even with correctly-ordered input, a rowSpan-2 card's *second* row could be left uncovered when its first row got exactly consumed by trailing rowSpan-1 cards — a grid item can't be widened on only one of the rows it spans without overlapping different content already in the other. Given two structurally similar bugs from the same patch-a-special-case approach, the function was redesigned rather than patched a third time: items are stable-sorted by tier (hero/large before medium/small, preserving each card's relative import­ance order within its own tier), then packed into a strict sequence of "bands" — a run of same-rowSpan cards filling a fresh, exclusive set of rows, closed by widening its last card before the next band starts. Because a band never shares a row with a different-rowSpan band, cross-rowSpan bleed-through (the root cause of both prior bugs) can't occur at all — gap-free by construction, not by special-casing. Round 3 (fresh, both agents) found no correctness issues, including under `qa`'s own 3,500+-case fuzz run and live-generated real digests.
+
+**Trade-off, put to Tarek and accepted as-is:** the band model can no longer let different-row-height cards interlock within the same physical row the way the original approach sometimes did, which can produce a real visual hierarchy inversion on a full 6-story front page — a rank-3 card left alone in its own row-span-2 band gets widened to full page width and full hero height, rendering more prominent than the rank-1 hero. Decided to ship as-is rather than reintroduce a partial gap to cap it (the "mandatory full width" requirement this sub-phase exists for is judged more consistently noticeable than one card occasionally being oversized) — revisit if this looks bad in practice once real usage surfaces it more.
+- **Done (2026-08-06):** topic band centered (`justify-center`); grid full-width packing fixed via `src/lib/packGrid.ts`'s band-based algorithm; legacy uniform-sizing finding documented above. 94 vitest tests (up from 88), `tsc`/`eslint` clean, 3 full qa/code-reviewer rounds to genuine convergence (rounds 1-2 each found and fixed a real bug; round 3 clean from both agents plus qa's own 3,500+-case fuzz run). One non-blocking trade-off surfaced to Tarek and accepted, documented above.
+
+### 5.2 — Back arrow, card hover states, flip-back-on-body-click, disable page-flip transition
+
+Add a back arrow to the Masthead (in addition to the existing masthead-title click) so `/saved`, `/history`, `/profile`, and topic pages have an explicit way back to the front page. Add distinct hover highlights to the Sources button, Save button, and individual source links on a flipped card. Make clicking anywhere on a flipped card's back face (except a source link or the Back button) also flip it back. Disable the full-page-flip route transition (reads as "cheap") via a `FLIP_ENABLED` flag in `PageTransitionContext.tsx`, reusing the existing reduced-motion bypass path — all flip code stays intact, just dead, for a future revisit.
+- **Done when:** all four land, verified live, with no double-toggle regression on the flip-back change.
+
+### 5.3 — Unify TopicBand + TopicNavBox into one shared `TopicNav` component
+
+Replace `TopicNavBox`'s dropdown-menu topic nav (topic pages) with the same flat/inline style as the front page's topic band, prepending a "Front Page" entry as the first item on non-front pages. Merge both components into one `TopicNav.tsx` (they already share ~80% of their logic) rather than keeping two.
+- **Done when:** topic pages use the same flat nav style as the front page, `TopicBand.tsx`/`TopicNavBox.tsx` are deleted, and both page types share one DOM position/height for the nav band (needed by 5.4).
+
+### 5.4 — Sticky masthead + topic-nav band
+
+Make the Masthead and whichever topic-nav band is present stay pinned and visible while scrolling, stacked correctly (masthead on top, nav band directly below), via plain CSS `position: sticky` and a shared `--masthead-height` token — not by restructuring `layout.tsx`.
+- **Done when:** verified live across the front page, a topic page, and (masthead-only) `/saved`/`/history`/`/profile`, with no z-index conflicts against the page-flip or focus-mode overlays.
+
+### 5.5 — Card title + free-form color-coded label chips
+
+Add a 5-8 word title and 1-2 color-coded sub-topic label chips to each card. New nullable `cards.title text` / `cards.labels jsonb` columns; `writeCard.ts`'s existing Sonnet call extended to also produce both (additive schema, no new API call); a deterministic hash-based label-to-color function (`src/lib/labelColor.ts`) so the same label string always renders the same color with no taxonomy to maintain. Requires the usual manual `persist_generated_cards()` redeploy in the Supabase SQL editor.
+- **Done when:** live-generated digests show real titles/labels, legacy pre-migration rows render gracefully with no title/labels rather than breaking, and prompt quality on the existing summary paragraph hasn't regressed.
+
+### 5.6 — Dynamic summary-fill
+
+Replace the fixed per-tier `line-clamp-N` truncation (deliberately conservative today, which is why summaries cut off before a card's true available space is used) with a hook (`src/hooks/useDynamicLineClamp.ts`) that measures real remaining vertical space — accounting for the title/label rows from 5.5 — and computes the correct clamp value dynamically instead of from a fixed lookup table.
+- **Done when:** verified live that summaries fill each tier's actual available space with no SSR/hydration mismatch.
+
+### 5.7 — Run divider
+
+Build the run-divider concept referenced in code comments since Phase 3 but never implemented: a thin rule + label between cards from different same-day generation runs, keyed off `card.generatedAt` (already stamped identically per run, no backend change needed). Extends 5.1's `packGrid.ts` to treat a run boundary as a forced full-width row break.
+- **Done when:** verified live on a digest with 2+ same-day generation runs, on both the front page and a topic page.
+
+**Done when (Phase 5 overall):** all seven sub-phases above are complete, each having gone through the standard qa/code-reviewer convergence loop.
+
+## Phase 6 — Cost/quality pass + friends testing
 
 - Confirm the lazy expanded-report generation is actually lazy (not accidentally pre-generating for every card).
 - Instrument real Claude API usage/cost against the estimate in `(C) TECH_STACK.md` — correct the estimate with real numbers.

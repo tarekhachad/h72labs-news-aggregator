@@ -7,12 +7,17 @@
  */
 export type GridTier = "hero" | "large" | "medium" | "small";
 
-// Tailwind grid-span classes for a 6-column `grid-auto-flow: dense` grid.
-export const TIER_SPAN: Record<GridTier, string> = {
-  hero: "col-span-3 row-span-2",
-  large: "col-span-2 row-span-2",
-  medium: "col-span-3 row-span-1",
-  small: "col-span-2 row-span-1",
+// Column/row spans for a 6-column grid. Consumed by packGrid.ts to compute
+// each card's explicit grid position (see that file for why explicit
+// placement replaced CSS `grid-auto-flow: dense`) — a tier's colSpan here
+// is its *nominal* width; packGrid may widen a specific card's rendered
+// span beyond this to close a row, so this table is an input to layout,
+// not the final rendered span.
+export const TIER_DIMENSIONS: Record<GridTier, { colSpan: number; rowSpan: number }> = {
+  hero: { colSpan: 3, rowSpan: 2 },
+  large: { colSpan: 2, rowSpan: 2 },
+  medium: { colSpan: 3, rowSpan: 1 },
+  small: { colSpan: 2, rowSpan: 1 },
 };
 
 /**
