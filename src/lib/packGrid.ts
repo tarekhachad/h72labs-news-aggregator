@@ -2,10 +2,10 @@ import { TIER_DIMENSIONS, type GridTier } from "@/lib/gridTiers";
 
 export const GRID_COLUMNS = 6;
 
-// hero/large (rowSpan 2) are grouped and placed before medium/small
-// (rowSpan 1) — see the doc comment below on why mixing rowSpans within a
-// band isn't safe.
-const TIER_ORDER: Record<GridTier, number> = { hero: 0, large: 1, medium: 2, small: 3 };
+// Sort order for the stable pre-sort below — hero first, then medium, then
+// small. See the doc comment for why cards must be grouped by tier before
+// packing begins.
+const TIER_ORDER: Record<GridTier, number> = { hero: 0, medium: 1, small: 2 };
 
 export interface GridItemInput {
   id: string;
@@ -21,44 +21,74 @@ export interface GridPosition {
  * Computes explicit grid-column/grid-row placement for a sequence of cards,
  * replacing CSS `grid-auto-flow: dense` (see PageGrid.tsx). `dense` reorders
  * later items into exact-fit gaps but never resizes an item to close a
- * leftover gap — which reliably leaves a trailing gap no tier can fill
- * whenever a row-span-2 tier (hero/large) only partially fills its two-row
- * band, since the narrowest tier is 2 columns wide and nothing smaller can
- * ever close a 1-column hole.
+ * leftover gap — which reliably leaves a trailing gap no tier can fill.
  *
- * An earlier version of this module tried to fix that by placing items
- * left-to-right (a shared occupancy bitmap across mixed row-spans) and
- * widening whichever item happened to be placed last in a row. That
- * approach turned out to have two distinct failure modes, both found
- * during this module's own review: (1) a rowSpan-1 item placed before a
- * rowSpan-2 item in the input could leave a mid-row hole nothing was ever
- * ITEM-placed into, since the row-closing logic only widens the last item
- * *actually placed* in a row; (2) even with items in canonical tier order,
- * whenever a rowSpan-2 item's first row got exactly consumed by trailing
- * rowSpan-1 items, that rowSpan-2 item's *second* row was left with a hole
- * nothing could close — the only item that could have widened into it
- * (the rowSpan-1 item occupying the same columns one row up) can't, because
- * widening a grid item changes its width on *every* row it spans, and that
- * would overlap the row-1 content already sitting in that space. A
- * rectangle can't selectively cover only its second row.
+ * Two earlier versions of this module tried to fix that with a shared
+ * occupancy bitmap across mixed row-heights (hero/large were 2 rows tall,
+ * medium/small were 1), widening whichever item happened to be placed last
+ * in a row. That approach had two distinct failure modes, both found during
+ * this module's own review: (1) a short item placed before a tall item in
+ * the input could leave a mid-row hole nothing was ever placed into; (2)
+ * even with items in canonical tier order, whenever a tall item's first row
+ * got exactly consumed by trailing short items, the tall item's *second*
+ * row was left with a hole nothing could close — the short item occupying
+ * the same columns one row up can't widen into it without also widening its
+ * own row and overlapping content already there. A rectangle can't
+ * selectively cover only one of the rows it spans.
  *
- * This version sidesteps both failure modes structurally instead of
- * special-casing them: cards are first stable-sorted into tier order
- * (hero/large before medium/small — see TIER_ORDER; preserves each card's
- * relative order within its own tier, which is the caller's real
+ * Both failure modes required *mixing* row-heights within a single band —
+ * a taller item and a shorter item both partially occupying the same shared
+ * row(s). This version removes that risk at the source, structurally: a
+ * band is always a run of consecutive **same-tier** cards (see below), so
+ * within any one band every card has identical TIER_DIMENSIONS, including
+ * rowSpan — there is no "differently-tall neighbor" inside a band for its
+ * second row to be bled into by, regardless of how many distinct rowSpan
+ * values exist across the tier table as a whole. Tiers can (and, per
+ * gridTiers.ts's actual table, currently do) still differ in height from
+ * each other — hero/medium are rowSpan 2, small is rowSpan 1 — that's fine,
+ * since it only ever varies *between* bands, never *within* one, and each
+ * band's rows are fully closed and exclusive before the next band's rows
+ * are touched (see `currentRow += bandRowSpan` below).
+ *
+ * Cards are stable-sorted into tier order (TIER_ORDER; preserves each
+ * card's relative order within its own tier, which is the caller's real
  * importance/tie-break order), then packed into a strict sequence of
- * "bands" — a band is a run of same-rowSpan cards filling a fresh set of
- * rows, closed off (by widening its last card to consume any leftover
- * width) before the next band starts. Because a band never shares a row
- * with a different-rowSpan band, there is no cross-rowSpan bleed-through to
- * create an unreachable hole in the first place — every band is either an
- * exact fit or gets widened to one, and that's the whole guarantee. The
- * trade-off, accepted deliberately: cards of different row-heights can no
- * longer visually interlock within the same physical row the way the old
- * bitmap approach sometimes did — every hero/large row-band is fully
- * separate from every medium/small row-band. Full-width correctness is the
- * mandatory requirement (see the roadmap's 5.1 entry); a denser interlocking
- * layout, if wanted later, is a different and harder problem.
+ * "bands" — a band is a run of consecutive same-tier cards filling a
+ * fresh, exclusive set of rows, closed off (by widening its last card to
+ * consume any leftover width) before the next band starts.
+ *
+ * Band boundaries are keyed on tier *identity*, not row-height — this is a
+ * real requirement, not leftover caution: hero must always render alone in
+ * its own band, even next to a same-width "medium" card that would
+ * otherwise fit in the leftover space. Keying the boundary on rowSpan alone
+ * (as an earlier version did) isn't reliable even when rowSpan does vary by
+ * tier, and becomes actively wrong whenever two tiers happen to share a
+ * rowSpan value (as hero and medium currently do) — it would then be
+ * trivially true for any two adjacent cards of either tier and let them
+ * merge into one band whenever width allowed. Tier identity is the only
+ * signal that reliably tells every tier apart, regardless of how many
+ * tiers happen to share a rowSpan value at any given time.
+ *
+ * Tier identity alone isn't quite enough, though: it stops hero from
+ * merging with a *different* tier, but two hero-tier cards next to each
+ * other would still pack side-by-side (their nominal widths sum to an
+ * exact 6-column fit) unless something caps how many cards a hero band can
+ * ever hold. That cap — `maxPerBand: 1` on hero's entry in gridTiers.ts's
+ * TIER_DIMENSIONS — is what actually guarantees hero always renders alone,
+ * not its width or tier identity by themselves. This matters because two
+ * same-topic cards can legitimately both grade to hero-tier severity on
+ * the same day (tierForSeverity has no per-topic uniqueness guarantee,
+ * unlike the front page's frontPageRank, which rank.ts deduplicates
+ * upstream) — found during this module's own review.
+ *
+ * Trade-off, accepted deliberately: if a day has fewer than the usual count
+ * of a given tier (e.g. only 3 "medium" cards instead of the usual 4), the
+ * odd one out lands alone in its band and widens to full width — rendering
+ * the *same size* as hero (both full-width, both 2 rows), though always
+ * positioned in a later row. This is a milder version of an earlier,
+ * already-accepted trade-off (previously a lower-ranked card could render
+ * *bigger* than hero; now the worst case is *equal*, never bigger, and
+ * always later in reading order).
  */
 export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
   // Stable sort: preserves relative order within a tier (already the
@@ -70,14 +100,26 @@ export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
   let i = 0;
 
   while (i < ordered.length) {
-    const bandRowSpan = TIER_DIMENSIONS[ordered[i].tier].rowSpan;
+    const bandTier = ordered[i].tier;
+    const bandRowSpan = TIER_DIMENSIONS[bandTier].rowSpan;
     const band: { id: string; col: number; colSpan: number }[] = [];
     let col = 1;
 
-    // Fill this band left-to-right with consecutive same-rowSpan cards
-    // until one doesn't fit the remaining width or the rowSpan changes
-    // (a fresh band starts on the next iteration of the outer loop).
-    while (i < ordered.length && TIER_DIMENSIONS[ordered[i].tier].rowSpan === bandRowSpan) {
+    // Fill this band left-to-right with consecutive same-*tier* cards
+    // until one doesn't fit the remaining width, the tier changes, or the
+    // tier's own maxPerBand cap is reached (see gridTiers.ts's
+    // TIER_DIMENSIONS — hero's cap of 1 is what actually guarantees it
+    // always renders alone; width alone can't be relied on, since two
+    // hero-tier cards' nominal widths sum to an exact 6-column fit and
+    // would otherwise pack side-by-side in one band).
+    const maxPerBand = TIER_DIMENSIONS[bandTier].maxPerBand ?? Infinity;
+    // A tier configured with maxPerBand < 1 would make every band for it
+    // start empty, and `band[band.length - 1]` below would be undefined —
+    // fail loudly here instead of a confusing crash a few lines down.
+    if (maxPerBand < 1) {
+      throw new Error(`Invalid maxPerBand for tier "${bandTier}": must be at least 1.`);
+    }
+    while (i < ordered.length && ordered[i].tier === bandTier && band.length < maxPerBand) {
       const { colSpan } = TIER_DIMENSIONS[ordered[i].tier];
       if (col + colSpan - 1 > GRID_COLUMNS) break;
       band.push({ id: ordered[i].id, col, colSpan });

@@ -16,11 +16,15 @@ import { useFocusMode } from "@/components/newspaper/FocusModeContext";
 // meta row above and the Save/Sources row below always have guaranteed
 // room within the tier's fixed grid-cell height (verified live, not just
 // estimated — see the B5 session log entry on the overflow bug this
-// replaced).
+// replaced). medium's value is interim, roughly doubled from its
+// pre-5.1-follow-up value since it went from a 1-row (180px) to a 2-row
+// (360px) box — flagged as rough, live-verify-and-adjust; small stays at
+// its original 1-row values (it's still a 1-row/180px box). The planned
+// "dynamic summary-fill" work (ROADMAP.md 5.6) replaces all of this with
+// real measurement rather than fixed clamp values anyway.
 const TEXT_CLASS: Record<GridTier, string> = {
   hero: "text-2xl leading-snug line-clamp-6",
-  large: "text-lg leading-snug line-clamp-5",
-  medium: "text-base leading-snug line-clamp-3",
+  medium: "text-lg leading-snug line-clamp-6",
   small: "text-sm leading-snug line-clamp-2",
 };
 
