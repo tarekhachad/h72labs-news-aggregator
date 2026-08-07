@@ -11,24 +11,27 @@ import { cn } from "@/lib/utils";
 import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
 import { useFocusMode } from "@/components/newspaper/FocusModeContext";
 import { labelColor } from "@/lib/labelColor";
+import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
-// headline + body) — each tier renders it once, sized and clamped so the
-// meta row, title, label chips, and the Save/Sources row all always have
-// guaranteed room within the tier's fixed grid-cell height (verified
-// live, not just estimated — see the B5 session log entry on the
-// overflow bug this replaced). Phase 5.5 (card title + label chips)
-// reduced every tier's clamp from its pre-5.5 value to make room for the
-// two new rows — interim estimates, live-verify-and-adjust, same as the
-// 5.1-follow-up's own "flagged as rough" precedent for this table. The
-// planned "dynamic summary-fill" work (ROADMAP.md 5.6) replaces all of
-// this with real measurement rather than fixed clamp values anyway —
-// 5.6 explicitly depends on 5.5's title/chips layout landing first so it
-// measures against the final shape, not this interim one.
-const TEXT_CLASS: Record<GridTier, string> = {
-  hero: "text-2xl leading-snug line-clamp-4",
-  medium: "text-lg leading-snug line-clamp-4",
-  small: "text-sm leading-snug line-clamp-1",
+// headline + body) — font-size/line-height still come from this per-tier
+// table, but the actual clamp *length* is measured live by
+// useDynamicLineClamp (5.6) against the real title/label-chip/footer rows
+// rendered below, not a fixed guess. FALLBACK_CLAMP_LINES are that hook's
+// pre-measurement values (the exact numbers this table held before 5.6 —
+// deliberately conservative, verified live not to overflow) — rendered
+// until the client measurement effect lands, same SSR-safety pattern as
+// this component's own hasToggledBookmark.
+const TEXT_SIZE_CLASS: Record<GridTier, string> = {
+  hero: "text-2xl leading-snug",
+  medium: "text-lg leading-snug",
+  small: "text-sm leading-snug",
+};
+
+const FALLBACK_CLAMP_LINES: Record<GridTier, number> = {
+  hero: 4,
+  medium: 4,
+  small: 1,
 };
 
 // Title sizing/clamping mirrors TEXT_CLASS's tier philosophy — smaller
@@ -119,6 +122,7 @@ export function NewsCard({
   const { focusedCardId, setFocusedCardId } = useFocusMode();
   const focused = focusedCardId === card.id;
   const prevFocused = useRef(focused);
+  const { faceRef, summaryRef, footerRef, clampLines } = useDynamicLineClamp();
 
   // Per the inert spec, marking a subtree inert while it contains the
   // focused element forcibly ejects focus to <body> — a keyboard user who
@@ -307,6 +311,7 @@ export function NewsCard({
                 accessibility tree, so without this a keyboard/screen-reader user
                 could reach and activate controls that are invisibly rotated away. */}
             <div
+              ref={faceRef}
               className="absolute inset-0 flex flex-col overflow-hidden rounded-md p-5"
               style={{ ...CARD_FACE_STYLE, backfaceVisibility: "hidden" }}
               inert={flipped}
@@ -348,9 +353,18 @@ export function NewsCard({
                 </div>
               )}
 
-              <p className={cn(TEXT_CLASS[tier], "mt-2 font-semibold")}>{card.shortSummary}</p>
+              <p
+                ref={summaryRef}
+                className={cn(
+                  TEXT_SIZE_CLASS[tier],
+                  "mt-2 overflow-hidden font-semibold [-webkit-box-orient:vertical] [display:-webkit-box]"
+                )}
+                style={{ WebkitLineClamp: clampLines ?? FALLBACK_CLAMP_LINES[tier] }}
+              >
+                {card.shortSummary}
+              </p>
 
-              <div className="mt-auto flex items-center gap-4 pt-3">
+              <div ref={footerRef} className="mt-auto flex items-center gap-4 pt-3">
                 <button
                   type="button"
                   onClick={handleBookmarkToggle}
