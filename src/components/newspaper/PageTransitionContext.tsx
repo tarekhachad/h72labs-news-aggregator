@@ -66,8 +66,8 @@ export function PageTransitionProvider({ children }: { children: React.ReactNode
 
   // navigate() needs the *current* stage/pathname/router at call time, but
   // must itself keep a stable identity (see the useCallback below) so the
-  // actions-context split actually avoids re-rendering Masthead/TopicBand/
-  // TopicNavBox on every stage transition — a plain closure over the state
+  // actions-context split actually avoids re-rendering Masthead/TopicNav
+  // on every stage transition — a plain closure over the state
   // variables would defeat that by changing identity every render. Refs,
   // kept in sync after every render, thread the current values through
   // without navigate depending on them.
@@ -181,7 +181,7 @@ export function usePageTransitionState() {
   return ctx;
 }
 
-/** The navigate() trigger — for Masthead/TopicBand/TopicNavBox's links. */
+/** The navigate() trigger — for Masthead/TopicNav's links. */
 export function usePageTransitionActions() {
   const ctx = useContext(PageTransitionActionsContext);
   if (!ctx) throw new Error("usePageTransitionActions must be used within a PageTransitionProvider");

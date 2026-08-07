@@ -375,7 +375,7 @@ export function NewsCard({
                   type="button"
                   onClick={handleFlip}
                   onKeyDown={stopEnterSpacePropagation}
-                  className="cursor-pointer text-xs font-medium underline"
+                  className="-mx-1.5 -my-0.5 cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium underline transition-colors hover:bg-[var(--color-muted)]"
                 >
                   Back
                 </button>

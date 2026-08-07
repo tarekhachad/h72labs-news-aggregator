@@ -10,7 +10,7 @@ import { usePageTransitionActions } from "@/components/newspaper/PageTransitionC
  * Back arrow's target, derived from the route — always "one level up" the
  * actual navigation path a user took to get there, not a blanket "always
  * home" like the masthead title: a topic page nested under a history date
- * goes up to that date's front page (basePath, same convention TopicNavBox's
+ * goes up to that date's front page (basePath, same convention TopicNav's
  * own "Front Page" entry already uses); a history date's own front page
  * goes up to the History list (/history) it was picked from, not today's
  * edition; today's topic pages and non-newspaper pages (/saved, /profile,
@@ -31,7 +31,7 @@ function getBackTarget(pathname: string): string | null {
  * the page-flip transition (B8) — always a single flip to "/" regardless
  * of how many topics deep the user is (per B5's design: the masthead is a
  * global "home" action, not scoped to the user's topic list the way
- * TopicNavBox's "Front Page" entry is date/context-scoped), so this needs
+ * TopicNav's "Front Page" entry is date/context-scoped), so this needs
  * no topics/basePath data to do the right thing. The hamburger (Sidebar)
  * is present on every page.
  */

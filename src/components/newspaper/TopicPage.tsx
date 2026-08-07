@@ -1,5 +1,5 @@
 import type { Card, Topic } from "@/types";
-import { TopicNavBox } from "@/components/newspaper/TopicNavBox";
+import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
@@ -34,7 +34,7 @@ export function TopicPage({
   cards: Card[];
   topic: Topic;
   userTopics: Topic[];
-  /** "/history/2026-08-01" when this is a past date's topic page, so TopicNavBox's links stay scoped to that date. */
+  /** "/history/2026-08-01" when this is a past date's topic page, so TopicNav's links stay scoped to that date. */
   basePath?: string;
 }) {
   const ordered = orderBySeverity(cards);
@@ -44,10 +44,9 @@ export function TopicPage({
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between px-6 py-6 md:px-10">
-        <h1 className="font-heading text-3xl font-bold">{topic}</h1>
-        <TopicNavBox topics={userTopics} activeTopic={topic} basePath={basePath} />
-      </div>
+      <TopicNav topics={userTopics} activeTopic={topic} basePath={basePath} />
+
+      <h1 className="px-6 py-6 font-heading text-3xl font-bold md:px-10">{topic}</h1>
 
       <div className="px-6 pb-10 md:px-10">
         {ordered.length === 0 ? (

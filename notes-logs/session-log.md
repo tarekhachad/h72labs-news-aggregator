@@ -1,6 +1,32 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-08-07 (later still, follow-up 2) — 5.2 follow-up: Back button gets Sources' hover treatment
+
+Tarek asked for the flipped-card "Back" button (`NewsCard.tsx`) to get the exact same hover highlight as "Sources" (a rounded muted-background pill, offset by negative margins so it doesn't shift surrounding layout). Copied the Sources button's className verbatim onto Back — byte-identical, no drift. Live-verified the two buttons' hover backgrounds match exactly (`rgb(240,237,230)` both) before requesting review.
+
+One scoped qa/code-reviewer round: `qa` confirmed the exact RGB match plus that flip-back functionality and console cleanliness are unaffected. `code-reviewer` worked through the flexbox margin/padding cancellation math for both buttons' different row contexts (Sources sits in a `flex gap-4` row, Back sits in a `justify-between` row) and confirmed the hover-pill's few pixels of bleed land safely inside the card's own padding in both cases — no clipping, no perceptible shift. Both agents clean, no findings.
+
+96 vitest tests unchanged, `tsc`/`eslint` clean throughout. Not yet committed — sits on top of the rest of this session's uncommitted work.
+
+## 2026-08-07 (later still, follow-up) — 5.3 follow-up: "Front Page" nav entry highlighted in accent color
+
+Tarek asked for the "Front Page" nav entry to be visually differentiated from the topic links beside it. `TopicNav.tsx`'s "Front Page" `<Link>` changed from `font-medium` (inheriting default ink color, same as topic links) to `font-semibold` plus `style={{ color: "var(--color-accent)" }}` — the masthead-red token `design-system/personalized-news-aggregator/MASTER.md` already documents as scoped for exactly this ("sparing use only — rank badges, active nav"), not a new ad-hoc color choice. Live-verified via screenshot before requesting review: "FRONT PAGE" renders in dark red/maroon, clearly distinct from the black topic links and the muted-gray inert active-topic text.
+
+One scoped qa/code-reviewer round (both agents, purely-visual change still gets the full pass per this file's no-exceptions rule): `code-reviewer` verified `--color-accent` is a real token (not a typo), computed the actual contrast ratio (~8.8:1 against the page background — clears WCAG AAA, better than `MASTER.md`'s own conservative "clears AA" claim), confirmed the doc comment's citation of `MASTER.md`'s scoping is accurate rather than fabricated, and confirmed the `style={{ color: "var(...)" }}` mechanism matches the file's own existing convention (the inert active-topic span two lines below already uses the identical pattern). `qa` confirmed via actual computed RGB values (not eyeballing) that Front Page now differs from topic links (`rgb(139,30,30)` vs `rgb(26,26,26)`, font-weight 600 vs 500) while every other nav element is byte-identical to before, click-navigation and hover-underline both still work, zero console errors. Both agents clean — no findings.
+
+96 vitest tests unchanged, `tsc`/`eslint` clean throughout. Not yet committed — sits on top of the rest of 5.3's uncommitted work.
+
+## 2026-08-07 (later still) — 5.3: unify TopicBand + TopicNavBox into TopicNav
+
+Merged the two topic-navigation components per `docs/(C) IMPLEMENTATION_PLAN_PHASE5.md`'s 5.3 section: new `src/components/newspaper/TopicNav.tsx` with an optional `activeTopic` prop — undefined reproduces the old `TopicBand`'s front-page flat centered list (no "Front Page" entry); set reproduces the old `TopicNavBox`'s topic-page role but restyled to the same flat/inline look instead of a dropdown, prepending a "Front Page" link and rendering the active topic as inert `<span aria-current="page">` text. `TopicBand.tsx`/`TopicNavBox.tsx` deleted. `TopicPage.tsx` restructured: the nav moved out of its old row beside the `<h1>` into its own full-width band above it, matching where `TopicBand` sat on the front page — sets up 5.4's single shared DOM position/height for sticky-offset math. Live-verified via Playwright screenshots before requesting review (flat nav on both page types, active-topic inert styling, back arrow still correctly positioned from 5.2).
+
+**Round 1** (qa + code-reviewer, zero prior context): `qa` passed 16/16 live checks across front page, topic-page cross-navigation, and history-date scoping. `code-reviewer` found one real gap outside this plan's original spec: the active-topic inert span only ever rendered from inside `topics.map`, so if the URL's topic isn't a member of the user's *current* preferences (reachable — `src/app/(paper)/topic/[slug]/page.tsx` and its history-date sibling never validate the two match, so a stale bookmark/link to a topic since removed via `/profile` hits this) the nav silently dropped any "you are here" indicator — a real regression from the old dropdown's trigger button, which always displayed the selected value regardless of list membership. Fixed with an unconditional block rendering the orphaned topic as the same inert span, guarded by `!topics.includes(activeTopic)` to avoid a duplicate on the normal (topic-is-a-preference) case. Live-verified the fix directly: visited `/topic/geopolitics` (not one of the test account's 4 onboarded topics) and confirmed it renders as the inert indicator right after "Front Page," with no duplicate.
+
+**Round 2** (both agents, fresh): `qa` 15/15 clean, including the specific duplicate-suppression check on a normal topic page. `code-reviewer` confirmed the fix's mutual-exclusivity logic correct by tracing both branches against the actual `Topic` string-literal-union type, found no structural issues — only a low-severity doc-comment clarity nit (the guard's reasoning was muddled across one run-on sentence), fixed directly per this file's convention for trivial non-blocking findings rather than spinning a third round.
+
+96 vitest tests unchanged, `tsc`/`eslint` clean throughout. Not yet committed — sits on top of 5.2's `3a2074f`. **Next:** 5.4 (sticky masthead + topic-nav band), per `docs/(C) IMPLEMENTATION_PLAN_PHASE5.md`.
+
 ## 2026-08-07 (later) — 5.2 follow-up: back arrow moved next to the hamburger
 
 Tarek reviewed the shipped 5.2 result and asked for the back arrow to move: instead of sitting alone on the header's far right (balanced by an invisible spacer to keep the title centered), it should sit immediately to the right of the hamburger, both grouped on the left.

@@ -8,9 +8,9 @@ import { PageTransitionInertBoundary } from "@/components/newspaper/PageTransiti
  * history pages) — hosts the masthead (title + sidebar hamburger) and the
  * page-flip transition (B8), which needs to persist across the actual
  * route change it's animating rather than being scoped to one page. Page-
- * specific navigation (TopicBand on the front page, TopicNavBox on a topic
- * page) is rendered by each page itself, not here, since it differs per
- * route and a shared layout has no per-child slot for it.
+ * specific navigation (TopicNav, rendered by FrontPage/TopicPage with or
+ * without an activeTopic) is rendered by each page itself, not here, since
+ * it differs per route and a shared layout has no per-child slot for it.
  */
 export default function PaperLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Card, Digest, Topic } from "@/types";
-import { TopicBand } from "@/components/newspaper/TopicBand";
+import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
@@ -55,7 +55,7 @@ function frontPageCardsOf(cards: Card[]): Card[] {
  * — per Tarek's call, this trigger lives here only (not on every page via
  * the masthead), matching how a real newspaper's daily edition works.
  * Replaces the generation half of the old (pre-4.4) Feed.tsx; the topic-tab
- * half is gone — topics are now real routes, navigated via TopicBand.
+ * half is gone — topics are now real routes, navigated via TopicNav.
  */
 export function FrontPage({
   initialDigest,
@@ -67,7 +67,7 @@ export function FrontPage({
   userTopics: Topic[];
   /** false for a past /history/[date] front page — no generation trigger for a day that's already over. */
   interactive?: boolean;
-  /** "/history/2026-08-01" when this is a past date's front page, so TopicBand's links stay scoped to that date. */
+  /** "/history/2026-08-01" when this is a past date's front page, so TopicNav's links stay scoped to that date. */
   basePath?: string;
 }) {
   const [cards, setCards] = useState<Card[] | null>(initialDigest?.cards ?? null);
@@ -169,7 +169,7 @@ export function FrontPage({
 
   return (
     <div className="flex flex-col">
-      <TopicBand topics={userTopics} basePath={basePath} />
+      <TopicNav topics={userTopics} basePath={basePath} />
 
       {interactive && (
         <div className="flex flex-col items-center gap-4 px-6 py-8 text-center md:px-10">

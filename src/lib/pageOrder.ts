@@ -3,8 +3,8 @@ import { topicToSlug } from "@/lib/topicSlug";
 
 /**
  * The canonical page sequence for the page-flip transition (B8) — front
- * page first, then the user's own topics in their TopicBand/dropdown
- * display order. Not the full TOPICS list: only pages actually reachable
+ * page first, then the user's own topics in their TopicNav display order.
+ * Not the full TOPICS list: only pages actually reachable
  * via the newspaper UI belong in the sequence a "jump through intervening
  * pages" count is measured against.
  */
