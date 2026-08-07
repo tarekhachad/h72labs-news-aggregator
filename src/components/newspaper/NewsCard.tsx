@@ -200,12 +200,34 @@ export function NewsCard({
     setFlipped((v) => !v);
   }
 
-  // Guarded on flipped: while showing sources (the back face), the card
-  // body isn't displaying story content, so a click there shouldn't also
-  // launch focus mode — that's a distinct interaction from Sources, per
-  // the design brief.
-  function handleOpen() {
-    if (flipped) return;
+  // Stops a keydown from bubbling to the card's own onKeyDown below, the
+  // keyboard equivalent of the e.stopPropagation() every interactive
+  // element's onClick already does. Without this, focusing e.g. the
+  // Sources button and pressing Enter/Space fires the *card's*
+  // handleOpenKeyDown first (native keydown bubbles before the browser
+  // synthesizes the button's own click), which used to just no-op while
+  // flipped but — now that it actively flips the card back — would also
+  // wrongly intercept Enter on a focused source link (blocking its
+  // navigation) or the Save button (opening focus mode instead of
+  // toggling the bookmark). Only Enter/Space are stopped, matching exactly
+  // what handleOpenKeyDown itself reacts to; every other key still bubbles
+  // normally.
+  function stopEnterSpacePropagation(e: React.KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+  }
+
+  // Guarded on flipped: while showing sources (the back face), a click on
+  // the card body flips it back to the front instead of launching focus
+  // mode — that's a distinct interaction from Sources, per the design
+  // brief. No double-toggle risk: handleFlip and the Back button/source
+  // links all call e.stopPropagation() (and, via stopEnterSpacePropagation
+  // above, its keyboard equivalent), so this only ever fires for an
+  // interaction with the back face's own non-interactive area.
+  function openOrFlipBack() {
+    if (flipped) {
+      setFlipped(false);
+      return;
+    }
     // Cleared synchronously here, not left to the fetch effect: on a
     // reopen-to-retry after a prior failure, the effect's own
     // setReportError(null) doesn't land until after this render commits,
@@ -216,12 +238,9 @@ export function NewsCard({
   }
 
   function handleOpenKeyDown(e: React.KeyboardEvent) {
-    if (flipped) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      setReportError(null);
-      setFocusedCardId(card.id);
-    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    openOrFlipBack();
   }
 
   function handleClose() {
@@ -242,7 +261,7 @@ export function NewsCard({
           layoutId={layoutId}
           role="button"
           tabIndex={0}
-          onClick={handleOpen}
+          onClick={openOrFlipBack}
           onKeyDown={handleOpenKeyDown}
           className="relative cursor-pointer"
           style={{ ...gridPosition, perspective: "1200px" }}
@@ -301,8 +320,9 @@ export function NewsCard({
                 <button
                   type="button"
                   onClick={handleBookmarkToggle}
+                  onKeyDown={stopEnterSpacePropagation}
                   disabled={bookmarkPending}
-                  className="cursor-pointer text-xs font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
+                  className="cursor-pointer text-xs font-medium underline transition-colors hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {/* key={bookmarked} forces a remount on every toggle so the
                       pop-in plays each time, not just on first mount. Gated
@@ -325,8 +345,9 @@ export function NewsCard({
                   ref={sourcesButtonRef}
                   type="button"
                   onClick={handleFlip}
+                  onKeyDown={stopEnterSpacePropagation}
                   aria-expanded={flipped}
-                  className="cursor-pointer text-xs font-medium underline"
+                  className="-mx-1.5 -my-0.5 cursor-pointer rounded px-1.5 py-0.5 text-xs font-medium underline transition-colors hover:bg-[var(--color-muted)]"
                 >
                   {`Sources (${card.sources.length})`}
                 </button>
@@ -353,6 +374,7 @@ export function NewsCard({
                   ref={backButtonRef}
                   type="button"
                   onClick={handleFlip}
+                  onKeyDown={stopEnterSpacePropagation}
                   className="cursor-pointer text-xs font-medium underline"
                 >
                   Back
@@ -368,7 +390,8 @@ export function NewsCard({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="underline"
+                      onKeyDown={stopEnterSpacePropagation}
+                      className="underline underline-offset-2 transition-all hover:text-[var(--color-accent)] hover:underline-offset-4"
                     >
                       {s.title}
                     </a>

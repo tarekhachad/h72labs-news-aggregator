@@ -19,6 +19,13 @@ export const ZOOM_IN_MS = 300;
 // machine back to idle instead of leaving the full-viewport overlay stuck
 // up forever with no escape hatch.
 const STALL_TIMEOUT_MS = 8000;
+// Kill switch for the whole page-flip transition (Phase 5.2, item 6).
+// Reuses the exact reduced-motion bypass path below rather than a separate
+// code path, so every other file (PageTransition.tsx,
+// PageTransitionInertBoundary.tsx) — which derive everything from `stage`
+// — auto-no-ops once `stage` simply never leaves "idle". All state-machine
+// and animation code stays intact and dead, kept for later.
+const FLIP_ENABLED = false;
 
 const PageTransitionContext = createContext<{
   stage: TransitionStage;
@@ -79,7 +86,7 @@ export function PageTransitionProvider({ children }: { children: React.ReactNode
     if (stageRef.current !== "idle") return; // A transition is already in flight — ignore a second click.
     if (href === pathnameRef.current) return; // Already there.
 
-    if (prefersReducedMotionRef.current) {
+    if (prefersReducedMotionRef.current || !FLIP_ENABLED) {
       routerRef.current.push(href);
       return;
     }
