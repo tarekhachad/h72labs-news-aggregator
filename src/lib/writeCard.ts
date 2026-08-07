@@ -6,11 +6,26 @@ import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
 
 const client = new Anthropic();
 
-const CardSummary = z.object({
+// Exported so writeCard.test.ts can assert against the real schema
+// directly (CardSummary.safeParse(...)) rather than only through the
+// fully-mocked Anthropic client, which never actually exercises it — the
+// regression this schema's shape guards against (a per-string
+// `.trim().min(1)` throwing out of client.messages.parse() with no
+// retry, see the comment in generateSummary() below) can only be proven
+// closed by parsing against this exact object.
+export const CardSummary = z.object({
+  title: z.string(),
   shortSummary: z.string(),
+  labels: z.array(z.string()).min(1).max(2),
 });
 
-const SYSTEM_PROMPT = `You write the short, always-visible summary for one card in a daily news briefing — the kind of briefing a head of state's staff would prepare. Given several source articles about the same story, write a single tight paragraph (2-4 sentences) capturing what happened and why it matters. Synthesize across sources; don't just paraphrase one. No headline, no bullet points, no preamble like "This story is about" — just the briefing text itself. Always write the summary in English, even when the source articles are in another language.`;
+const SYSTEM_PROMPT = `You write the content for one card in a daily news briefing — the kind of briefing a head of state's staff would prepare. Given several source articles about the same story, produce three fields:
+
+- title: a short headline in Title Case (capitalize every major word; lowercase short articles/prepositions/conjunctions like "a," "the," "in," "of," "and" unless first or last word — e.g. "Fed Raises Rates to Curb Inflation") — 5-8 words, stay within this range, do not exceed 8 words; no ending punctuation. Name this specific story — more specific than the topic name alone, not a generic label.
+- shortSummary: a single tight paragraph (2-4 sentences) capturing what happened and why it matters. Synthesize across sources; don't just paraphrase one. No headline, no bullet points, no preamble like "This story is about" — just the briefing text itself.
+- labels: 1-2 short free-form tags (1-3 words each) for this story's specific angle — a company, organization, person, or subtopic a reader could use to scan at a glance. More specific than the topic name; not a repeat of it.
+
+Always write everything in English, even when the source articles are in another language.`;
 
 function sourceTextFor(cluster: Cluster): string {
   return cluster.articles
@@ -37,8 +52,31 @@ async function generateSummary(cluster: Cluster) {
     output_config: { format: zodOutputFormat(CardSummary) },
   });
 
+  // Trimmed/filtered defensively here at the JS level, not via a zod
+  // `.min(1)` constraint on the schema fed to zodOutputFormat — a schema
+  // validation failure there throws out of client.messages.parse()
+  // entirely, before generateWithRetryOnAmbiguousTruncation's retry-once
+  // logic below ever gets a chance to run, hard-failing (and dropping)
+  // the whole card over what's otherwise a recoverable anomaly (round-2
+  // code review caught this: it's inconsistent with how every other
+  // "content looks a little off" case in this file gets one retry before
+  // giving up). A degenerate whitespace-only title/label is instead just
+  // trimmed down to "" and handled the same way an entirely-missing one
+  // already is: title's "" falls back to no title row (NewsCard.tsx/
+  // FocusOverlay.tsx both already guard on `card.title &&`), and a
+  // whitespace-only label is filtered out of the array rather than
+  // rendering an empty chip.
+  const labels = (response.parsed_output?.labels ?? [])
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
   return {
+    // `text` is the field generateWithRetryOnAmbiguousTruncation's
+    // completeness check runs against — deliberately shortSummary, not
+    // title (unpunctuated by design, would never pass looksComplete()).
     text: response.parsed_output?.shortSummary ?? "",
+    title: response.parsed_output?.title?.trim() ?? "",
+    labels,
     stopReason: response.stop_reason,
   };
 }
@@ -51,7 +89,7 @@ async function generateSummary(cluster: Cluster) {
  * not on the normal path.
  */
 export async function writeCard(cluster: Cluster, severity: number): Promise<Card> {
-  const shortSummary = await generateWithRetryOnAmbiguousTruncation(
+  const { text: shortSummary, title, labels } = await generateWithRetryOnAmbiguousTruncation(
     () => generateSummary(cluster),
     "writeCard"
   );
@@ -68,7 +106,9 @@ export async function writeCard(cluster: Cluster, severity: number): Promise<Car
   return {
     id: crypto.randomUUID(),
     topic: cluster.topic,
+    title,
     shortSummary,
+    labels,
     expandedReport: null,
     sources: cluster.articles.map((a) => ({
       title: a.title,

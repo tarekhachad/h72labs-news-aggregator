@@ -14,6 +14,8 @@ export interface CardRow {
   created_at: string;
   severity: number | null;
   front_page_rank: number | null;
+  title: string | null;
+  labels: string[] | null;
 }
 
 /** Shared DB-row -> Card mapper — also used by bookmarks.ts's getSavedCards
@@ -22,7 +24,12 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
   return {
     id: row.id,
     topic: row.topic as Topic,
+    // Same defensive-fallback pattern as severity below — a pre-5.5 row
+    // has no title/labels, and Card's fields aren't nullable, so a legacy
+    // row renders with an empty title/no chips rather than a type error.
+    title: row.title ?? "",
     shortSummary: row.short_summary,
+    labels: row.labels ?? [],
     expandedReport: row.expanded_report,
     sources: row.sources,
     publishedAt: row.published_at,
@@ -69,7 +76,7 @@ export async function getDigestForDate(
     supabase
       .from("cards")
       .select(
-        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank"
+        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels"
       )
       .eq("digest_id", digestRow.id)
       // Secondary key on id: published_at ties are common (minute-granularity
@@ -132,7 +139,7 @@ export async function getCardsForTopicOnDate(
     supabase
       .from("cards")
       .select(
-        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank"
+        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels"
       )
       .eq("digest_id", digestRow.id)
       .eq("topic", topic)
@@ -298,7 +305,9 @@ export async function saveGeneratedCards(
     p_cards: cards.map((card) => ({
       id: card.id,
       topic: card.topic,
+      title: card.title,
       shortSummary: card.shortSummary,
+      labels: card.labels,
       sources: card.sources,
       publishedAt: card.publishedAt,
       severity: card.severity,

@@ -12,6 +12,8 @@ function makeRow(overrides: Partial<CardRow> = {}): CardRow {
     created_at: "2026-08-01T00:05:00Z",
     severity: null,
     front_page_rank: null,
+    title: null,
+    labels: null,
     ...overrides,
   };
 }
@@ -44,5 +46,27 @@ describe("rowToCard: severity/frontPageRank mapping", () => {
     // `||` would. Documents the intentional operator choice.
     const card = rowToCard(makeRow({ severity: 0 as unknown as number }), new Set());
     expect(card.severity).toBe(0);
+  });
+});
+
+describe("rowToCard: title/labels mapping (Phase 5.5)", () => {
+  it("defaults a null title (pre-5.5 row) to an empty string", () => {
+    const card = rowToCard(makeRow({ title: null }), new Set());
+    expect(card.title).toBe("");
+  });
+
+  it("passes through a real title value unchanged", () => {
+    const card = rowToCard(makeRow({ title: "A real headline" }), new Set());
+    expect(card.title).toBe("A real headline");
+  });
+
+  it("defaults a null labels (pre-5.5 row) to an empty array", () => {
+    const card = rowToCard(makeRow({ labels: null }), new Set());
+    expect(card.labels).toEqual([]);
+  });
+
+  it("passes through real labels unchanged", () => {
+    const card = rowToCard(makeRow({ labels: ["Funding", "Startups"] }), new Set());
+    expect(card.labels).toEqual(["Funding", "Startups"]);
   });
 });

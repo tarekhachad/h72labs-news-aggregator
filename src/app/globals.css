@@ -56,6 +56,28 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
+  /* Phase 5.5 label-chip palette — 6 muted, desaturated tints (paired
+     background + matching darker foreground text), deliberately NOT
+     bright/saturated per MASTER.md's own anti-pattern rule ("bright/
+     saturated accent colors beyond the one restrained masthead red —
+     this isn't a generic SaaS palette"). None reuse --color-accent's hue
+     (#8b1e1e) — that token stays reserved for its own documented "rare
+     emphasis" scope (badges/rules/active-nav), not diluted into a
+     6-color rotation. src/lib/labelColor.ts hashes a label string to one
+     of these 6 pairs deterministically. */
+  --label-bg-1: #e7edf3; /* slate blue */
+  --label-fg-1: #3a5670;
+  --label-bg-2: #eaf0e2; /* moss green */
+  --label-fg-2: #4f6034;
+  --label-bg-3: #f0e6f0; /* plum */
+  --label-fg-3: #5f3e69;
+  --label-bg-4: #f5eeda; /* ochre */
+  --label-fg-4: #7a5a1e;
+  --label-bg-5: #e1eeec; /* teal */
+  --label-fg-5: #2c665a;
+  --label-bg-6: #f5e8de; /* clay — lighter/more orange than --color-accent, not a red */
+  --label-fg-6: #8a5636;
+
   /* Masthead.tsx's real rendered height (measured live via Playwright at
      1024px and 1280px viewports — both above the md breakpoint, this app's
      supported desktop/tablet-landscape range — not guessed from the

@@ -61,6 +61,10 @@ One row per story card — the core unit of content. A single `digest` can (and 
 | `sources` | The source articles this card was synthesized from — `{title, url, source, snippet}[]`. `snippet` (not just title/url/source) is stored so the lazy expanded-report generation, which can run days after the original cluster is gone from memory, still has real source text to work from without re-fetching source URLs |
 | `published_at` | Freshest `publishedAt` across the cluster's source articles at generation time — what the UI's "2h ago" is relative to. Kept separate from `created_at` (when the row was written), which can differ once a card is added to a digest hours after its underlying news broke |
 | `created_at` | When this card was generated |
+| `severity` | 1-5, graded by triage relative to this card's own topic's typical-day baseline — drives topic-page box sizing (Phase 4.4 Track A). Nullable; a pre-Track-A row has none |
+| `front_page_rank` | 1-6 if this card is one of today's front-page picks, null otherwise. Reassigned across a day's generation runs by `rank.ts`'s cross-topic ranking pass, applied via `persist_generated_cards()` — can be cleared back to null if a later run's bigger stories bump it out (Phase 4.4 Track A) |
+| `title` | Short headline (5-8 words), written by the same Sonnet call as `short_summary` (Phase 5.5). Nullable; a pre-5.5 row has none, and the app renders that as no title row rather than a migration backfill |
+| `labels` | 1-2 free-form, LLM-generated tags for the story's specific angle — `string[]` stored as `jsonb`, matching `sources`' precedent. Color-coded client-side via a deterministic hash (`src/lib/labelColor.ts`), not a stored color (Phase 5.5). Defaults to `'[]'::jsonb`, never null |
 
 ## `bookmarks`
 

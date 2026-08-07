@@ -88,7 +88,9 @@ const FAKE_CLUSTERS: Cluster[] = [
 const NEW_CARD: Card = {
   id: "card-new-1",
   topic: "Tech/AI",
+  title: "New card headline",
   shortSummary: "new card summary",
+  labels: ["Tag"],
   expandedReport: null,
   sources: [],
   publishedAt: "2026-07-31T12:00:00Z",

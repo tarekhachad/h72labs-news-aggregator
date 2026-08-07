@@ -88,7 +88,11 @@ export interface Cluster {
 export interface Card {
   id: string;
   topic: Topic;
+  /** Short headline (5-8 words), written by writeCard.ts alongside shortSummary. Empty string for pre-5.5 rows (no migration backfill). */
+  title: string;
   shortSummary: string;
+  /** 1-2 free-form, LLM-generated tags — a more specific angle on the story than topic alone. Empty array for pre-5.5 rows. */
+  labels: string[];
   /**
    * Null until the first time a user expands the card; generated once by
    * generateExpandedReport() and cached on the row from then on. Includes

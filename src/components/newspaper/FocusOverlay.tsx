@@ -95,7 +95,10 @@ export function FocusOverlay({
         }}
         role="dialog"
         aria-modal="true"
-        aria-label={card.shortSummary}
+        // card.title (Phase 5.5) — a real headline, not shortSummary (a full
+        // paragraph) doing double duty as one. Falls back to shortSummary
+        // only for a pre-5.5 card, whose title is "" (rowToCard's fallback).
+        aria-label={card.title || card.shortSummary}
       >
         <div className="flex items-start justify-between gap-4">
           <span
@@ -116,9 +119,18 @@ export function FocusOverlay({
           </button>
         </div>
 
-        <h2 className="font-heading mt-4 text-3xl font-bold">{card.shortSummary}</h2>
+        {/* card.title (Phase 5.5), falling back to shortSummary only for a
+            pre-5.5 card (title === "") — previously this always rendered
+            the full paragraph as the headline, since no real title field
+            existed yet. */}
+        <h2 className="font-heading mt-4 text-3xl font-bold">{card.title || card.shortSummary}</h2>
 
         <div className="mt-4 flex-1 overflow-y-auto">
+          {card.title && (
+            <p className="mb-4 text-base leading-7" style={{ color: "var(--color-muted-foreground)" }}>
+              {card.shortSummary}
+            </p>
+          )}
           {loadingReport && (
             <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
               Loading the full report…

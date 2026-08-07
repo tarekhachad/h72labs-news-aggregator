@@ -10,22 +10,35 @@ import type { GridPosition } from "@/lib/packGrid";
 import { cn } from "@/lib/utils";
 import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
 import { useFocusMode } from "@/components/newspaper/FocusModeContext";
+import { labelColor } from "@/lib/labelColor";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — each tier renders it once, sized and clamped so the
-// meta row above and the Save/Sources row below always have guaranteed
-// room within the tier's fixed grid-cell height (verified live, not just
-// estimated — see the B5 session log entry on the overflow bug this
-// replaced). medium's value is interim, roughly doubled from its
-// pre-5.1-follow-up value since it went from a 1-row (180px) to a 2-row
-// (360px) box — flagged as rough, live-verify-and-adjust; small stays at
-// its original 1-row values (it's still a 1-row/180px box). The planned
-// "dynamic summary-fill" work (ROADMAP.md 5.6) replaces all of this with
-// real measurement rather than fixed clamp values anyway.
+// meta row, title, label chips, and the Save/Sources row all always have
+// guaranteed room within the tier's fixed grid-cell height (verified
+// live, not just estimated — see the B5 session log entry on the
+// overflow bug this replaced). Phase 5.5 (card title + label chips)
+// reduced every tier's clamp from its pre-5.5 value to make room for the
+// two new rows — interim estimates, live-verify-and-adjust, same as the
+// 5.1-follow-up's own "flagged as rough" precedent for this table. The
+// planned "dynamic summary-fill" work (ROADMAP.md 5.6) replaces all of
+// this with real measurement rather than fixed clamp values anyway —
+// 5.6 explicitly depends on 5.5's title/chips layout landing first so it
+// measures against the final shape, not this interim one.
 const TEXT_CLASS: Record<GridTier, string> = {
-  hero: "text-2xl leading-snug line-clamp-6",
-  medium: "text-lg leading-snug line-clamp-6",
-  small: "text-sm leading-snug line-clamp-2",
+  hero: "text-2xl leading-snug line-clamp-4",
+  medium: "text-lg leading-snug line-clamp-4",
+  small: "text-sm leading-snug line-clamp-1",
+};
+
+// Title sizing/clamping mirrors TEXT_CLASS's tier philosophy — smaller
+// tiers get a smaller font and less room to wrap, matching how much
+// space each tier's box actually has for a second content row above the
+// summary.
+const TITLE_CLASS: Record<GridTier, string> = {
+  hero: "font-heading text-xl font-bold leading-tight line-clamp-2",
+  medium: "font-heading text-base font-bold leading-tight line-clamp-2",
+  small: "font-heading text-sm font-bold leading-tight line-clamp-1",
 };
 
 const CARD_FACE_STYLE = {
@@ -313,6 +326,27 @@ export function NewsCard({
                   {formatRelativeTime(card.publishedAt)}
                 </span>
               </div>
+
+              {/* Empty for a pre-5.5 row (rowToCard's ?? "" fallback) — no
+                  title to render rather than an empty, oddly-spaced line. */}
+              {card.title && <p className={cn(TITLE_CLASS[tier], "mt-2")}>{card.title}</p>}
+
+              {card.labels.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {card.labels.map((label, i) => {
+                    const { background, color } = labelColor(label);
+                    return (
+                      <span
+                        key={`${label}-${i}`}
+                        className="w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{ background, color }}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
 
               <p className={cn(TEXT_CLASS[tier], "mt-2 font-semibold")}>{card.shortSummary}</p>
 

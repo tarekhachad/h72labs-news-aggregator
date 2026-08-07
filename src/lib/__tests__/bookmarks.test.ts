@@ -18,7 +18,9 @@ describe("getSavedCards", () => {
         cards: {
           id: "card-1",
           topic: "Tech/AI",
+          title: "A real headline",
           short_summary: "summary",
+          labels: ["Funding", "Startups"],
           expanded_report: null,
           sources: [],
           published_at: "2026-08-01T12:00:00Z",
@@ -39,20 +41,25 @@ describe("getSavedCards", () => {
     // the actual select string is what catches a regression, same as
     // digests.dedup.test.ts does for getTodaysCardSummaries.
     expect(select).toHaveBeenCalledWith(
-      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, digests(date))"
+      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, digests(date))"
     );
 
     expect(result).toHaveLength(1);
     expect(result[0].severity).toBe(5);
     expect(result[0].frontPageRank).toBe(2);
+    expect(result[0].title).toBe("A real headline");
+    expect(result[0].labels).toEqual(["Funding", "Startups"]);
   });
 
-  it("defaults a null severity to 1 and leaves a null frontPageRank as null (pre-migration row shape)", async () => {
+  it("defaults a null severity to 1, leaves a null frontPageRank as null, and defaults missing title/labels (pre-migration row shape)", async () => {
     const rows = [
       {
         cards: {
           id: "card-1",
           topic: "Tech/AI",
+          // No title/labels keys at all — a genuinely pre-5.5 row, not
+          // just a row with those columns set to null, since a real
+          // pre-migration row predates the columns existing.
           short_summary: "summary",
           expanded_report: null,
           sources: [],
@@ -71,5 +78,7 @@ describe("getSavedCards", () => {
 
     expect(result[0].severity).toBe(1);
     expect(result[0].frontPageRank).toBeNull();
+    expect(result[0].title).toBe("");
+    expect(result[0].labels).toEqual([]);
   });
 });

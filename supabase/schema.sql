@@ -147,7 +147,21 @@ create table public.cards (
   -- Reassigned across a day's generation runs by rank.ts, applied via
   -- persist_generated_cards() below (not just set once) — a card's rank
   -- can be cleared back to null if a later run's bigger stories bump it.
-  front_page_rank smallint
+  front_page_rank smallint,
+  -- Phase 5.5: a short headline (writeCard.ts's LLM call, same Sonnet
+  -- request as short_summary — no new API call). Nullable, no CHECK
+  -- constraint, same permissive-DB-layer pattern as severity above — a
+  -- pre-5.5 row simply predates this column existing.
+  title text,
+  -- Free-form LLM-generated tags (1-2 per card), jsonb rather than a
+  -- native text[] or a separate table — matches the existing `sources`
+  -- column's precedent and this project's stated preference for
+  -- app-layer flexibility over DB constraints. Defaults to an empty
+  -- jsonb array (not null) so a pre-5.5 row and a post-5.5 row both
+  -- satisfy `labels: string[]` at the app layer without a separate
+  -- null-vs-empty-array branch — rowToCard's `row.labels ?? []` fallback
+  -- is defensive only, for rows written before this default existed.
+  labels jsonb not null default '[]'::jsonb
 );
 
 -- Postgres doesn't auto-index FK columns — this is the hottest new read
@@ -170,6 +184,17 @@ create policy "update own cards"
   on public.cards for update
   using (digest_id in (select id from public.digests where user_id = auth.uid()))
   with check (digest_id in (select id from public.digests where user_id = auth.uid()));
+
+-- Phase 5.5 migration — MUST be run by hand as its own statement.
+-- Editing the `create table public.cards (...)` block above to add these
+-- columns is documentation only and has NO effect on an already-existing
+-- live table (learned the hard way during Phase 3 — see the project's
+-- own memory notes on this). `create table` never re-runs against a table
+-- that already exists, so only this explicit `alter table` actually
+-- changes anything in Supabase. Safe to run more than once thanks to
+-- `if not exists`.
+alter table public.cards add column if not exists title text;
+alter table public.cards add column if not exists labels jsonb not null default '[]'::jsonb;
 
 create table public.bookmarks (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -222,6 +247,14 @@ create policy "delete own bookmarks"
 -- this signature change would otherwise leave both overloads live
 -- simultaneously. Safe to leave in permanently: a no-op once only the
 -- 4-arg version exists.
+--
+-- Phase 5.5 note: the function's own parameter signature is unchanged
+-- here (still 4 args) — only what's extracted from each p_cards element
+-- changed (title/labels added below), so `create or replace` genuinely
+-- replaces the existing function body in place this time. The overload
+-- gotcha above only bites on a signature change; double-checked this
+-- isn't one before assuming the earlier drop-and-recreate isn't needed
+-- again.
 drop function if exists public.persist_generated_cards(uuid, jsonb, timestamptz);
 
 create or replace function public.persist_generated_cards(
@@ -239,7 +272,7 @@ begin
   -- as digests.last_generated_at below, byte-for-byte — that's what the
   -- feed's run-divider relies on to group a run's cards, rather than
   -- trusting two separate now() calls to agree.
-  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank)
+  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank, title, labels)
   select
     (c->>'id')::uuid,
     p_digest_id,
@@ -249,7 +282,14 @@ begin
     (c->>'publishedAt')::timestamptz,
     p_generated_at,
     (c->>'severity')::smallint,
-    (c->>'frontPageRank')::smallint
+    (c->>'frontPageRank')::smallint,
+    c->>'title',
+    -- coalesce against the column's own default: p_cards is built from
+    -- src/lib/digests.ts's saveGeneratedCards, which always sends a real
+    -- (possibly empty) labels array today — this guards only against a
+    -- future caller that omits the key entirely, so a missing `labels`
+    -- key can't insert a literal JSON null into a `not null` column.
+    coalesce(c->'labels', '[]'::jsonb)
   from jsonb_array_elements(p_cards) as c;
 
   -- rank.ts's cross-topic front-page ranking pass, applied to cards already

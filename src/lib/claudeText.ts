@@ -26,13 +26,25 @@ export function looksComplete(text: string): boolean {
  *   "end_turn" alone can't distinguish a one-off bad generation from
  *   content that's actually fine, so retry once before giving up.
  *
+ * Generic over `T` (any shape extending GenerationResult), not hardcoded
+ * to `{text, stopReason}`: returns the WHOLE winning attempt's result
+ * object, not just its `.text`. This matters as of writeCard.ts's
+ * title/labels fields (Phase 5.5) — they come from the exact same
+ * structured response as shortSummary, so if a retry fires, the retry's
+ * title/labels have to travel with its text, not get silently discarded
+ * in favor of the initial attempt's. Truncation-completeness is still
+ * judged purely on `.text` (shortSummary/report prose) regardless of
+ * what else `T` carries — title is deliberately unpunctuated per its own
+ * prompt instruction, so it would never pass `looksComplete()` and isn't
+ * meant to be checked by it.
+ *
  * `label` is used only in error/warning messages, to identify which
  * generation (summary vs. expanded report) failed.
  */
-export async function generateWithRetryOnAmbiguousTruncation(
-  generate: () => Promise<GenerationResult>,
+export async function generateWithRetryOnAmbiguousTruncation<T extends GenerationResult>(
+  generate: () => Promise<T>,
   label: string
-): Promise<string> {
+): Promise<T> {
   const initial = await generate();
   const text = initial.text;
   const stopReason = initial.stopReason;
@@ -42,7 +54,7 @@ export async function generateWithRetryOnAmbiguousTruncation(
   }
 
   if (looksComplete(text)) {
-    return text;
+    return initial;
   }
 
   if (stopReason !== "end_turn") {
@@ -60,5 +72,5 @@ export async function generateWithRetryOnAmbiguousTruncation(
       `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopReason}): "${retry.text}"`
     );
   }
-  return retry.text;
+  return retry;
 }

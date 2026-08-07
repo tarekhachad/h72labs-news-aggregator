@@ -53,8 +53,9 @@ async function generateReport(card: Pick<Card, "topic" | "shortSummary" | "sourc
 export async function generateExpandedReport(
   card: Pick<Card, "topic" | "shortSummary" | "sources">
 ): Promise<string> {
-  return generateWithRetryOnAmbiguousTruncation(
+  const result = await generateWithRetryOnAmbiguousTruncation(
     () => generateReport(card),
     "generateExpandedReport"
   );
+  return result.text;
 }
