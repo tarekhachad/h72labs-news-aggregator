@@ -65,7 +65,9 @@ Replaces `TopicNavBox`'s dropdown-menu topic nav (topic pages) with the same fla
 
 Must land before 5.4. Verify nothing else imports `TopicNavBox`'s shadcn `DropdownMenu`/`Button`/`ChevronDown`/`Newspaper` icon usage before removing those imports.
 
-### 5.4 — Sticky masthead + topic-nav band
+### 5.4 — Sticky masthead + topic-nav band — **DONE (2026-08-07)**
+
+**Status: shipped, 1 qa/code-reviewer round, uncommitted.** Built exactly as spec'd below — plain `position: sticky`, no `layout.tsx` restructuring, real measured `--masthead-height` (73px, via Playwright at 1024px/1280px). Live-verified zero-pixel gap between bands and correct overlay layering (sidebar Sheet, focus-mode backdrop) before requesting review. Both agents clean — `code-reviewer`'s three notes (no automated height-drift detection, implicit ≥768px assumption, browser-zoom edge case) judged acceptable for a static CSS constant on this app's desktop-only v1 scope, not fixed. 96 vitest tests unchanged, `tsc`/`eslint` clean. Full detail in `notes-logs/session-log.md`'s 2026-08-07 entry.
 
 **Files:** `src/components/newspaper/Masthead.tsx`, `src/components/newspaper/TopicNav.tsx` (from 5.3), `src/app/globals.css`.
 

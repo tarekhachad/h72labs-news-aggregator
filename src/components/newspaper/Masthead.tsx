@@ -64,8 +64,15 @@ export function Masthead() {
       // spacer on the right the way the old two-item layout did). With
       // three 1fr columns, the middle column is always the header's exact
       // center, independent of what either side contains.
-      className="grid grid-cols-3 items-center border-b px-6 py-4 md:px-10"
-      style={{ borderColor: "var(--color-rule)" }}
+      // sticky (not fixed): needs no manual height/offset bookkeeping for
+      // the content below it, and z-20 keeps it above TopicNav's z-10 band
+      // — both still well under the portaled overlays (Backdrop z-40,
+      // FocusOverlay z-50, PageTransition z-[100]), so focus-mode/page-flip
+      // still layer correctly above both sticky bands. Needs an explicit
+      // opaque background — without one, page content would show through
+      // as it scrolls underneath instead of being occluded.
+      className="sticky top-0 z-20 grid grid-cols-3 items-center border-b px-6 py-4 md:px-10"
+      style={{ borderColor: "var(--color-rule)", background: "var(--color-background)" }}
     >
       <div className="flex items-center justify-self-start">
         <Sidebar />

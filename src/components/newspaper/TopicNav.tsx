@@ -45,8 +45,20 @@ export function TopicNav({
 
   return (
     <nav
-      className="flex flex-wrap justify-center gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10"
-      style={{ borderColor: "var(--color-border)" }}
+      // Sticks directly below Masthead, which is also sticky (5.4) —
+      // `top: var(--masthead-height)` (Masthead's real measured height,
+      // single source of truth in globals.css) is what lets the two bands
+      // stack flush with no gap or overlap. z-10, one below Masthead's
+      // z-20, so Masthead's own border/background always wins where the
+      // two would otherwise fight for the same pixels. Needs its own
+      // explicit opaque background for the same reason Masthead does —
+      // page content scrolling underneath would otherwise show through.
+      className="sticky z-10 flex flex-wrap justify-center gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10"
+      style={{
+        top: "var(--masthead-height)",
+        borderColor: "var(--color-border)",
+        background: "var(--color-background)",
+      }}
       aria-label="Topics"
     >
       {activeTopic !== undefined && (
