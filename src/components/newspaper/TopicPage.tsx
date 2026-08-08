@@ -2,9 +2,10 @@ import type { Card, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
+import { RunDivider } from "@/components/newspaper/RunDivider";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForSeverity } from "@/lib/gridTiers";
-import { packGrid } from "@/lib/packGrid";
+import { packGridWithRunDividers } from "@/lib/packGrid";
 
 // Severity descending (box size), tiebreak publishedAt desc + id — matches
 // the front-page/topic-page ordering convention documented in
@@ -38,8 +39,8 @@ export function TopicPage({
   basePath?: string;
 }) {
   const ordered = orderBySeverity(cards);
-  const gridPositions = packGrid(
-    ordered.map((card) => ({ id: card.id, tier: tierForSeverity(card.severity) }))
+  const { gridPositions, dividers } = packGridWithRunDividers(
+    ordered.map((card) => ({ id: card.id, tier: tierForSeverity(card.severity), generatedAt: card.generatedAt }))
   );
 
   return (
@@ -63,6 +64,16 @@ export function TopicPage({
                   tier={tierForSeverity(card.severity)}
                   gridPosition={gridPositions.get(card.id)}
                   showTopicBadge={false}
+                />
+              ))}
+              {dividers.map((d) => (
+                // Keyed on gridRow, not generatedAt — see FrontPage.tsx's
+                // identical comment: interleaved runs can share a
+                // generatedAt across more than one divider, gridRow can't.
+                <RunDivider
+                  key={d.gridPosition.gridRow}
+                  generatedAt={d.generatedAt}
+                  gridPosition={d.gridPosition}
                 />
               ))}
             </PageGrid>

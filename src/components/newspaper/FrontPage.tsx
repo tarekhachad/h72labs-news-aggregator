@@ -6,9 +6,10 @@ import type { Card, Digest, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
+import { RunDivider } from "@/components/newspaper/RunDivider";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForFrontPageRank } from "@/lib/gridTiers";
-import { packGrid } from "@/lib/packGrid";
+import { packGridWithRunDividers } from "@/lib/packGrid";
 import { Button } from "@/components/ui/button";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
@@ -160,10 +161,11 @@ export function FrontPage({
   const stageIndex = stageEvent ? STAGE_ORDER.indexOf(stageEvent.stage) : -1;
   const progressPercent = stageIndex >= 0 ? (stageIndex / (STAGE_ORDER.length - 1)) * 100 : 0;
   const frontPageCards = cards ? frontPageCardsOf(cards) : [];
-  const gridPositions = packGrid(
+  const { gridPositions, dividers } = packGridWithRunDividers(
     frontPageCards.map((card) => ({
       id: card.id,
       tier: tierForFrontPageRank(card.frontPageRank as number),
+      generatedAt: card.generatedAt,
     }))
   );
 
@@ -232,6 +234,19 @@ export function FrontPage({
                   // arrived" animation for content that's already there.
                   isNew={recentlyAddedIds.has(card.id)}
                   entranceDelay={i * 0.04}
+                />
+              ))}
+              {dividers.map((d) => (
+                // Keyed on gridRow, not generatedAt: interleaved runs (a
+                // later run's card dethroning an earlier one's rank, see
+                // packGridWithRunDividers's own doc comment) can produce
+                // more than one divider for the *same* run's generatedAt —
+                // gridRow is unique per divider by construction (each one
+                // reserves its own exclusive row), generatedAt isn't.
+                <RunDivider
+                  key={d.gridPosition.gridRow}
+                  generatedAt={d.generatedAt}
+                  gridPosition={d.gridPosition}
                 />
               ))}
             </PageGrid>

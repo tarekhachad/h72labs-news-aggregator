@@ -44,9 +44,13 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
 
 // The digest "date" is a UTC calendar day, not the visiting user's local
 // day — a deliberate v1 simplification (this app has no per-user timezone
-// setting yet). A user near a day boundary may see "today" roll over a few
-// hours off from their own midnight; acceptable for a personal reader used
-// by Tarek and a handful of friends, revisit if it becomes a real complaint.
+// setting yet). Confirmed a real, recurring complaint (not just a
+// theoretical edge case) 2026-08-07: a user well west of UTC sees "today"
+// roll over several hours before their own local midnight, silently
+// reclassifying that day's digest as history. Deferred, not fixed —
+// see docs/(C) ROADMAP.md's "Explicitly deferred" section for what a real
+// fix needs (this function is duplicated in
+// src/app/(paper)/topic/[slug]/page.tsx too — both call sites would need it).
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { packGrid, GRID_COLUMNS, type GridItemInput } from "@/lib/packGrid";
+import { packGrid, packGridWithRunDividers, GRID_COLUMNS, type GridItemInput } from "@/lib/packGrid";
 import { TIER_DIMENSIONS, type GridTier } from "@/lib/gridTiers";
 
 function parseSpan(value: string): { start: number; span: number } {
@@ -271,5 +271,190 @@ describe("packGrid", () => {
       const col = parseSpan(positions.get(item.id)!.gridColumn);
       expect(col.start + col.span - 1).toBeLessThanOrEqual(GRID_COLUMNS);
     }
+  });
+
+  describe("breakBefore (5.7 run dividers)", () => {
+    it("reserves one extra row of separation when a mid-tier item sets breakBefore", () => {
+      // Four mediums (colSpan 3 each) already pack as two pairs sharing two
+      // adjacent bands with zero gap between them (see the "realistic full
+      // front page" test above). Marking breakBefore on card-2 — the first
+      // card of the second pair, which would otherwise sit immediately
+      // after the first pair's band — must open up exactly one extra
+      // reserved row above it for the divider, on top of that existing
+      // band boundary.
+      const input: GridItemInput[] = [
+        { id: "card-0", tier: "medium" },
+        { id: "card-1", tier: "medium" },
+        { id: "card-2", tier: "medium", breakBefore: true },
+        { id: "card-3", tier: "medium" },
+      ];
+      const withoutBreak = packGrid(input.map((it) => ({ id: it.id, tier: it.tier })));
+      const withBreak = packGrid(input);
+
+      // Baseline (no break): the two pairs are adjacent bands, no gap.
+      const baselineRow01 = rowStart(withoutBreak, "card-0");
+      const baselineRow23 = rowStart(withoutBreak, "card-2");
+      expect(baselineRow23).toBe(baselineRow01 + TIER_DIMENSIONS.medium.rowSpan);
+
+      // With the break: card-0/card-1 are one band, card-2/card-3 a second,
+      // now separated by one *additional* reserved row (the divider's row)
+      // beyond the baseline's own band boundary.
+      const row01 = rowStart(withBreak, "card-0");
+      const row23 = rowStart(withBreak, "card-2");
+      expect(rowStart(withBreak, "card-1")).toBe(row01);
+      expect(rowStart(withBreak, "card-3")).toBe(row23);
+      expect(row23).toBe(row01 + TIER_DIMENSIONS.medium.rowSpan + 1); // +1 reserved divider row
+    });
+
+    it("ignores a stray breakBefore on the very first item — no wasted leading row", () => {
+      const input: GridItemInput[] = [
+        { id: "card-0", tier: "hero", breakBefore: true },
+        { id: "card-1", tier: "medium" },
+      ];
+      const positions = packGrid(input);
+      expect(rowStart(positions, "card-0")).toBe(1); // not 2
+    });
+
+    it("handles back-to-back single-card runs — one reserved row per boundary", () => {
+      const input: GridItemInput[] = [
+        { id: "card-0", tier: "small" },
+        { id: "card-1", tier: "small", breakBefore: true },
+        { id: "card-2", tier: "small", breakBefore: true },
+      ];
+      const positions = packGrid(input);
+      const row0 = rowStart(positions, "card-0");
+      const row1 = rowStart(positions, "card-1");
+      const row2 = rowStart(positions, "card-2");
+      expect(row1).toBe(row0 + TIER_DIMENSIONS.small.rowSpan + 1);
+      expect(row2).toBe(row1 + TIER_DIMENSIONS.small.rowSpan + 1);
+    });
+
+    it("still widens a band split by breakBefore to fill full width, no trailing gaps", () => {
+      const input: GridItemInput[] = [
+        { id: "card-0", tier: "medium" },
+        { id: "card-1", tier: "medium", breakBefore: true },
+      ];
+      const positions = packGrid(input);
+      expect(positions.get("card-0")?.gridColumn).toBe("1 / span 6");
+      expect(positions.get("card-1")?.gridColumn).toBe("1 / span 6");
+    });
+  });
+});
+
+describe("packGridWithRunDividers", () => {
+  function runCards(
+    entries: { tier: GridTier; generatedAt: string }[]
+  ): { id: string; tier: GridTier; generatedAt: string }[] {
+    return entries.map((e, i) => ({ id: `card-${i}`, ...e }));
+  }
+
+  it("produces no dividers when every card shares one generatedAt (the common single-generation case)", () => {
+    const cards = runCards([
+      { tier: "hero", generatedAt: "2026-08-08T10:00:00.000Z" },
+      { tier: "medium", generatedAt: "2026-08-08T10:00:00.000Z" },
+      { tier: "medium", generatedAt: "2026-08-08T10:00:00.000Z" },
+    ]);
+    const { dividers, gridPositions } = packGridWithRunDividers(cards);
+    expect(dividers).toHaveLength(0);
+    expect(gridPositions.size).toBe(3);
+  });
+
+  it("inserts exactly one divider at a single run boundary, positioned one row above the next run's first card", () => {
+    const cards = runCards([
+      { tier: "hero", generatedAt: "2026-08-08T10:00:00.000Z" },
+      { tier: "medium", generatedAt: "2026-08-08T12:30:00.000Z" },
+      { tier: "medium", generatedAt: "2026-08-08T12:30:00.000Z" },
+    ]);
+    const { dividers, gridPositions } = packGridWithRunDividers(cards);
+    expect(dividers).toHaveLength(1);
+    expect(dividers[0].generatedAt).toBe("2026-08-08T12:30:00.000Z");
+
+    const dividerRow = Number(dividers[0].gridPosition.gridRow.split(" ")[0]);
+    const nextCardRow = Number(gridPositions.get("card-1")!.gridRow.split(" ")[0]);
+    expect(dividerRow).toBe(nextCardRow - 1);
+    expect(dividers[0].gridPosition.gridColumn).toBe(`1 / span ${GRID_COLUMNS}`);
+  });
+
+  it("inserts multiple dividers when runs interleave by importance order (rank.ts dethroning a card from an earlier run)", () => {
+    // Simulates a later run's card outranking an earlier run's card, so
+    // after sorting by importance the two runs interleave rather than
+    // stacking as clean contiguous blocks — an accepted, real consequence
+    // documented on packGridWithRunDividers itself.
+    const cards = runCards([
+      { tier: "medium", generatedAt: "run-1" },
+      { tier: "medium", generatedAt: "run-2" },
+      { tier: "medium", generatedAt: "run-1" },
+      { tier: "medium", generatedAt: "run-2" },
+    ]);
+    const { dividers } = packGridWithRunDividers(cards);
+    expect(dividers).toHaveLength(3); // boundary before every card after the first
+
+    // The same run's generatedAt legitimately backs more than one divider
+    // here (run-2 appears at both the 2nd and 4th boundary) — this is
+    // exactly why callers must key their <RunDivider> elements on
+    // something other than generatedAt: a fewer-unique-values-than-length
+    // check pins down the precondition that made the real key-collision
+    // bug (found live via React's own duplicate-key warning) reachable.
+    const uniqueGeneratedAts = new Set(dividers.map((d) => d.generatedAt));
+    expect(uniqueGeneratedAts.size).toBeLessThan(dividers.length);
+
+    // gridPosition.gridRow (what FrontPage.tsx/TopicPage.tsx actually key
+    // on) stays unique per divider even in this exact collision-prone
+    // scenario — the assertion above only proves generatedAt was unsafe to
+    // key on; this one proves the actual fix's replacement key is safe.
+    const uniqueGridRows = new Set(dividers.map((d) => d.gridPosition.gridRow));
+    expect(uniqueGridRows.size).toBe(dividers.length);
+  });
+
+  it("every card still gets a valid, non-overlapping position alongside the reserved divider rows", () => {
+    const cards = runCards([
+      { tier: "hero", generatedAt: "run-1" },
+      { tier: "medium", generatedAt: "run-1" },
+      { tier: "medium", generatedAt: "run-1" },
+      { tier: "medium", generatedAt: "run-2" },
+      { tier: "medium", generatedAt: "run-2" },
+      { tier: "small", generatedAt: "run-2" },
+    ]);
+    const { gridPositions, dividers } = packGridWithRunDividers(cards);
+    expect(gridPositions.size).toBe(6);
+    expect(dividers).toHaveLength(1); // one boundary: run-1 block, then run-2 block
+
+    // No card row collides with a divider's own reserved row.
+    const dividerRows = new Set(dividers.map((d) => Number(d.gridPosition.gridRow.split(" ")[0])));
+    for (const pos of gridPositions.values()) {
+      const start = Number(pos.gridRow.split(" ")[0]);
+      const span = Number(pos.gridRow.split(" ")[3]);
+      for (let r = start; r < start + span; r++) {
+        expect(dividerRows.has(r)).toBe(false);
+      }
+    }
+  });
+
+  it("computes breakBefore against tier-sorted adjacency, not raw input order — no invalid divider row", () => {
+    // Regression test: both real callers (FrontPage.tsx/TopicPage.tsx)
+    // happen to pass cards already sorted by a field monotonic with tier
+    // (frontPageRank / severity), so this never manifests today — but
+    // this input deliberately violates that assumption (medium before
+    // hero) to prove the function doesn't silently depend on it. Before
+    // the fix, breakBefore was computed against *this* raw order, then
+    // packGrid's own internal tier-sort moved the hero card to the front
+    // — landing it at row 1 with no reservation despite believing it had
+    // one, producing an invalid `"0 / span 1"` divider row.
+    const cards = runCards([
+      { tier: "medium", generatedAt: "run-1" },
+      { tier: "hero", generatedAt: "run-2" }, // reordered to the front by tier-sort
+    ]);
+    const { gridPositions, dividers } = packGridWithRunDividers(cards);
+
+    expect(dividers).toHaveLength(1);
+    const dividerRow = Number(dividers[0].gridPosition.gridRow.split(" ")[0]);
+    expect(dividerRow).toBeGreaterThanOrEqual(1); // never row 0 or negative
+
+    // The divider sits directly above whichever card landed second in
+    // packing order (medium, since hero sorts first) — not above hero,
+    // which is genuinely first once tier-sorted and gets no reservation.
+    const mediumCardId = cards.find((c) => c.tier === "medium")!.id;
+    const mediumRow = Number(gridPositions.get(mediumCardId)!.gridRow.split(" ")[0]);
+    expect(dividerRow).toBe(mediumRow - 1);
   });
 });
