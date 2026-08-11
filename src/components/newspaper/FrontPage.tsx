@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { motion, useReducedMotion, LayoutGroup } from "motion/react";
 import type { Card, Digest, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
@@ -8,18 +8,14 @@ import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { RunDivider } from "@/components/newspaper/RunDivider";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
+import {
+  useDigestGeneration,
+  STAGE_ORDER,
+  type Stage,
+} from "@/components/newspaper/DigestGenerationContext";
 import { tierForFrontPageRank } from "@/lib/gridTiers";
 import { packGridWithRunDividers } from "@/lib/packGrid";
 import { Button } from "@/components/ui/button";
-
-// Mirrors the DigestEvent["stage"] union the API streams — kept as plain
-// strings here since the client doesn't need the payload types, just the
-// stage name and its position for the progress bar. (Same convention as
-// the old Feed.tsx, which this component replaces.)
-const STAGE_ORDER = ["ingesting", "clustering", "triaging", "writing", "ranking", "done"] as const;
-type Stage = (typeof STAGE_ORDER)[number];
-type StageEvent = { stage: Stage } & Record<string, unknown>;
-type WireEvent = { stage: Stage | "error" } & Record<string, unknown>;
 
 const STAGE_LABEL: Record<Stage, string> = {
   ingesting: "Gathering articles…",
@@ -71,92 +67,41 @@ export function FrontPage({
   /** "/history/2026-08-01" when this is a past date's front page, so TopicNav's links stay scoped to that date. */
   basePath?: string;
 }) {
-  const [cards, setCards] = useState<Card[] | null>(initialDigest?.cards ?? null);
-  const [loading, setLoading] = useState(false);
-  const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const prefersReducedMotion = useReducedMotion();
+  const digestGen = useDigestGeneration();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  // Only the live front page participates in the shared generation state —
+  // a past /history/[date] front page (interactive=false) always has a
+  // complete, static digest and never has a live generation to resume.
+  const seeded = interactive && digestGen.seededDate === todayKey;
+
+  const cards = seeded ? (digestGen.cards ?? []) : initialDigest?.cards;
+  const loading = seeded ? digestGen.loading : false;
+  const stageEvent = seeded ? digestGen.stageEvent : null;
+  const error = seeded ? digestGen.error : null;
   // Cards present on the initial (SSR) render never animate in — only ones
   // that land live via this session's own generation runs, so a page
   // reload doesn't replay an entrance for content that was already there.
-  const [recentlyAddedIds, setRecentlyAddedIds] = useState<Set<string>>(new Set());
-  const prefersReducedMotion = useReducedMotion();
+  // Scoped to `interactive` (not read unconditionally) so a live
+  // generation's entrance never incorrectly replays if this same session
+  // later visits a /history/[today] view of today's own date.
+  const recentlyAddedIds = interactive ? digestGen.recentlyAddedIds : new Set<string>();
 
-  const hasDigest = cards !== null;
+  // Hands this mount's server-rendered snapshot to the shared context once.
+  // No-op if a live/finished run from an earlier mount this session already
+  // owns today's state (see seed()'s own doc comment) — that's what makes
+  // navigating away mid-generation and back resume instead of re-flashing
+  // the SSR snapshot.
+  const seededRef = useRef(false);
+  const { seed } = digestGen;
+  useEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    if (interactive) seed(initialDigest?.cards ?? [], todayKey);
+  }, [interactive, initialDigest, todayKey, seed]);
 
-  async function loadDigest() {
-    setLoading(true);
-    setError(null);
-    setStageEvent({ stage: "ingesting" });
-
-    let reachedTerminalEvent = false;
-
-    try {
-      const res = await fetch("/api/digest", { method: "POST" });
-      if (!res.ok || !res.body) {
-        const message = await res.text().catch(() => "");
-        throw new Error(message || `Request failed (${res.status})`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          buffer += decoder.decode();
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) processLine(line);
-      }
-      processLine(buffer);
-
-      if (!reachedTerminalEvent) {
-        throw new Error("Connection to the server was lost before the digest finished.");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-      setStageEvent(null);
-    }
-
-    function processLine(line: string) {
-      if (!line.trim()) return;
-      const event = JSON.parse(line) as WireEvent;
-
-      if (event.stage === "error") {
-        reachedTerminalEvent = true;
-        throw new Error((event.message as string) ?? "Digest failed");
-      }
-      if (event.stage === "done") {
-        reachedTerminalEvent = true;
-        const newCards = event.cards as Card[];
-        // Additive, not a replace — see getDigestForDate/upsertDigestForToday:
-        // the server's since-cursor only ever returns cards published after
-        // the last run, so this run's cards can't overlap what's on screen.
-        // rank.ts's ranking pass also rewrites frontPageRank on *existing*
-        // cards (a later run's bigger story can dethrone an earlier pick),
-        // but the server only returns the new cards here, not the
-        // existing ones' updated ranks — a reload picks those up via
-        // getDigestForDate. Acceptable for v1: the common case (generate
-        // once per day) never hits this staleness window.
-        setCards((prev) => [...(prev ?? []), ...newCards]);
-        setRecentlyAddedIds((prev) => {
-          const next = new Set(prev);
-          newCards.forEach((c) => next.add(c.id));
-          return next;
-        });
-      } else {
-        setStageEvent(event as StageEvent);
-      }
-    }
-  }
+  const hasDigest = cards !== undefined && cards.length > 0;
 
   const stageIndex = stageEvent ? STAGE_ORDER.indexOf(stageEvent.stage) : -1;
   const progressPercent = stageIndex >= 0 ? (stageIndex / (STAGE_ORDER.length - 1)) * 100 : 0;
@@ -178,7 +123,7 @@ export function FrontPage({
 
       {interactive && (
         <div className="flex flex-col items-center gap-4 px-6 py-8 text-center md:px-10">
-          <Button onClick={loadDigest} disabled={loading} className="cursor-pointer">
+          <Button onClick={digestGen.startGeneration} disabled={loading} className="cursor-pointer">
             {hasDigest ? "Complete today's news" : "Give me today's news"}
           </Button>
 
@@ -238,10 +183,11 @@ export function FrontPage({
                     tier={tierForFrontPageRank(card.frontPageRank as number)}
                     gridPosition={gridPositions.get(card.id)}
                     showTopicBadge
-                    // Only cards that landed live this session (via loadDigest's
-                    // stream, not the initial SSR render) get an entrance —
-                    // otherwise every page load would replay the "just
-                    // arrived" animation for content that's already there.
+                    // Only cards that landed live this session (via
+                    // DigestGenerationContext's stream, not the initial SSR
+                    // render) get an entrance — otherwise every page load
+                    // would replay the "just arrived" animation for content
+                    // that's already there.
                     isNew={recentlyAddedIds.has(card.id)}
                     entranceDelay={i * 0.04}
                   />

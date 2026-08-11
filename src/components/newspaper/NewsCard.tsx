@@ -298,14 +298,22 @@ export function NewsCard({
           // prop would otherwise also govern a later grid-position reflow
           // (e.g. a second same-session generation reordering the front
           // page), giving an ordinary layout catch-up a stale entrance delay.
-          transition={
-            isNew
+          // `layout` is always present (not just when isNew): whichever
+          // motion.div is newly mounting in a shared-layoutId handoff reads
+          // its OWN transition, never the other side's — FocusOverlay's own
+          // duration:0 (Phase 6.3) only covers the open direction. On close,
+          // this element is the one remounting, so without an explicit
+          // `layout` override here it fell back to Motion's default 0.45s
+          // eased tween, animating the exit even though entry was instant.
+          transition={{
+            layout: { duration: 0 },
+            ...(isNew
               ? {
                   opacity: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
                   scale: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
                 }
-              : undefined
-          }
+              : {}),
+          }}
         >
           <motion.div
             className="relative h-full w-full"

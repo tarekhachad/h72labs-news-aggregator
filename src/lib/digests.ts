@@ -113,11 +113,16 @@ export async function getTodayDigest(
 }
 
 /**
- * Cheap existence check for "has a digest been generated for this date" —
- * same `select("id")`-on-`digests` pattern as getCardsForTopicOnDate's own
- * internal check, factored out for callers (Phase 6.4's topic-nav gating)
- * that only need the boolean, not the full cards payload + bookmark join
- * getDigestForDate/getTodayDigest do.
+ * Cheap existence check for "does this date have a real, renderable digest"
+ * — factored out for callers (Phase 6.4's topic-nav gating) that only need
+ * the boolean, not the full cards payload + bookmark join
+ * getDigestForDate/getTodayDigest do. Deliberately checks for at least one
+ * *card*, not just a `digests` row: upsertDigestForToday creates that row
+ * immediately when generation starts, well before any pipeline stage runs
+ * or any card is persisted (see src/app/api/digest/route.ts's POST
+ * handler) — a bare row-existence check was true for the entire generation
+ * window, which is exactly what Phase 7.2 found wrongly un-gating the
+ * topic nav while a digest was still mid-generation.
  */
 export async function digestExistsForDate(
   supabase: SupabaseClient,
@@ -132,7 +137,16 @@ export async function digestExistsForDate(
     .maybeSingle();
 
   if (error) throw new Error(`digestExistsForDate: ${error.message}`);
-  return digestRow !== null;
+  if (!digestRow) return false;
+
+  const { data: anyCard, error: cardsError } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("digest_id", digestRow.id)
+    .limit(1);
+
+  if (cardsError) throw new Error(`digestExistsForDate: ${cardsError.message}`);
+  return (anyCard?.length ?? 0) > 0;
 }
 
 /**
