@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 
 /**
  * Dimmed, blurred full-viewport backdrop — shared primitive for focus mode
@@ -11,8 +11,6 @@ import { motion, useReducedMotion } from "motion/react";
  * capability, not a mandate to migrate existing UI.
  */
 export function Backdrop({ onClick }: { onClick: () => void }) {
-  const prefersReducedMotion = useReducedMotion();
-
   return (
     <motion.div
       className="fixed inset-0 z-40"
@@ -23,8 +21,10 @@ export function Backdrop({ onClick }: { onClick: () => void }) {
       // No `exit` prop: its caller removes this via a plain conditional,
       // not AnimatePresence, so an exit animation would never actually
       // run — the fade-in above still works (it's driven by mount, not
-      // exit), only the close is an instant unmount.
-      transition={{ duration: prefersReducedMotion ? 0 : 0.25 }}
+      // exit), only the close is an instant unmount. Instant fade-in too
+      // (duration 0), per Tarek's request to remove the focus-mode
+      // animation entirely.
+      transition={{ duration: 0 }}
       aria-hidden
     />
   );

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { getCardsForTopicOnDate } from "@/lib/digests";
+import { getCardsForTopicOnDate, digestExistsForDate } from "@/lib/digests";
 import { slugToTopic } from "@/lib/topicSlug";
 import { TopicPage } from "@/components/newspaper/TopicPage";
 
@@ -40,7 +40,23 @@ export default async function TopicRoutePage({
     redirect("/onboarding");
   }
 
-  const cards = await getCardsForTopicOnDate(supabase, user.id, todayDateString(), topic);
+  const today = todayDateString();
+  const [cards, digestExistsToday] = await Promise.all([
+    getCardsForTopicOnDate(supabase, user.id, today, topic),
+    // Fail-open (defaults to ungated on a transient error): this check only
+    // affects whether sibling topic links are greyed out, a cosmetic
+    // affordance — matching this project's existing fail-open convention
+    // (rank.ts, dedup.ts) rather than letting a purely cosmetic check sink
+    // the whole page render.
+    digestExistsForDate(supabase, user.id, today).catch(() => true),
+  ]);
 
-  return <TopicPage cards={cards} topic={topic} userTopics={topics} />;
+  return (
+    <TopicPage
+      cards={cards}
+      topic={topic}
+      userTopics={topics}
+      digestExistsToday={digestExistsToday}
+    />
+  );
 }

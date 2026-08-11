@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion, LayoutGroup } from "motion/react";
 import type { Card, Digest, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
@@ -171,7 +171,10 @@ export function FrontPage({
 
   return (
     <div className="flex flex-col">
-      <TopicNav topics={userTopics} basePath={basePath} />
+      {/* interactive=false is always a history front page, which always has
+          a digest by construction — only gate on the live page's own
+          reactive hasDigest state. */}
+      <TopicNav topics={userTopics} basePath={basePath} digestExistsToday={interactive ? hasDigest : true} />
 
       {interactive && (
         <div className="flex flex-col items-center gap-4 px-6 py-8 text-center md:px-10">
@@ -209,7 +212,7 @@ export function FrontPage({
         </div>
       )}
 
-      <div className="px-6 pb-10 md:px-10">
+      <div className="px-6 pt-4 pb-10 md:px-10">
         {frontPageCards.length === 0 ? (
           <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
             {interactive
@@ -219,38 +222,46 @@ export function FrontPage({
               : "No edition that day."}
           </p>
         ) : (
-          <FocusModeProvider>
-            <PageGrid>
-              {frontPageCards.map((card, i) => (
-                <NewsCard
-                  key={card.id}
-                  card={card}
-                  tier={tierForFrontPageRank(card.frontPageRank as number)}
-                  gridPosition={gridPositions.get(card.id)}
-                  showTopicBadge
-                  // Only cards that landed live this session (via loadDigest's
-                  // stream, not the initial SSR render) get an entrance —
-                  // otherwise every page load would replay the "just
-                  // arrived" animation for content that's already there.
-                  isNew={recentlyAddedIds.has(card.id)}
-                  entranceDelay={i * 0.04}
-                />
-              ))}
-              {dividers.map((d) => (
-                // Keyed on gridRow, not generatedAt: interleaved runs (a
-                // later run's card dethroning an earlier one's rank, see
-                // packGridWithRunDividers's own doc comment) can produce
-                // more than one divider for the *same* run's generatedAt —
-                // gridRow is unique per divider by construction (each one
-                // reserves its own exclusive row), generatedAt isn't.
-                <RunDivider
-                  key={d.gridPosition.gridRow}
-                  generatedAt={d.generatedAt}
-                  gridPosition={d.gridPosition}
-                />
-              ))}
-            </PageGrid>
-          </FocusModeProvider>
+          // Scoped per page instance (page-type + topic + date) so Motion's
+          // shared-layout registry can't connect a card here to the same
+          // card.id's layoutId on a different page (e.g. this card also
+          // appearing in its own topic's page) — without this, navigating
+          // between the two could misread an unrelated tree swap as "this
+          // element moved" and animate a slide between them. See Phase 6.5.
+          <LayoutGroup id={`front-${basePath || "today"}`}>
+            <FocusModeProvider>
+              <PageGrid>
+                {frontPageCards.map((card, i) => (
+                  <NewsCard
+                    key={card.id}
+                    card={card}
+                    tier={tierForFrontPageRank(card.frontPageRank as number)}
+                    gridPosition={gridPositions.get(card.id)}
+                    showTopicBadge
+                    // Only cards that landed live this session (via loadDigest's
+                    // stream, not the initial SSR render) get an entrance —
+                    // otherwise every page load would replay the "just
+                    // arrived" animation for content that's already there.
+                    isNew={recentlyAddedIds.has(card.id)}
+                    entranceDelay={i * 0.04}
+                  />
+                ))}
+                {dividers.map((d) => (
+                  // Keyed on gridRow, not generatedAt: interleaved runs (a
+                  // later run's card dethroning an earlier one's rank, see
+                  // packGridWithRunDividers's own doc comment) can produce
+                  // more than one divider for the *same* run's generatedAt —
+                  // gridRow is unique per divider by construction (each one
+                  // reserves its own exclusive row), generatedAt isn't.
+                  <RunDivider
+                    key={d.gridPosition.gridRow}
+                    generatedAt={d.generatedAt}
+                    gridPosition={d.gridPosition}
+                  />
+                ))}
+              </PageGrid>
+            </FocusModeProvider>
+          </LayoutGroup>
         )}
       </div>
     </div>

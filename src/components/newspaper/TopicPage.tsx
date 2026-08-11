@@ -1,3 +1,4 @@
+import { LayoutGroup } from "motion/react";
 import type { Card, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
@@ -31,12 +32,15 @@ export function TopicPage({
   topic,
   userTopics,
   basePath = "",
+  digestExistsToday = true,
 }: {
   cards: Card[];
   topic: Topic;
   userTopics: Topic[];
   /** "/history/2026-08-01" when this is a past date's topic page, so TopicNav's links stay scoped to that date. */
   basePath?: string;
+  /** False only on the live topic route before today's first digest exists — forwarded straight into TopicNav. Defaults true so history callers (which never pass this) stay ungated. */
+  digestExistsToday?: boolean;
 }) {
   const ordered = orderBySeverity(cards);
   const { gridPositions, dividers } = packGridWithRunDividers(
@@ -45,7 +49,12 @@ export function TopicPage({
 
   return (
     <div className="flex flex-col">
-      <TopicNav topics={userTopics} activeTopic={topic} basePath={basePath} />
+      <TopicNav
+        topics={userTopics}
+        activeTopic={topic}
+        basePath={basePath}
+        digestExistsToday={digestExistsToday}
+      />
 
       <h1 className="px-6 py-6 font-heading text-3xl font-bold md:px-10">{topic}</h1>
 
@@ -55,29 +64,36 @@ export function TopicPage({
             {basePath ? `No notable ${topic} news that day.` : `No notable ${topic} news today.`}
           </p>
         ) : (
-          <FocusModeProvider>
-            <PageGrid>
-              {ordered.map((card) => (
-                <NewsCard
-                  key={card.id}
-                  card={card}
-                  tier={tierForSeverity(card.severity)}
-                  gridPosition={gridPositions.get(card.id)}
-                  showTopicBadge={false}
-                />
-              ))}
-              {dividers.map((d) => (
-                // Keyed on gridRow, not generatedAt — see FrontPage.tsx's
-                // identical comment: interleaved runs can share a
-                // generatedAt across more than one divider, gridRow can't.
-                <RunDivider
-                  key={d.gridPosition.gridRow}
-                  generatedAt={d.generatedAt}
-                  gridPosition={d.gridPosition}
-                />
-              ))}
-            </PageGrid>
-          </FocusModeProvider>
+          // Scoped per page instance (topic + basePath) — see FrontPage.tsx's
+          // identical comment (Phase 6.5): prevents Motion's shared-layout
+          // registry from connecting a card here to the same card.id's
+          // layoutId on a different page (e.g. this card also appearing on
+          // the front page's top-6).
+          <LayoutGroup id={`topic-${topic}-${basePath || "today"}`}>
+            <FocusModeProvider>
+              <PageGrid>
+                {ordered.map((card) => (
+                  <NewsCard
+                    key={card.id}
+                    card={card}
+                    tier={tierForSeverity(card.severity)}
+                    gridPosition={gridPositions.get(card.id)}
+                    showTopicBadge={false}
+                  />
+                ))}
+                {dividers.map((d) => (
+                  // Keyed on gridRow, not generatedAt — see FrontPage.tsx's
+                  // identical comment: interleaved runs can share a
+                  // generatedAt across more than one divider, gridRow can't.
+                  <RunDivider
+                    key={d.gridPosition.gridRow}
+                    generatedAt={d.generatedAt}
+                    gridPosition={d.gridPosition}
+                  />
+                ))}
+              </PageGrid>
+            </FocusModeProvider>
+          </LayoutGroup>
         )}
       </div>
     </div>

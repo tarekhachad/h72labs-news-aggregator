@@ -113,6 +113,29 @@ export async function getTodayDigest(
 }
 
 /**
+ * Cheap existence check for "has a digest been generated for this date" —
+ * same `select("id")`-on-`digests` pattern as getCardsForTopicOnDate's own
+ * internal check, factored out for callers (Phase 6.4's topic-nav gating)
+ * that only need the boolean, not the full cards payload + bookmark join
+ * getDigestForDate/getTodayDigest do.
+ */
+export async function digestExistsForDate(
+  supabase: SupabaseClient,
+  userId: string,
+  date: string
+): Promise<boolean> {
+  const { data: digestRow, error } = await supabase
+    .from("digests")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("date", date)
+    .maybeSingle();
+
+  if (error) throw new Error(`digestExistsForDate: ${error.message}`);
+  return digestRow !== null;
+}
+
+/**
  * Cards for one topic on one date — the query behind each topic-page route.
  * Deliberately scoped server-side to just this topic (a join through
  * `digests` on user_id+date, filtered by topic), not a fetch-everything-

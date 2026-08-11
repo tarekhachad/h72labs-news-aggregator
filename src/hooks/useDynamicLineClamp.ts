@@ -17,18 +17,20 @@ import { useLayoutEffect, useState } from "react";
  * Deliberately `offsetTop` (layout-box position relative to `faceRef`, the
  * nearest positioned ancestor both children share), not
  * `getBoundingClientRect()`: NewsCard's outer wrapper shares a Motion
- * `layoutId` with FocusOverlay, and closing focus mode plays a ~0.4s
+ * `layoutId` with FocusOverlay. Closing focus mode used to play a ~0.4s
  * shared-element transition back down to the grid cell via CSS `transform`
- * — which `getBoundingClientRect()` reports (it's the *visual* rect,
- * transform included) but doesn't change the element's actual layout box,
- * so `ResizeObserver` never fires again to correct a reading taken mid-
- * animation. An earlier version of this hook used
+ * (now instant, Phase 6.3 — the transform-mid-animation scenario below no
+ * longer occurs live, but `offsetTop` stays the correct choice regardless)
+ * — `getBoundingClientRect()` reports the *visual* rect (transform
+ * included) but doesn't reflect the element's actual layout box, so
+ * `ResizeObserver` never fires again to correct a reading taken mid-
+ * transform. An earlier version of this hook used
  * `getBoundingClientRect()` and reproducibly measured a card at ~2x its
  * true size (matching the overlay's near-fullscreen transform) the instant
  * after a focus-mode close, then stayed wrong forever — live-verified via
  * Playwright, not just reasoned about. `offsetTop` reads the untransformed
- * layout position directly, so it's correct throughout the animation, not
- * just after it settles.
+ * layout position directly, so it's correct regardless of any transform in
+ * flight.
  *
  * `clampLines` starts `null` (server render + first client paint) so the
  * caller can render its existing static per-tier clamp until a real

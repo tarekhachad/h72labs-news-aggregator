@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { X } from "lucide-react";
 import type { Card } from "@/types";
 import { Backdrop } from "@/components/newspaper/Backdrop";
@@ -39,7 +39,6 @@ export function FocusOverlay({
   loadingReport: boolean;
   reportError: string | null;
 }) {
-  const prefersReducedMotion = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -85,7 +84,11 @@ export function FocusOverlay({
       <Backdrop onClick={onClose} />
       <motion.div
         layoutId={layoutId}
-        transition={{ duration: prefersReducedMotion ? 0 : 0.4, ease: "easeInOut" }}
+        // Instant switch, per Tarek's request — the zoom/blur animation
+        // read as too slow/heavy. layoutId stays intact so the shared-
+        // element handoff from NewsCard's grid cell still works, it just
+        // resolves in one frame instead of animating.
+        transition={{ duration: 0 }}
         className="fixed top-[12.5%] left-[12.5%] z-50 flex h-3/4 w-3/4 flex-col overflow-hidden rounded-md p-8"
         style={{
           background: "var(--color-card)",

@@ -20,12 +20,15 @@ export function TopicNav({
   topics,
   basePath = "",
   activeTopic,
+  digestExistsToday = true,
 }: {
   topics: Topic[];
   /** "/history/2026-08-01" when this band is on a past date's page, so its links stay scoped to that date instead of jumping to today. */
   basePath?: string;
   /** Set on a topic page (the topic currently being viewed, rendered as inert styled text instead of a link); undefined on the front page. */
   activeTopic?: Topic;
+  /** False only on the live front page / topic routes before today's first digest exists — greys out sibling topic links, since those pages would otherwise render empty. Defaults true so every history caller (which never passes this prop) stays ungated — a digest always exists there by construction. */
+  digestExistsToday?: boolean;
 }) {
   const { navigate } = usePageTransitionActions();
 
@@ -101,17 +104,42 @@ export function TopicNav({
           {activeTopic}
         </span>
       )}
-      {topics.map((topic) =>
-        topic === activeTopic ? (
-          <span
-            key={topic}
-            aria-current="page"
-            className="text-sm font-medium uppercase tracking-wide"
-            style={{ color: "var(--color-muted-foreground)" }}
-          >
-            {topic}
-          </span>
-        ) : (
+      {topics.map((topic) => {
+        if (topic === activeTopic) {
+          return (
+            <span
+              key={topic}
+              aria-current="page"
+              className="text-sm font-medium uppercase tracking-wide"
+              style={{ color: "var(--color-muted-foreground)" }}
+            >
+              {topic}
+            </span>
+          );
+        }
+        if (!digestExistsToday) {
+          // Greyed out, not hidden: keeps topics visible/discoverable and
+          // avoids a dead-end on a stale /topic/x link with no digest yet
+          // — "Front Page" above stays a normal link either way.
+          return (
+            // role="link" so a screen reader announces this as a disabled
+            // link (not generic text) even though it's deliberately not in
+            // the tab order (nothing to activate) — aria-disabled alone on
+            // a bare <span role="generic"> isn't reliably exposed the same
+            // way.
+            <span
+              key={topic}
+              role="link"
+              aria-disabled="true"
+              title="Today's edition hasn't been generated yet"
+              className="text-sm font-medium uppercase tracking-wide opacity-40"
+              style={{ color: "var(--color-muted-foreground)" }}
+            >
+              {topic}
+            </span>
+          );
+        }
+        return (
           <Link
             key={topic}
             href={`${basePath}/topic/${topicToSlug(topic)}`}
@@ -120,8 +148,8 @@ export function TopicNav({
           >
             {topic}
           </Link>
-        )
-      )}
+        );
+      })}
     </nav>
   );
 }

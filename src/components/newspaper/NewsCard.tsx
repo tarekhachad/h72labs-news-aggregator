@@ -276,6 +276,13 @@ export function NewsCard({
         <motion.div
           ref={cardRef}
           layoutId={layoutId}
+          // Constant on purpose (card.id never changes for a mounted
+          // instance) — this card's own reposition (e.g. a grid repack from
+          // a live digest generation adding cards) should never self-
+          // animate; the only intended animation off this layoutId is the
+          // mount/unmount handoff to FocusOverlay, which Motion tracks via
+          // componentWillUnmount regardless of layoutDependency. See Phase 6.5.
+          layoutDependency={card.id}
           role="button"
           tabIndex={0}
           onClick={openOrFlipBack}
@@ -334,10 +341,10 @@ export function NewsCard({
 
               {/* Empty for a pre-5.5 row (rowToCard's ?? "" fallback) — no
                   title to render rather than an empty, oddly-spaced line. */}
-              {card.title && <p className={cn(TITLE_CLASS[tier], "mt-2")}>{card.title}</p>}
+              {card.title && <p className={cn(TITLE_CLASS[tier], "mt-3")}>{card.title}</p>}
 
               {card.labels.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
+                <div className="mt-2 flex flex-wrap gap-1">
                   {card.labels.map((label, i) => {
                     const { background, color } = labelColor(label);
                     return (
