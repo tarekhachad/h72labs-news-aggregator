@@ -15,7 +15,13 @@ Real design tension worked through before writing any code: front-page cards are
 
 **Round 3** (tightly scoped to that specific comment/test diff, still both agents per this project's no-exceptions rule, no live verification or API calls needed since nothing behavioral changed) came back clean from both — `code-reviewer` independently re-derived both claims from scratch (traced the `i`/`result.size` lockstep proof again, hand-constructed a plausible buggy variant to confirm the new assertion would actually catch it) rather than trusting the round-2 fix descriptions.
 
-25 vitest tests (up from 16), `tsc`/`eslint` clean throughout every round. Not yet committed. **Next:** Phase 5 is now complete (all seven sub-phases done) — run `project-resume-sync`, then Phase 6 (cost/quality pass + friends testing) per `ROADMAP.md`.
+25 vitest tests (up from 16), `tsc`/`eslint` clean throughout every round.
+
+**Same session, after 5.7 converged:** Tarek reported a real live bug during manual testing — logging in at 8:30pm local (Atlanta, EDT/UTC-4) on 2026-08-07 showed no "today" digest; that day's already-generated digest had silently moved to history. Root cause confirmed by reading `src/lib/digests.ts`'s `todayDateString()`: digest "date" is a UTC calendar day, not the viewer's local day (an already-documented v1 trade-off, originally flagged "revisit if it becomes a real complaint") — at 8:30pm EDT, UTC has already rolled to the next calendar day, so the server's "today" no longer matched. Confirmed real and recurring (not a one-off), not fixed this session per Tarek's own instruction — promoted from a code comment into a tracked entry in `ROADMAP.md`'s "Explicitly deferred" section (what a real per-user-timezone fix needs to touch: both `todayDateString()` call sites, likely the RSS since-cursor and history date list too), and the `digests.ts` comment updated to point at it. Committed together with 5.7 (`f6368e1`), since it was a docs-only addition alongside the feature commit, matching this project's existing precedent (5.5 similarly bundled a stale-doc fix into its feature commit).
+
+Both committed and **pushed to `origin/master`** (`55cee96..f6368e1`, 6 commits: 5.2 follow-ups/5.3 through 5.7) — session closed out here.
+
+**Next session:** run `project-resume-sync` (Phase 5 as a whole — newspaper redesign, dynamic content fill, run dividers — is a resume-worthy addition, deferred until the full phase landed), then Phase 6 (cost/quality pass + friends testing) per `ROADMAP.md`. The UTC-timezone-day gap above is now tracked and ready to scope whenever it's prioritized. Test accounts from 5.1/5.2/5.5/5.6/5.7's live verification/qa passes remain flagged for manual Supabase-dashboard cleanup (see each sub-phase's own entry for specific addresses).
 
 ## 2026-08-07 (Phase 5.6) — dynamic summary-fill, two rounds, two real bugs (one self-caught mid-verification)
 
