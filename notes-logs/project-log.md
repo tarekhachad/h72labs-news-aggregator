@@ -52,7 +52,27 @@ New Phase 8 opened after Tarek tested the shipped Phase 7 UI and brought four is
 
 **Cleanup owed (Claude can't do these):** ~20 `qa-*@example.com` test accounts accumulated across the phase, and a synthetic multi-run digest seeded at `2026-01-20` for `qa-52-1786120774400@example.com` (cards labelled `qa-seed`) that couldn't be deleted because `supabase/schema.sql` defines no DELETE policy on `digests`. Both need a pass in the Supabase dashboard.
 
-**Next:** the **Final Phase (close out v1)** — cost diagnosis + cost optimization. Its numbers are also the input to V2.0, the blocking decision on how the Claude API gets paid for.
+**Committed and pushed (same session).** `project-resume-sync` run first — Phase 8 filed into the existing capability themes of `Job Applications/Master Resources/projects/(C) personalized-news-aggregator.md`, and the resume-facing zone re-derived in full per the skill's two-altitude rule (4.7 KB, 8 capability-slot bullets, all within the word caps and free of phase numbers, review-round counts, and library-internal jargon). Then two commits, deliberately split:
+- **`c245583`** — bundled `.claude/skills/` re-sync (`project-brainstorm`, `project-resume-sync`) from the vault-root masters. Kept separate because it isn't Phase 8 work: those copies had simply drifted behind the masters, and `project-resume-sync`'s update is the two-altitude redesign written after this project's own resume entry hit 41 KB of unreadable build-altitude bullets.
+- **`af3a808`** — Phase 8 itself: 31 files, +1974/−583. Also carries this same day's earlier roadmap decisions (Final Phase re-scoped to cost only, v1 closing undeployed, the new `Roadmap V2` section and its V2.0 gate), because those had already been written into `ROADMAP.md`/`CLAUDE.md`/this log before any Phase 8 code existed and couldn't be split out by file after the fact. The commit body says so explicitly rather than letting the history imply they were one piece of work.
+
+Pushed `a9e1904..af3a808` to `origin/master`; working tree clean, no divergence.
+
+---
+
+### Session close-out — read this first in a fresh session
+
+**State:** Phases 0–8 built, reviewed, committed, pushed. Nothing mid-flight, nothing uncommitted, 147/147 tests green, `tsc`/`eslint`/`next build` clean.
+
+**Next action:** the **Final Phase (close out v1)** — cost diagnosis + cost optimization, per `docs/(C) ROADMAP.md`. Instrument real Claude API usage across the whole pipeline (triage, card writing, expanded reports, front-page ranking), correct `(C) TECH_STACK.md`'s estimate with real numbers, then act on what the diagnosis shows. Note this phase's output is *load-bearing beyond itself*: the per-digest figure is the input that makes **V2.0**'s spend caps sizable, and V2.0 is the hard gate blocking any deploy link or repo reaching another person.
+
+**Two cleanup items only Tarek can do (Supabase dashboard, Claude has no access):**
+- ~20 `qa-*@example.com` test accounts accumulated across Phase 8's live-verification passes.
+- A synthetic multi-run digest seeded at date `2026-01-20` for `qa-52-1786120774400@example.com` (its cards are labelled `qa-seed`). A QA agent created it to close a genuine coverage gap — the multi-run "New" badge on a *server-rendered* topic page, which client-side interception can't exercise — and then could not delete it: `supabase/schema.sql` defines no DELETE policy on `digests`, so the anon-key delete silently affected zero rows. Harmless and isolated, but it's real data on a real account.
+
+**One standing test credential** (recorded here because two sessions have now lost time to it): `qa-52-1786120774400@example.com` / `QaTest123!`, which owns a real digest at `/history/2026-08-07` — useful for any live verification that needs existing content without paying for a generation.
+
+**Verification technique worth reusing:** every multi-run scenario this phase was driven by Playwright `page.route()` interception returning synthetic NDJSON `done` events (with fabricated cards and `rankUpdates`), which exercises the real client merge/render path at zero cost. Total API spend for the entire phase was one Sonnet call. Anything needing genuinely server-rendered multi-run data has to be seeded via direct RLS-scoped Supabase inserts instead — see the cleanup note above for the consequence.
 
 ## 2026-08-12 (roadmap scope changes) — lazy report confirmed, Final Phase re-scoped to cost only, Roadmap V2 declared
 
