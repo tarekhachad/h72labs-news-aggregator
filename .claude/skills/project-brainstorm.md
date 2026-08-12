@@ -48,7 +48,7 @@ State which docs you're creating and why those, before writing them.
 
 ### 4. Update project context
 
-- Fill in any `<!-- TODO -->`s in the project `CLAUDE.md` that the brainstorm now answers (process, stack constraints, data-handling rule).
+- Fill in any `<!-- TODO -->`s in the project `CLAUDE.md` that the brainstorm now answers (process, stack constraints, data-handling rule). The QA/code-reviewer subagent convention and its fix→re-verify loop are already baked into the CLAUDE.md from scaffold (see `new-project` skill) — nothing to fill in for that here.
 - Append a `notes-logs/project-log.md` entry: brainstorm done, which docs exist, what's next.
 - Bump the project's **Current Status** (project CLAUDE.md + the root CLAUDE.md one-liner) to "Brainstormed — ready to build."
 
@@ -62,6 +62,7 @@ Summarize the blueprint and the very first build step from the roadmap. Don't go
 > 2. Open a **fresh Claude Code session** in this project (or `/clear` if you're already in one) — this brainstorm conversation is done its job; building should start from a clean read of the docs, not the discussion that produced them.
 > 3. In that fresh session, enter **plan mode** and ask Claude to read `docs/` and propose a concrete plan for Phase 1 of the roadmap — `<the concrete first build step>`. Plan mode reads the actual repo state and proposes the specific files/diff before anything is written, which is a different (and needed) step from this conceptual brainstorm.
 > 4. Approve the plan, then build. One small piece at a time, commit as you go.
+> 5. Once Phase 1 (or any meaningfully-sized piece) is actually built, run the `qa`/`code-reviewer` subagent pass per the CLAUDE.md convention — fix what they find, then re-run both again against the fix before calling it done. Don't skip that re-check the first time just because the habit is new; it's exactly when it needs to start.
 
 ---
 
