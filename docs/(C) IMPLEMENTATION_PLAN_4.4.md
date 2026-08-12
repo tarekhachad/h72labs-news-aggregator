@@ -32,7 +32,7 @@ Two Explore passes grounded this plan in the actual codebase (not assumptions): 
 
 ## Track A — Pipeline (importance signal) — DONE, committed `7976306`/`60fceff`
 
-Confirmed: full cumulative re-ranking every run (not rank-once). Actual shipped shape (final, after the review-loop fixes — see `notes-logs/session-log.md`'s 2026-08-04 entries for the full bug-by-bug history):
+Confirmed: full cumulative re-ranking every run (not rank-once). Actual shipped shape (final, after the review-loop fixes — see `notes-logs/project-log.md`'s 2026-08-04 entries for the full bug-by-bug history):
 
 - **Types + schema:** `src/types.ts`'s `Card` has `severity: number` (1-5) and `frontPageRank: number | null` (1-6). `supabase/schema.sql`'s `cards` table has matching nullable `severity`/`front_page_rank` columns (no CHECK/NOT NULL). `persist_generated_cards()` does the insert, the existing-card rank update, and the cursor advance in **one atomic transaction** (extended with a `p_existing_rank_updates` param — originally a separate RPC, folded in after a review round found a rank-collision race between two non-atomic writes).
 - **Graded triage** (`src/lib/triage.ts`): `TriageResult` includes `severity: z.number().int().min(1).max(5)`, same topic-relative/independent grading philosophy as the old boolean, just more granular.

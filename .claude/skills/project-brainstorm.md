@@ -49,7 +49,7 @@ State which docs you're creating and why those, before writing them.
 ### 4. Update project context
 
 - Fill in any `<!-- TODO -->`s in the project `CLAUDE.md` that the brainstorm now answers (process, stack constraints, data-handling rule).
-- Append a `notes-logs/session-log.md` entry: brainstorm done, which docs exist, what's next.
+- Append a `notes-logs/project-log.md` entry: brainstorm done, which docs exist, what's next.
 - Bump the project's **Current Status** (project CLAUDE.md + the root CLAUDE.md one-liner) to "Brainstormed — ready to build."
 
 ### 5. Confirm + hand off to build
