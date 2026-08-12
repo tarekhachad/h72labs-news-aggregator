@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { getCardsForTopicOnDate } from "@/lib/digests";
+import { getCardsForTopicOnDate, todayDateString } from "@/lib/digests";
 import { slugToTopic } from "@/lib/topicSlug";
 import { TopicPage } from "@/components/newspaper/TopicPage";
 
@@ -16,6 +16,15 @@ export default async function HistoryTopicPage({
   const topic = slugToTopic(slug);
   if (!topic) {
     redirect("/history");
+  }
+
+  // Today isn't history (Phase 8.1) — same guard as the sibling
+  // /history/[date] route, sending the reader to the live topic page
+  // instead of a duplicate non-interactive one. Deliberately after the
+  // slug check above, so a bad slug still lands on /history rather than
+  // being redirected to a live topic route that doesn't exist either.
+  if (date === todayDateString()) {
+    redirect(`/topic/${slug}`);
   }
 
   const supabase = await createClient();

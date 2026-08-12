@@ -7,6 +7,7 @@ import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageCluster } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
 import { rankFrontPage } from "@/lib/rank";
+import type { RankUpdate } from "@/lib/rankUpdates";
 import {
   upsertDigestForToday,
   saveGeneratedCards,
@@ -38,7 +39,22 @@ type DigestEvent =
   // topic, including an explicit "nothing notable" state for topics that
   // genuinely had no notable news today, instead of those topics silently
   // vanishing from a flat merged list.
-  | { stage: "done"; cards: Card[]; topics: Topic[] }
+  | {
+      stage: "done";
+      cards: Card[];
+      topics: Topic[];
+      /**
+       * Rank changes this run applied to cards the client is ALREADY
+       * showing (today's earlier runs) — the same list persisted via
+       * saveGeneratedCards below. Without it the client keeps every
+       * already-rendered card's stale frontPageRank, so a card this run
+       * dethroned still renders hero-sized next to the real new #1 until
+       * a reload. Empty whenever ranking was skipped or failed open,
+       * which the client must read as "change nothing", not "clear
+       * everything".
+       */
+      rankUpdates: RankUpdate[];
+    }
   | { stage: "error"; message: string };
 
 async function* runDigestPipeline(
@@ -126,9 +142,9 @@ async function* runDigestPipeline(
 
     // One canonical timestamp for the whole run — every card gets stamped
     // with this exact value (not each writeCard() call's own clock reading)
-    // so cards from the same run are byte-identical on generatedAt, which is
-    // what lets the feed detect run boundaries and draw a divider between
-    // them, in both this live response and on every later reload.
+    // so cards from the same run are byte-identical on generatedAt, which
+    // is what lets the feed pick out the latest run and badge its cards as
+    // New, in both this live response and on every later reload.
     const generatedAt = new Date().toISOString();
 
     const cards: Card[] = [];
@@ -197,7 +213,7 @@ async function* runDigestPipeline(
     // over a previously-ranked existing card that got bumped this run) —
     // not just the ones that changed, so demotions are handled correctly,
     // not just promotions.
-    const existingCardRankUpdates: { id: string; frontPageRank: number | null }[] = [];
+    const existingCardRankUpdates: RankUpdate[] = [];
     if (rankResult !== null) {
       const ranks = rankResult;
       existingCards.forEach((existing, i) => {
@@ -225,7 +241,12 @@ async function* runDigestPipeline(
     // per-cluster retry tracking; see that entry for the reasoning.
     await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates);
 
-    yield { stage: "done", cards, topics: profile.topics };
+    yield {
+      stage: "done",
+      cards,
+      topics: profile.topics,
+      rankUpdates: existingCardRankUpdates,
+    };
   } finally {
     await releaseDigestGeneration(supabase, digestId);
   }

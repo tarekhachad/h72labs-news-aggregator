@@ -10,17 +10,6 @@ const TIER_ORDER: Record<GridTier, number> = { hero: 0, medium: 1, small: 2 };
 export interface GridItemInput {
   id: string;
   tier: GridTier;
-  /**
-   * Marks a run boundary immediately before this item (5.7's run divider):
-   * forces the band open before it closed, even mid-tier and even if this
-   * item would otherwise still fit in it, and reserves one full-width row
-   * above this item's own band for the caller to render a divider into.
-   * Never set true on the very first item overall — there's nothing to
-   * divide from before the beginning (packGrid guards this defensively
-   * anyway: a stray true before any band has been placed yet is a no-op,
-   * not a wasted leading row).
-   */
-  breakBefore?: boolean;
 }
 
 export interface GridPosition {
@@ -111,39 +100,18 @@ export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
   let i = 0;
 
   while (i < ordered.length) {
-    // Run-boundary check (5.7): reserve one full-width row above this band
-    // for the caller's divider, before laying the band itself out. Guarded
-    // on result.size > 0 rather than i > 0 for clarity of intent ("has any
-    // band actually been placed yet") — not because the two differ in
-    // this algorithm: i (items consumed from `ordered`) and result.size
-    // (items placed into `result`) always increase in exact lockstep here,
-    // since every band consumes at least one item and every consumed item
-    // is placed before this check next runs, so i > 0 and result.size > 0
-    // are equivalent at every iteration. The real safety against a
-    // breakBefore/tier-sort mismatch lives in packGridWithRunDividers's
-    // own pre-sort (see its doc comment below) — that's what makes `i`
-    // here trustworthy in the first place, by guaranteeing `ordered` is
-    // never actually reordered relative to what breakBefore assumed.
-    if (ordered[i].breakBefore && result.size > 0) currentRow += 1;
-
     const bandTier = ordered[i].tier;
     const bandRowSpan = TIER_DIMENSIONS[bandTier].rowSpan;
     const band: { id: string; col: number; colSpan: number }[] = [];
     let col = 1;
 
     // Fill this band left-to-right with consecutive same-*tier* cards
-    // until one doesn't fit the remaining width, the tier changes, the
+    // until one doesn't fit the remaining width, the tier changes, or the
     // tier's own maxPerBand cap is reached (see gridTiers.ts's
     // TIER_DIMENSIONS — hero's cap of 1 is what actually guarantees it
     // always renders alone; width alone can't be relied on, since two
     // hero-tier cards' nominal widths sum to an exact 6-column fit and
-    // would otherwise pack side-by-side in one band), or the next card
-    // itself starts a new run (breakBefore) — that forces this band closed
-    // even mid-tier, since a run boundary must never share a row with the
-    // band before it. The first item entering a fresh band is always
-    // accepted regardless of its own breakBefore (band.length === 0) —
-    // that's precisely the item whose boundary triggered starting this
-    // band in the first place.
+    // would otherwise pack side-by-side in one band).
     const maxPerBand = TIER_DIMENSIONS[bandTier].maxPerBand ?? Infinity;
     // A tier configured with maxPerBand < 1 would make every band for it
     // start empty, and `band[band.length - 1]` below would be undefined —
@@ -151,12 +119,7 @@ export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
     if (maxPerBand < 1) {
       throw new Error(`Invalid maxPerBand for tier "${bandTier}": must be at least 1.`);
     }
-    while (
-      i < ordered.length &&
-      ordered[i].tier === bandTier &&
-      band.length < maxPerBand &&
-      (band.length === 0 || !ordered[i].breakBefore)
-    ) {
+    while (i < ordered.length && ordered[i].tier === bandTier && band.length < maxPerBand) {
       const { colSpan } = TIER_DIMENSIONS[ordered[i].tier];
       if (col + colSpan - 1 > GRID_COLUMNS) break;
       band.push({ id: ordered[i].id, col, colSpan });
@@ -182,75 +145,4 @@ export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
   }
 
   return result;
-}
-
-export interface RunDividerPosition {
-  generatedAt: string;
-  gridPosition: GridPosition;
-}
-
-/**
- * Wraps packGrid with 5.7's run-divider concern: marks each card whose
- * `generatedAt` differs from the previous card's as a run boundary (never
- * the first card — nothing to divide from before the beginning), so
- * packGrid reserves a full-width row above it, then reconstructs each
- * divider's own row from where its following card actually landed.
- *
- * Deliberately does *not* group cards by run before packing — the caller's
- * existing importance order (frontPageRank / severity) stays primary.
- * That matters because rank.ts re-ranks the *cumulative* candidate pool on
- * every run, so a later run's bigger story can dethrone an earlier one's
- * front-page slot: cards from different runs can end up interleaved by
- * importance, not stacked as clean contiguous blocks. Grouping by run
- * first would invert that already-deliberate ranking behavior (an older,
- * now-demoted story would render above a newer, more important one).
- * Interleaved runs may still produce more than one divider in that case —
- * a real, accepted consequence of keeping importance order authoritative,
- * not a bug in this function.
- *
- * `cards` is pre-sorted here by the exact same tier ordering packGrid
- * applies internally, *before* breakBefore is computed — not for its own
- * sake, but so breakBefore's adjacency check ("does this card's
- * generatedAt differ from the previous one") is evaluated in the same
- * order packGrid will actually pack in. Both of today's real callers
- * already happen to pass cards pre-sorted by a field monotonic with tier
- * (frontPageRank / severity), so this sort is a no-op for them in
- * practice — but computing breakBefore against the caller's raw input
- * order instead would silently break for any future caller (or any
- * gridTiers.ts tweak that stops one of those fields being tier-monotonic):
- * packGrid's own internal stable sort could then reorder a breakBefore
- * card to a different position than the one this function assumed when
- * locating its divider's row, producing an invalid `gridRow` (e.g.
- * `"0 / span 1"`) instead of a wasted/skipped reservation. Sorting here
- * first removes the dependency on that invariant entirely, rather than
- * just documenting it.
- */
-export function packGridWithRunDividers(
-  cards: { id: string; tier: GridTier; generatedAt: string }[]
-): { gridPositions: Map<string, GridPosition>; dividers: RunDividerPosition[] } {
-  const ordered = [...cards].sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier]);
-
-  const items: GridItemInput[] = ordered.map((card, i) => ({
-    id: card.id,
-    tier: card.tier,
-    breakBefore: i > 0 && card.generatedAt !== ordered[i - 1].generatedAt,
-  }));
-
-  const gridPositions = packGrid(items);
-
-  // Zipped by index (not re-looked-up) — items and ordered share the same
-  // order and length by construction above.
-  const dividers: RunDividerPosition[] = [];
-  ordered.forEach((card, i) => {
-    if (!items[i].breakBefore) return;
-    const cardPosition = gridPositions.get(card.id);
-    if (!cardPosition) return; // Defensive only — packGrid returns an entry for every input item.
-    const cardRow = Number(cardPosition.gridRow.split(" ")[0]);
-    dividers.push({
-      generatedAt: card.generatedAt,
-      gridPosition: { gridColumn: `1 / span ${GRID_COLUMNS}`, gridRow: `${cardRow - 1} / span 1` },
-    });
-  });
-
-  return { gridPositions, dividers };
 }

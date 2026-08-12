@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { Card } from "@/types";
+import { applyRankUpdates, type RankUpdate } from "@/lib/rankUpdates";
+import { ENTRANCE_DURATION_SECONDS, ENTRANCE_STAGGER_SECONDS } from "@/lib/entranceTiming";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
 // strings here since the client doesn't need the payload types, just the
@@ -10,6 +12,9 @@ export const STAGE_ORDER = ["ingesting", "clustering", "triaging", "writing", "r
 export type Stage = (typeof STAGE_ORDER)[number];
 export type StageEvent = { stage: Stage } & Record<string, unknown>;
 type WireEvent = { stage: Stage | "error" } & Record<string, unknown>;
+
+/** Slack on top of duration + stagger before a batch is force-retired. */
+const ENTRANCE_RETIRE_MARGIN_MS = 400;
 
 // Duplicated rather than imported from a server-oriented lib module into a
 // client bundle — matches digests.ts's own todayDateString() comment
@@ -24,7 +29,28 @@ interface DigestGenerationContextValue {
   loading: boolean;
   stageEvent: StageEvent | null;
   error: string | null;
-  recentlyAddedIds: Set<string>;
+  /**
+   * Cards awaiting their one-time entrance animation, mapped to the delay
+   * (seconds) that staggers them. A Map rather than a Set, and the delay is
+   * fixed here at insertion rather than derived from the card's current
+   * position in the rendered list, because a *changing* delay is a changing
+   * Motion transition value — which re-triggers the entrance on a card that
+   * already played it. That's exactly what a second same-day run caused
+   * before Phase 8.4: re-ranking reorders the front page, a settled card's
+   * index (and so its delay) shifts, and it visibly popped again as though
+   * it were new.
+   *
+   * Entries are removed once played, which is what makes the animation
+   * one-shot per card. Without that, any later remount of the same card —
+   * closing focus mode remounts its grid cell, and a demotion followed by
+   * a promotion unmounts and remounts it outright — would replay the
+   * entrance for content that has been on screen for minutes. Cards retire
+   * themselves when their animation completes; a timer set alongside each
+   * batch catches every case where that can't happen (reduced motion, or
+   * an unmount mid-animation).
+   */
+  pendingEntrances: Map<string, number>;
+  markEntrancePlayed: (cardId: string) => void;
   seed: (cards: Card[], date: string) => void;
   startGeneration: () => void;
 }
@@ -47,7 +73,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
   const [loading, setLoading] = useState(false);
   const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [recentlyAddedIds, setRecentlyAddedIds] = useState<Set<string>>(new Set());
+  const [pendingEntrances, setPendingEntrances] = useState<Map<string, number>>(new Map());
 
   // Tracks which date (if any) currently has a generation fetch in flight —
   // a date, not a bare boolean, so a stale run left over from a date seed()
@@ -67,6 +93,21 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
   // second invocation a harmless no-op, but that was fragile, not correct.
   const seededDateRef = useRef<string | null>(null);
 
+  // Called by a card once its entrance animation finishes. Dropping the
+  // entry is what makes the animation one-shot: every later render of that
+  // card — including a fresh mount after focus mode closes, or after a
+  // demotion and re-promotion — then sees no pending entrance and renders
+  // statically, instead of popping again for content the reader has
+  // already been looking at.
+  const markEntrancePlayed = useCallback((cardId: string) => {
+    setPendingEntrances((prev) => {
+      if (!prev.has(cardId)) return prev;
+      const next = new Map(prev);
+      next.delete(cardId);
+      return next;
+    });
+  }, []);
+
   const seed = useCallback((initialCards: Card[], date: string) => {
     // Already tracking this date — either a live run is in flight or one
     // already finished this session. Never clobber that with a
@@ -85,7 +126,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
     setLoading(false);
     setStageEvent(null);
     setError(null);
-    setRecentlyAddedIds(new Set());
+    setPendingEntrances(new Map());
   }, []);
 
   const startGeneration = useCallback(() => {
@@ -175,21 +216,72 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
           // already-reset state.
           if (seededDateRef.current !== runDate) return;
           const newCards = event.cards as Card[];
-          // Additive, not a replace — see getDigestForDate/upsertDigestForToday:
-          // the server's since-cursor only ever returns cards published after
-          // the last run, so this run's cards can't overlap what's on screen.
-          // rank.ts's ranking pass also rewrites frontPageRank on *existing*
-          // cards (a later run's bigger story can dethrone an earlier pick),
-          // but the server only returns the new cards here, not the
-          // existing ones' updated ranks — a reload picks those up via
-          // getDigestForDate. Acceptable for v1: the common case (generate
-          // once per day) never hits this staleness window.
-          setCards((prev) => [...(prev ?? []), ...newCards]);
-          setRecentlyAddedIds((prev) => {
-            const next = new Set(prev);
-            newCards.forEach((c) => next.add(c.id));
+          // Missing rankUpdates is read as "change nothing" rather than
+          // "clear everything" — that's the server's own fail-open
+          // contract when ranking is skipped or errors, and it also covers
+          // a stream opened against an older deployment mid-rollout.
+          const rankUpdates = (event.rankUpdates as RankUpdate[] | undefined) ?? [];
+          // Additive for this run's own cards — see
+          // getDigestForDate/upsertDigestForToday: the server's since-cursor
+          // only ever returns cards published after the last run, so they
+          // can't overlap what's already on screen.
+          //
+          // The rank rewrite is the other half, and used to be missing
+          // (fixed in Phase 8.4): rank.ts re-ranks the full cumulative pool
+          // every run, so a later run's bigger story can dethrone an earlier
+          // pick. The server computes and persists those changes but only
+          // returns the new cards, so already-rendered cards kept a stale
+          // frontPageRank and two cards could both claim rank 1 — rendering
+          // two hero-sized cards until a reload. Applied to `prev` *before*
+          // appending, so this run's new cards (ranked in the same pass)
+          // never land alongside a value the same pass superseded.
+          setCards((prev) => [...applyRankUpdates(prev ?? [], rankUpdates), ...newCards]);
+          setPendingEntrances((prev) => {
+            const next = new Map(prev);
+            // Stagger relative to this batch, not to the card's eventual
+            // position in the whole front-page list: a single new card
+            // should start immediately, not sit out a delay computed from
+            // wherever it happens to sort.
+            newCards.forEach((c, index) => next.set(c.id, index * ENTRANCE_STAGGER_SECONDS));
             return next;
           });
+          // Backstop: retire this batch once its animations must be over.
+          //
+          // Cards normally retire themselves the instant their entrance
+          // finishes (NewsCard's onAnimationComplete), but there are
+          // several ways that never fires — reduced motion skips the
+          // animation entirely, and any unmount mid-flight (navigating off
+          // the front page, a rank update demoting the card) makes Motion
+          // drop its event subscriptions. A stranded entry would replay the
+          // fade on that card's next mount, for content the reader has
+          // already seen.
+          //
+          // Deliberately owned here rather than by a per-card unmount
+          // cleanup: this provider is mounted at the layout level and never
+          // unmounts, so there's no cleanup for React Strict Mode's
+          // mount/unmount/remount cycle to invoke synthetically. The
+          // per-card version of this was tried first and did exactly that —
+          // retiring every entrance before it played, freezing cards at
+          // opacity 0 in dev.
+          //
+          // No cleanup on this timer on purpose: it must still fire after
+          // the cards it covers have unmounted, since that's the case it
+          // exists for. It only ever removes ids, so a late run is
+          // harmless, and markEntrancePlayed no-ops on anything already
+          // retired.
+          const batchIds = newCards.map((c) => c.id);
+          const lastStaggerMs = Math.max(0, batchIds.length - 1) * ENTRANCE_STAGGER_SECONDS * 1000;
+          window.setTimeout(
+            () => {
+              setPendingEntrances((prev) => {
+                if (!batchIds.some((id) => prev.has(id))) return prev;
+                const next = new Map(prev);
+                batchIds.forEach((id) => next.delete(id));
+                return next;
+              });
+            },
+            lastStaggerMs + ENTRANCE_DURATION_SECONDS * 1000 + ENTRANCE_RETIRE_MARGIN_MS
+          );
           // Stamp defensively in case this run started before FrontPage's
           // own seed() call landed (belt-and-suspenders — in practice
           // seed() always runs first, on mount). Safe now that the guard
@@ -205,7 +297,17 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
 
   return (
     <DigestGenerationContext.Provider
-      value={{ cards, seededDate, loading, stageEvent, error, recentlyAddedIds, seed, startGeneration }}
+      value={{
+        cards,
+        seededDate,
+        loading,
+        stageEvent,
+        error,
+        pendingEntrances,
+        markEntrancePlayed,
+        seed,
+        startGeneration,
+      }}
     >
       {children}
     </DigestGenerationContext.Provider>

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { getDigestForDate } from "@/lib/digests";
+import { getDigestForDate, todayDateString } from "@/lib/digests";
 import { FrontPage } from "@/components/newspaper/FrontPage";
 
 // Reject anything that isn't a plain YYYY-MM-DD before it reaches the DB
@@ -23,6 +23,17 @@ export default async function HistoryDatePage({
   params: Promise<{ date: string }>;
 }) {
   const { date } = await params;
+
+  // Today isn't history (Phase 8.1). listDigestDatesForUser no longer
+  // surfaces today's date, but this route is still directly reachable by
+  // a typed URL or a link bookmarked yesterday — without this it would
+  // render a second, non-interactive copy of the front page, missing the
+  // generation trigger. Redirect rather than 404: the content the URL is
+  // asking for genuinely exists, just at "/".
+  if (date === todayDateString()) {
+    redirect("/");
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

@@ -1,13 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { getCardsForTopicOnDate, digestExistsForDate } from "@/lib/digests";
+import { getCardsForTopicOnDate, digestExistsForDate, todayDateString } from "@/lib/digests";
 import { slugToTopic } from "@/lib/topicSlug";
 import { TopicPage } from "@/components/newspaper/TopicPage";
-
-function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function TopicRoutePage({
   params,

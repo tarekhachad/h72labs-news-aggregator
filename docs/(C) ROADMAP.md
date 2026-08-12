@@ -138,6 +138,8 @@ Replace the fixed per-tier `line-clamp-N` truncation (deliberately conservative 
 
 ### 5.7 — Run divider
 
+> **⚠️ Superseded by Phase 8.4 (2026-08-12) — this feature was deleted, not amended.** Tarek found the shipped result unreadable in live use: the divider consumes a full 180px grid row, and the deliberate "don't group by run, keep importance order primary" decision recorded below means two runs can interleave into *three* dividers rather than one clean split. Phase 8.4 removes `RunDivider.tsx`, `packGridWithRunDividers`, and the `breakBefore` flag entirely, replacing run separation with a per-card "New" badge on the latest run's cards. This entry is left intact as the historical record of what was built and why — it is no longer a description of the current code.
+
 Build the run-divider concept referenced in code comments since Phase 3 but never implemented: a thin rule + label between cards from different same-day generation runs, keyed off `card.generatedAt` (already stamped identically per run, no backend change needed). Extends 5.1's `packGrid.ts` to treat a run boundary as a forced full-width row break.
 - **Done when:** verified live on a digest with 2+ same-day generation runs, on both the front page and a topic page.
 - **Done (2026-08-08):** new `src/components/newspaper/RunDivider.tsx`; `packGrid.ts` gained a `breakBefore` flag on its per-item input plus a new exported `packGridWithRunDividers` (marks each card whose `generatedAt` differs from the previous card's — in the existing importance-sorted order, not grouped by run — as a boundary, has `packGrid` reserve a full-width row above it, then reconstructs each divider's grid position from where its following card landed); `FrontPage.tsx`/`TopicPage.tsx` both call it instead of `packGrid` directly. Deliberately does not group cards by run before packing: `rank.ts` re-ranks the cumulative pool every run, so a later run's card can dethrone/interleave with an earlier run's by importance — grouping by run first would invert that already-deliberate ranking behavior, so interleaved runs can legitimately produce more than one divider instead of clean contiguous blocks.
@@ -204,14 +206,158 @@ Navigating away from `/` mid-generation and back showed an empty "no stories" st
 
 **Done when (Phase 7 overall):** both sub-phases above are complete, each having gone through the standard qa/code-reviewer convergence loop.
 
-## Final Phase (v1 launch) — Cost/quality pass + friends testing
+## Phase 8 — UI fixes
 
-_Renamed from "Phase 7" 2026-08-11, per Tarek's own numbering convention going forward: this is the last phase of v1 by design (the cost/quality pass + friends-testing gate before calling v1 done), so it gets a fixed, non-numeric label instead of a sequential number. Every additional round of UI fixes/tweaks Tarek brings (like Phase 6 before it) becomes its own new numbered phase — 7, 8, 9, … — inserted **before** this one, without ever renumbering this section or anything already shipped. This section only ever moves if its own scope changes, not because something else got inserted ahead of it._
+_Added 2026-08-12, after Tarek tested the shipped Phase 7 UI live and brought four issues. Inserted before the Final Phase per the standing numbering convention, without renumbering anything already shipped. Planned via Plan Mode: three Explore agents mapped the four areas first, a Plan agent designed the highest-risk sub-phase, and every file/line claim was re-verified against current source before the plan was finalized. **Full file-level plan: `docs/(C) IMPLEMENTATION_PLAN_PHASE8.md`**, same convention as Phases 4-7._
 
-- Confirm the lazy expanded-report generation is actually lazy (not accidentally pre-generating for every card).
-- Instrument real Claude API usage/cost against the estimate in `(C) TECH_STACK.md` — correct the estimate with real numbers.
-- Invite a small group of friends to test; watch for actual return usage as the signal, not just verbal feedback (per the H72 go-to-market approach).
-- **Done when:** a handful of real people outside you have used it more than once.
+**Sub-phases are risk-ascending, not in the order Tarek reported the issues** (confirmed with him before planning, matching the Phase 6 precedent): the isolated data-layer change first, the self-contained new component next, then a rewiring of existing fetch/caching logic, and the core layout + data-flow change last.
+
+**One requirement changed during planning, and it inverted the shape of 8.4.** Tarek's original ask was to keep run separation but reorder it — newest run's cards on top, each run independently importance-ranked, exactly one divider between runs. On review he reversed it: **don't separate runs at all, label individual cards with the run they came from instead.** That turns 8.4 from a rebuild of the Phase 5.7 divider system into a net deletion of it, with card ordering left completely unchanged. The reversal also dissolved a genuine design conflict the original ask would have hit — `frontPageRank` is a single global 1-6 sequence across the whole day, so per-run blocks would have needed per-run rank re-indexing to avoid an older run's block holding the day's only hero card below a newer block.
+
+### 8.1 — Today's digest shouldn't appear in the history list
+
+`/history` lists today's date, duplicating the front page. `listDigestDatesForUser` applies no upper date bound and the history page passes no range, so today's row appears the moment `upsertDigestForToday` inserts it — which happens when generation *starts*, before any card exists. Decision: hide today entirely, all day; it reappears tomorrow.
+
+Also folds in an adjacent inconsistency in the same function: Phase 7.2 changed `digestExistsForDate` to require ≥1 `cards` row, but `listDigestDatesForUser` was left checking only for a `digests` row, so the two now disagree about what "a digest exists" means — a day whose generation produced nothing renders as a clickable "0 cards" entry.
+
+- **Done when:** today's date never appears in `/history`; yesterday's still does; zero-card days are gone from the list; `/history/<today>` and `/history/<today>/topic/<slug>` redirect to their live equivalents instead of rendering a duplicate; and `listDigestDatesForUser` has unit coverage it previously had none of.
+- **Done (2026-08-12):** `listDigestDatesForUser` gained `.lt("date", todayDateString())` (a strict `<`, pushed into SQL) plus a post-map `cardCount > 0` filter; `todayDateString()` went from module-private to exported so the two new redirect guards — `history/[date]/page.tsx` → `/` and `history/[date]/topic/[slug]/page.tsx` → `/topic/<slug>` — could ask "is this today?" without minting more copies of it. The topic-route guard sits deliberately *after* its slug-validity check, so a bad slug still lands on `/history` rather than being redirected to a live topic route that doesn't exist either. **Two rounds.** Round 1: `qa` passed everything and found a genuine coverage gap it closed itself — `todayDateString()` had never been directly unit-tested despite now being exported and called from three modules (added 6 tests, including a run under `TZ=America/Los_Angeles` to actually exercise the UTC-vs-local risk rather than just assert it in a comment); `code-reviewer` returned PASS WITH NOTES with two low-severity items, both fixed: the diff had converted two `todayDateString` call sites to the new export but left a third server-side duplicate in `topic/[slug]/page.tsx` (deleted, now imports the canonical one — it's a Server Component, so unlike `FrontPage.tsx`/`DigestGenerationContext.tsx` it had no import-boundary reason to keep its own), and a forward-looking note that the JS-side zero-card filter would under-fill pages if true row-based pagination is ever built on top of `range` (documented in the function's comment, since PostgREST can't filter parent rows on an embedded aggregate's value without a view or RPC). Round 2 (fresh, both agents) came back clean — `qa` live-verified all three behaviors against real inserted digest rows and specifically exercised `/topic/[slug]`, the live route round 1 had no reason to touch; `code-reviewer` independently re-derived the "every server-side caller now imports it" claim by reading every server file that touches dates rather than trusting it, and assessed the PostgREST claim on its own merits. 135/135 tests (120 → 135, +15 across two new files), `tsc`/`eslint` clean throughout. Live verification cost $0 in API spend — both rounds seeded `digests`/`cards` rows directly through an authenticated Supabase session instead of triggering a real generation.
+
+### 8.2 — Sign-out confirmation
+
+Sign out fires immediately on click, with no confirmation. Decision: clicking Sign out closes the sidebar, then a small centered confirmation box appears over the dimmed page, visually matching focus mode (much smaller than an expanded card — sized to its message).
+
+The sidebar closing first is a deliberate structural choice, not a stylistic one: the Sign out button lives inside an already-open Base UI `Dialog` (the `Sheet`), so a `createPortal(..., document.body)` modal opened from within it would be a *sibling* of the Sheet's portal and would fight its focus trap and background-`inert`. Closing the sheet first avoids the nested-dialog problem entirely. Reuses the existing `Backdrop` component verbatim and extracts FocusOverlay's inert-sweep into a shared `useInertBackground` hook now that there's a second consumer, rather than copy-pasting it.
+
+- **Done when:** verified live that sign-out requires confirmation, all three dismiss paths work (Cancel/Escape/backdrop), initial focus lands on Cancel rather than the destructive action, focus returns to the sidebar trigger on cancel, the background is not tabbable while open, and confirming still actually signs out.
+- **Done (2026-08-12):** new `src/components/newspaper/ConfirmDialog.tsx` (generic title/description/confirm/cancel box, sized to content rather than FocusOverlay's 75% viewport box) plus `src/hooks/useInertBackground.ts`, extracted from `FocusOverlay.tsx`'s inline inert-sweep now that there are two consumers — the hook keeps the `useLayoutEffect` timing `NewsCard.tsx`'s focus-restoration depends on, and owns initial focus in the same effect so the "background inert" / "focus moves inside" ordering can't be reordered by accident. `Sidebar.tsx`'s Sheet became controlled purely so Sign out can close it before the dialog opens; the old `<form action={signOutAction}>` became a button that opens the confirmation, which invokes the action via `useTransition`. **Two rounds.** Round 1: `qa` passed everything live including the focus-mode regression check (all three close paths, focus returning to the originating card each time) and found no defects; `code-reviewer` returned four items, all fixed — **a real error-handling gap** (`signOutAction` wraps `supabase.auth.signOut()`, a genuine network call, and had no failure path at all, so a failed sign-out crashed to the nearest error boundary), plus three comment-accuracy defects (the Sheet hides the background with `aria-hidden`, not the DOM `inert` property — verified in Base UI's own `FloatingFocusManager` source; a stale claim that Escape dismisses mid-flight when the caller no-ops it; and an entirely undocumented cross-library ordering dependency where Base UI schedules its return-focus-to-trigger *after* this hook has focused the dialog, which is safe only because the trigger is inert by then). Fixed with a try/catch around the action, an `error` prop on `ConfirmDialog` rendering a `role="alert"` message with the dialog left open for retry, and all three comments corrected. Round 2 (fresh, both agents): `qa` clean — live-verified the happy path still redirects and genuinely clears the session, simulated a failing sign-out via `page.route()` interception and confirmed the error renders, buttons re-enable, no error-boundary crash, and a retry then succeeds. `code-reviewer` surfaced one low-severity comment-wording nit and, in the process, **confirmed the round-1 fix was load-bearing in a way that hadn't been understood**: calling a Server Action that redirects *rejects* the client promise with a redirect-shaped error, so the catch runs on every successful sign-out too — without the `unstable_rethrow` guard, every successful sign-out would have displayed a failure message. Comment fixed directly and **explicitly put to Tarek** rather than assumed: only finding was cosmetic, zero behavior change since the agents last looked, matching the 7.1 / 7.2-round-3 precedent for trivial comment nits — he chose to accept and document rather than spin a third round. 135/135 tests, `tsc`/`eslint`/`next build` clean throughout. Zero API spend: no digest generation was triggered in either round.
+
+### 8.3 — Full report shouldn't generate just from opening focus mode
+
+The report fetch fires automatically on entering focus mode (a `useEffect` keyed on `focused` in `NewsCard.tsx`), so opening a card merely to read its full short summary — which is often clamped in the grid for lack of space — silently spends a Sonnet call. Decision: gate it behind an explicit **"Generate Full Report"** button in focus mode.
+
+Note `loadingReport` is currently *derived* (`report === null && reportError === null`), which under a gated flow would read as "loading" forever before the user clicks — it has to become real state. `src/components/CardItem.tsx` (the legacy `/saved` component) already implements exactly this button-gated shape and is the template to follow.
+
+- **Done when:** verified live that entering focus mode fires zero network requests, the button fires exactly one, reopening a card after generation refetches nothing, a failed generation can be retried in place rather than by closing and reopening, and a card whose report already exists shows the report immediately with no button.
+- **Done (2026-08-12) — six rounds, five of which found real defects.** The feature itself was small: `NewsCard.tsx`'s auto-firing `useEffect` became an explicit `handleGenerateReport()`, `loadingReport` became real state (it had been derived as `report === null && reportError === null`, which under a gated flow reads as "loading" forever before the user clicks), `FocusOverlay` gained an `onGenerateReport` prop and a button, and `openOrFlipBack` stopped clearing `reportError` (nothing auto-fires on open any more, so the stale-flash it prevented can't happen — and keeping the error visible next to a "Try again" button is the useful thing to show). Round 1's `qa` passed live with one real paid call and empirically proved the double-fire guard. **Everything after that was one accessibility defect repeatedly re-introduced by its own fix, which is exactly the failure mode the no-self-capping rule exists to catch:** round 1's `code-reviewer` found that clicking the button unmounted the focused element, dropping focus to `<body>`; the round-1 fix kept it mounted but `disabled`, and round 2 — both agents independently, `qa` frame-by-frame and `code-reviewer` through Base UI's source — proved a native `disabled` attribute blurs a focused element just as surely, so the fix achieved nothing; round 2's fix used Base UI's `focusableWhenDisabled` (verified in `useFocusableWhenDisabled`/`useButton` source to emit `aria-disabled` while still hard-blocking the press) and added focus-on-success, and round 3 found that switching off native `disabled` meant the shared `Button`'s `disabled:` Tailwind variants no longer matched, so it stopped *looking* disabled; round 4's fix added `aria-disabled:*` variants to the shared primitive (`qa` swept all ~10 consumers for regressions and found none), and its review found that removing `role="alert"` from the error broke announcement on the reopen-after-failure path, since `FocusOverlay` unmounts on close and the live region remounts already populated; round 5 replaced it with `role="status"` and `code-reviewer` correctly refused to bless a live region nested inside another live region on reasoning alone. Rather than change the role a third time, the nesting was removed **structurally**: no live-region role on any visible element, and one `sr-only` `aria-live="polite"` region mounted for the overlay's whole lifetime, deliberately silent on fresh mount (a dialog announces itself) and on success (focus moves to the report, which is read instead). Round 5 also found a dead `!loadingReport` clause whose comment claimed a guard it couldn't provide. **Round 6 came back genuinely clean from both agents.** Two adjacent real bugs were fixed along the way: `expand/route.ts` cached on a truthy check, so a persisted empty-string report would have been regenerated — paying for Sonnet — on every single expand of that card forever; and the shared `Button` now handles both disabled mechanisms. 135/135 tests, `tsc`/`eslint`/`next build` clean every round. **Total API spend across all six rounds: one Sonnet call** — every other scenario used Playwright `page.route()` interception.
+
+### 8.4 — Replace run dividers with a per-card "New" badge, and fix stale cross-run ranks
+
+Phase 5.7's `RunDivider` splits the grid with a full-width horizontal rule at each run boundary. It consumes an entire 180px grid row, and because ranking is cumulative across the day, runs interleave by importance — so two runs can produce *three* dividers. Tarek found the result unclear and unreadable.
+
+Decision: delete the divider system entirely, keep one unified importance-ordered grid (`frontPageRank` / `severity` ordering unchanged), and mark provenance with a **"New" badge on the most recent run's cards — shown only when the page holds 2+ distinct runs**, so an ordinary single-run day shows no badges at all. Net deletion: `RunDivider.tsx`, `packGridWithRunDividers`, the `breakBefore` field on `GridItemInput`, and 9 tests all come out.
+
+Also fixes a real bug found during exploration and confirmed by Tarek as in scope: `rank.ts` re-ranks the full cumulative pool every run, but the stream returns only the *new* cards, so already-rendered cards keep stale `frontPageRank` values client-side — two cards can both hold rank 1 and both render hero-sized until reload. Removing the divider makes this more visible, not less. The server already computes and persists the correction (`existingCardRankUpdates`); it simply never sends it to the client.
+
+- **Done when:** no horizontal rule appears anywhere in the grid; a single-run day shows zero badges; a multi-run page badges exactly the latest run's cards, on topic pages too (where the topic chip is hidden); a second run live-updates the grid so exactly one hero is rendered with no reload; tier changes snap rather than animate; and no SSR/hydration warnings appear on a server-rendered multi-run page.
+- **Done (2026-08-12) — seven rounds.** The intended change was mostly deletion and landed in one pass: `RunDivider.tsx`, `packGridWithRunDividers`, `RunDividerPosition`, the `breakBefore` field and its handling inside `packGrid`, and 9 tests all removed (`packGrid.test.ts` back to its pre-5.7 count of 16); new `newRunCardIds()` in `src/lib/newRun.ts` drives a `showNewBadge` prop, with `NewsCard`'s header row restructured from a `showTopicBadge ? chip : <span/>` placeholder into a left-hand flex group so the badge also renders on topic pages where the chip is hidden; `isNew` renamed `animateEntrance` to stop two props both meaning "new"; and the stale-rank fix shipped as a `rankUpdates` field on the `done` event plus `applyRankUpdates()` in `src/lib/rankUpdates.ts` (the server already computed and persisted those updates — it just never put them on the wire). Tests went 135 → 147.
+  **Six of the seven rounds were spent on one thing: making the entrance animation play exactly once.** Round 1's `qa` frame-sampled a settled card visibly replaying its fade after a re-rank, and — critically — proved it was *not* the layout tween everyone assumed (`gridColumn`/`gridRow` snapped in a single frame; what animated was a pure uniform `scale(0.97→1)`). Root cause: `entranceDelay` was `index * 0.04` from the card's position in the freshly re-sorted list, so a shifted index was a changed Motion transition value, which re-triggers `initial → animate`. Fixing that turned `recentlyAddedIds: Set` into `pendingEntrances: Map` with the delay fixed at insertion — and each subsequent round found the next hole in the resulting "one-shot" claim: round 3, opening a card mid-entrance strands its entry (Motion drops event subscriptions on unmount) so the fade replays on close; round 4, navigating away mid-entrance does the same, and the comment claiming otherwise overclaimed; round 5, **the round-4 fix was itself the worst bug of the phase** — a per-card unmount cleanup fires under React Strict Mode's synthetic mount/unmount/remount cycle, retiring every entrance before it played and freezing cards at `opacity: 0` in `next dev` (both agents caught it independently; `qa` measured it in dev and confirmed production was unaffected). That failure prompted **putting the approach itself back to Tarek** rather than patching again — the estimate he'd originally chosen on ("two extra effects") had proven wrong — and he moved it to a provider-owned timer: `DigestGenerationContext` schedules a force-retire per arriving batch, immune to the whole class because the provider never unmounts and so has no cleanup for Strict Mode to invoke. Round 6 then flagged that the timer's duration was a magic number duplicated from `NewsCard`'s hardcoded `0.3` with nothing but a comment tying them together — a drift that would reintroduce "retired mid-animation" a third time — now a shared `src/lib/entranceTiming.ts`. Round 7 came back genuinely clean from both agents.
+  Two further review-driven behaviors shipped alongside: a card **open in focus mode is retained** on the front page even if a rank update demotes it (snapshotting the card *object*, which still carries its pre-demotion rank — retaining just the id would read `frontPageRank: null`, which `tierForFrontPageRank` clamps up to hero, leaving a hero-sized phantom gap), and the **empty state moved inside** that retention boundary after round 2 found it was judged on the un-retained list and would unmount an open card's overlay whenever a re-rank demoted every ranked card. 147/147 tests, `tsc`/`eslint`/`next build` clean every round. **Zero API spend across all seven rounds** — every multi-run scenario was driven by Playwright `page.route()` interception with synthetic NDJSON, and the one live multi-run topic page was seeded by direct RLS-scoped Supabase inserts.
+
+**Done when (Phase 8 overall):** all four sub-phases above are complete, each having gone through the standard qa/code-reviewer convergence loop.
+
+## Final Phase (close out v1) — Cost diagnosis + cost optimization
+
+_Renamed from "Phase 7" 2026-08-11, per Tarek's numbering convention: this is the last phase of v1 by design, so it gets a fixed, non-numeric label instead of a sequential number. Every additional round of fixes/tweaks Tarek brings (like Phases 6, 7, 8 before it) becomes its own new numbered phase — 8, 9, 10, … — inserted **before** this one, without ever renumbering this section or anything already shipped. This section only ever moves if its own scope changes, not because something else got inserted ahead of it._
+
+**Scope narrowed 2026-08-12 (Tarek's call).** This phase is now *only* cost diagnosis and cost optimization. It is explicitly **not** a v1 launch phase: no Vercel deployment, no friends testing, no external users. Those move to **Roadmap V2**. v1 is considered **done and closed** at the end of this phase even though it was never deployed — "shipped" for v1 now means "working end-to-end locally for Tarek, at an understood and optimized cost," not "in other people's hands."
+
+- ~~Confirm the lazy expanded-report generation is actually lazy (not accidentally pre-generating for every card).~~ **Done (2026-08-12)** — confirmed by Tarek; removed as an action item.
+- **Diagnose:** instrument real Claude API usage/cost across the full pipeline (triage, card writing, expanded reports, front-page ranking) — per-call token counts and per-digest totals, against the estimate in `(C) TECH_STACK.md`. Correct that estimate with real numbers.
+- **Optimize:** act on what the diagnosis shows — reduce cost where it's disproportionate, without degrading digest quality.
+- **Done when:** real per-digest cost is measured and documented, `(C) TECH_STACK.md`'s estimate reflects reality, and any optimizations found worth making have shipped through the standard qa/code-reviewer loop.
+
+> **After this phase:** v1 closes and **Roadmap V2** opens (section below). Its first two steps are already pinned; everything after them gets scoped in a dedicated planning session from the "Explicitly deferred (not v1)" list. Do not start V2 work before that conversation happens.
+
+---
+
+# Roadmap V2
+
+_Opened 2026-08-12, after Tarek reversed the "close v1 undeployed and hand friends the repo" plan: getting a friend to clone a repo, install Docker or stand up their own Supabase project, and supply an API key is a barrier almost nobody clears. Deploying first makes the app a URL instead of a checkout. v1 still closes at the end of the Final Phase above (feature-complete, cost-optimized, undeployed) — deployment is now V2's opening move rather than v1's missing last step._
+
+**The first two steps are fixed and ordered, and V2.0 below gates both. Everything after them is unscoped** until the V2 planning session, which draws from the "Explicitly deferred (not v1)" list further down.
+
+---
+
+### V2.0 — BLOCKING DECISION: who pays for the Claude API, and how keys are handled
+
+> **This is a hard gate, not a task.** Nothing ships to another human being — not a deploy link, not the repo — until this is decided and the chosen option is built and tested. It determines whether a credential-storage subsystem exists in this codebase at all, so deciding it late means building V2.1 twice. Decide it **after** the Final Phase produces the real per-digest cost figure (that number is what makes Option B's caps sizable) and **before** writing any V2.1 code.
+
+**The problem.** The app calls the Claude API on every digest generation. Someone's account gets billed. Today that's Tarek's key in a local `.env.local` and the question never comes up — the moment a second person can generate a digest, it has to be answered.
+
+#### The security reality that shapes the whole decision
+
+**A user's API key cannot be fully secured by any storage scheme.** The server must hold the plaintext key at the moment it calls Anthropic — that is inherent to being the party making the call, not a flaw to engineer around. Encryption at rest therefore protects against exactly one scenario: a database dump with nothing else compromised. It does **not** protect against a compromised server, a leaked environment variable, a malicious or compromised npm dependency, or an ordinary bug that logs a request body.
+
+And the asset in question is a credential that spends someone else's money with no inherent limit. A leak costs Tarek's friends real money and it is Tarek's fault. That asymmetry — unbounded liability, irreducible risk — is the reason Option B is recommended over Option A, not any implementation detail.
+
+---
+
+#### Option A — Bring-your-own-key (users supply their own Anthropic key)
+
+Each user pastes their own key; the app stores it and uses it for their generations. Tarek pays nothing.
+
+**If chosen, the design is non-negotiable on these points:**
+
+- **Encrypt at rest with AES-256-GCM**, the encryption key held in a Vercel environment variable — **never** in the database alongside the ciphertext. Alternatively use **Supabase Vault**, which is purpose-built for this and keeps key management out of application code.
+- **Store keys in a table the publishable/anon key cannot reach at all** — service-role access only. An RLS policy is not sufficient isolation for this class of secret; the client should have no path to the row, correct policy or not.
+- **Never log the key, never return it to the client** (not even masked-with-reveal), and never let it reach an error tracker or exception report. Store a last-4 fingerprint separately for UI display.
+- **Give users visible delete and rotate paths**, and state plainly in the UI that Tarek's server holds their key.
+- **Verify Anthropic's terms** on third-party applications accepting end-user API keys before shipping this. To be confirmed against current policy, not assumed.
+- **Smallest-blast-radius variant, if Option A is chosen at all:** don't persist the key server-side. Hold it in an encrypted `httpOnly` session cookie and re-prompt each session. Worse UX, dramatically less to lose in a breach.
+
+**Costs of this option beyond the security burden:** it reintroduces the exact adoption barrier deployment was meant to remove — "create an Anthropic account, add a credit card, generate a key, paste it here" is a wall most testers will not climb, and those who do are paying to test Tarek's app. It is also strictly more code than Option B.
+
+**When Option A actually makes sense:** a public launch with more users than Tarek can fund. It is a scaling answer, not a friends-testing answer.
+
+---
+
+#### Option B — Tarek's own key, server-side only, with hard spend caps **(recommended)**
+
+Tarek's key stays in a Vercel environment variable and never leaves the server. Users sign up and use the app. **There is no user credential to store, so the entire security question above ceases to exist** — nothing to encrypt, nothing to leak, no liability.
+
+Cost is controlled by four independent mechanisms, all small to build:
+
+1. **Invite-only signup** — email allowlist or invite codes. Tarek controls exactly who can exist as a user. This is the primary cap; everything else is defense in depth.
+2. **Per-user daily digest limit** — one per day matches the natural shape of a daily news product, so it costs nothing in UX.
+3. **An Anthropic Console budget cap** — a hard backstop enforced outside the application, so an application bug cannot run up an unbounded bill.
+4. **A kill-switch environment variable** that disables generation without requiring a redeploy.
+
+**Why this is sizable in advance:** with invite-only signup and a daily limit, worst-case spend is arithmetic that can be checked before deploying — (number of invited users) × (1 digest/day) × 30 × (real per-digest cost from the Final Phase). Ten friends at a $0.20 digest is $60/month at *full* daily usage by everyone, which testers demonstrably do not sustain. Set the invite count and cap where the worst case is comfortable, and it cannot be exceeded.
+
+**Trade-off, stated honestly:** Tarek pays for other people's usage. That is the entire downside, and it is bounded by construction.
+
+---
+
+**Recommendation: Option B.** Less code than Option A, removes the security problem rather than mitigating it, and makes the app one click for a tester instead of a credit-card errand. Revisit Option A only if V2 ever reaches a public launch whose volume Tarek cannot fund.
+
+- **Done when:** the option is chosen and recorded here and in `(C) decision-log.md`; if Option B, all four cost-control mechanisms are built and the cap is verified to actually block generation when hit; if Option A, every bullet in its design list is implemented and reviewed. **No link and no repo goes to another person before this gate closes.**
+
+---
+
+### V2.1 — Deploy the app (Vercel + hosted Supabase)
+
+**Gated by V2.0 above — do not start until that decision is made and built.**
+
+The first real deployment: Vercel for the Next.js app, the existing hosted Supabase project (or a fresh production one) for Postgres + auth. Turns "clone this repo" into "here's a link."
+
+- **Done when:** the app is live at a URL, a non-technical person can sign up and generate a digest without touching a terminal, and spend is bounded by an enforced, tested cap per V2.0.
+
+### V2.2 — Rewrite `README.md` as the product's front door
+
+_Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after deployment, since a deployed app's README leads with the live link and drops most of the local-setup burden._ Today it's still untouched `create-next-app` boilerplate: Next.js tutorial links, a Vercel deploy pitch, nothing about this product, and run instructions that omit Supabase and every required env var (so following them today produces a crash, not a running app). It should cover, for a reader with zero context:
+
+- **What it is** — a personalized daily news reader: pick topics and sources, hit "give me today's news," get a newspaper-style feed where each card is one specific story synthesized from multiple outlets, short summary by default, full report + sources on expand.
+- **How to use it** — the live URL first, then the actual daily loop (sign up → pick topics/sources → generate → read/expand/bookmark → revisit past days via history), not a feature list.
+- **How it works under the hood, briefly** — RSS ingest → local embedding clustering → Haiku notability triage → Sonnet card writing → ranked front page. Keep it concrete; this is the part that makes the repo readable as engineering work and doubles as portfolio signal.
+- **How to run it locally** — still worth documenting for anyone reading the code, but now secondary to the hosted link: Node version, `npm install`, Supabase setup, every env var, `npm run dev`.
+- **What it doesn't do** — honest limits, refreshed against whatever V2.1 actually shipped (e.g. password reset, UTC-based "today," known duplicate-story cases).
+
+- **Done when:** someone who has never seen the project can understand what it is, use the hosted app, and — if they want to — run it locally, from this file alone.
+
+### V2.3+ — unscoped
+
+Drawn from "Explicitly deferred (not v1)" below in a dedicated planning session: ad-hoc chat topic requests, story-dedup improvements, per-user timezone handling, forgot-password/email reset, the source-preference redesign, free-text topics, hot-topic discovery, hierarchical subtopics, the real calendar-grid history view, and the accumulated small accepted trade-offs. Not ordered or committed yet.
 
 ---
 

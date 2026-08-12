@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
 import { X } from "lucide-react";
 import type { Card } from "@/types";
+import { Button } from "@/components/ui/button";
 import { Backdrop } from "@/components/newspaper/Backdrop";
+import { useInertBackground } from "@/hooks/useInertBackground";
 
 /**
  * The zoom/blur "focus mode" panel — clicking a card's body (not Sources,
@@ -31,6 +33,7 @@ export function FocusOverlay({
   report,
   loadingReport,
   reportError,
+  onGenerateReport,
 }: {
   card: Card;
   layoutId: string;
@@ -38,38 +41,25 @@ export function FocusOverlay({
   report: string | null;
   loadingReport: boolean;
   reportError: string | null;
+  /**
+   * Starts the (paid) report generation. Owned by NewsCard, which outlives
+   * this component — see the note above about why no fetch state lives
+   * here. Safe to call more than once; NewsCard guards it.
+   */
+  onGenerateReport: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const reportRef = useRef<HTMLParagraphElement>(null);
+  const prevReport = useRef(report);
 
-  // Everything behind the overlay becomes inert while it's open — a
-  // backdrop blocks pointer interaction, but without this, keyboard/screen
-  // reader users could still tab into and interact with the page
-  // underneath (the same reachability gap B6's review caught for the
-  // Sources flip, applied here proactively). rootRef marks this portal's
-  // own DOM node so it's excluded from the inert sweep of body's children.
-  // useLayoutEffect, not useEffect: its cleanup (restoring inert on close)
-  // must run synchronously during this subtree's unmount commit, not on
-  // its own async schedule — NewsCard's own focus-restoration effect
-  // depends on this ancestor already being un-inert by the time it runs,
-  // and React only guarantees that ordering for layout effects.
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const siblings = Array.from(document.body.children).filter(
-      (el) => el !== root
-    ) as HTMLElement[];
-    const previouslyInert = siblings.map((el) => el.inert);
-    siblings.forEach((el) => {
-      el.inert = true;
-    });
-    closeButtonRef.current?.focus();
-    return () => {
-      siblings.forEach((el, i) => {
-        el.inert = previouslyInert[i];
-      });
-    };
-  }, []);
+  // Everything behind the overlay becomes inert while it's open, and focus
+  // moves to the close button. Extracted to a shared hook in Phase 8.2
+  // when ConfirmDialog became a second consumer — the behavior here is
+  // unchanged, including the useLayoutEffect timing NewsCard's own
+  // focus-restoration effect depends on. See the hook for why that timing
+  // and the single-open-overlay constraint are load-bearing.
+  useInertBackground(rootRef, closeButtonRef);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -78,6 +68,24 @@ export function FocusOverlay({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  // When a generated report lands, the button the user pressed unmounts
+  // (the render below swaps the whole branch for the report text), which
+  // would drop focus to <body> at the moment of success. Move it onto the
+  // report itself instead — that's the thing they asked to read.
+  //
+  // Gated on a null→non-null transition, not merely on `report` being
+  // present, so a card that already had a report when the overlay opened
+  // doesn't have focus yanked off the close button on mount. Comparing
+  // against the previous value rather than using a one-shot flag matches
+  // the idiom NewsCard already uses for its flip/focus effects, and is
+  // idempotent under React Strict Mode's double invocation.
+  useEffect(() => {
+    if (prevReport.current === null && report !== null) {
+      reportRef.current?.focus();
+    }
+    prevReport.current = report;
+  }, [report]);
 
   return (
     <div ref={rootRef}>
@@ -134,17 +142,98 @@ export function FocusOverlay({
               {card.shortSummary}
             </p>
           )}
-          {loadingReport && (
-            <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-              Loading the full report…
+          {/* `report !== null`, not a truthy check: a report that came back
+              as an empty string is still a report that exists and must not
+              be offered for generation again — handleGenerateReport's own
+              guard treats it that way, and a truthy check here would
+              disagree with it, leaving a "Generate full report" button that
+              does nothing when pressed. */}
+          {report !== null ? (
+            // tabIndex={-1} so the effect above can move focus here when a
+            // report lands — otherwise the button the user just pressed
+            // unmounts and focus falls to <body>.
+            //
+            // outline-none is a deliberate call, not an oversight: focus
+            // arrives here programmatically and only to place the reading
+            // position (and to give screen readers something to announce),
+            // never from tabbing. A focus ring drawn around a multi-
+            // paragraph block of body text reads as a rendering fault
+            // rather than an affordance, and there's nothing here to
+            // activate that a ring would be signposting.
+            <p
+              ref={reportRef}
+              tabIndex={-1}
+              className="whitespace-pre-line text-base leading-7 outline-none"
+            >
+              {report}
             </p>
+          ) : (
+            // No live-region role anywhere in this branch — announcements
+            // are handled by the single persistent region below, outside
+            // the ternary. Roles here would nest a live region inside a
+            // live region, which screen readers handle inconsistently
+            // (some announce once, some twice).
+            <div className="flex flex-col items-start gap-3">
+              {/* Hidden while a retry is in flight, so a stale failure
+                  isn't sitting under a button that's already working. */}
+              {reportError && (
+                <p className="text-sm" style={{ color: "var(--color-destructive)" }}>
+                  {reportError}
+                </p>
+              )}
+              {/* focusableWhenDisabled is load-bearing, not decoration.
+                  Base UI's Button renders a REAL `disabled` attribute by
+                  default, and disabling the element that currently has
+                  focus makes the browser blur it to <body> — the same
+                  symptom as unmounting it, which is what this branch was
+                  restructured to avoid in the first place. With this prop
+                  it emits `aria-disabled` instead and stays focusable,
+                  while useButton's own onClick still hard-blocks the
+                  press. Verified in @base-ui/react's useFocusableWhenDisabled
+                  and use-button source, not assumed. */}
+              <Button
+                variant="outline"
+                onClick={onGenerateReport}
+                disabled={loadingReport}
+                focusableWhenDisabled
+                aria-busy={loadingReport}
+                className="cursor-pointer"
+              >
+                {loadingReport
+                  ? "Writing the full report…"
+                  : reportError
+                    ? "Try again"
+                    : "Generate full report"}
+              </Button>
+              {loadingReport && (
+                <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+                  This usually takes a few seconds.
+                </p>
+              )}
+            </div>
           )}
-          {reportError && (
-            <p className="text-sm" style={{ color: "var(--color-destructive)" }}>
-              {reportError}
-            </p>
-          )}
-          {report && <p className="whitespace-pre-line text-base leading-7">{report}</p>}
+
+          {/* The overlay's one live region, mounted for its entire
+              lifetime regardless of report state, so every announcement
+              is a text mutation inside a region that already exists —
+              the only form screen readers handle consistently. Nothing
+              else in here carries a live-region role, so there's no
+              nesting to disagree about.
+
+              It is deliberately silent on two transitions. On mount it
+              renders whatever the current state is, which for a reopened
+              card that previously failed means the region appears already
+              populated — the unreliable case, but also the one that needs
+              no live announcement at all, since opening a dialog already
+              announces itself and the user is about to explore it. And on
+              success it stays empty, because focus moves onto the report
+              text, which the screen reader reads instead; announcing here
+              too would say it twice. */}
+          <p aria-live="polite" className="sr-only">
+            {loadingReport
+              ? "Writing the full report. This usually takes a few seconds."
+              : (reportError ?? "")}
+          </p>
         </div>
       </motion.div>
     </div>

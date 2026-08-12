@@ -60,7 +60,7 @@ Personalized News Aggregator/
 
 ## Current Status
 
-> **Last updated:** 2026-08-12 — **Phase 7 complete** (both sub-phases: focus-mode exit-animation fix, and a `DigestGenerationContext` so in-progress digest generation survives page navigation). Phases 0–7 are all shipped and pushed; the only phase left before v1 is the **Final Phase (v1 launch)** — cost/quality pass + friends testing. Nothing is mid-flight.
+> **Last updated:** 2026-08-12 — **Phase 8 complete** (all four sub-phases: today hidden from the history list, sign-out confirmation, button-gated full-report generation, and Phase 5.7's run dividers replaced by a per-card "New" badge plus a live stale-rank fix). 147 tests green; `tsc`/`eslint`/`next build` clean. Phases 0–8 built — **Phase 8 is not yet committed.** Roadmap decisions standing from earlier the same day: the **Final Phase is re-scoped to cost diagnosis + cost optimization only**, **v1 closes undeployed**, and `docs/(C) ROADMAP.md` now carries a `Roadmap V2` section whose first step **V2.0 is a hard blocking gate** (decide who pays for the Claude API and how keys are handled — **nothing goes to another person until it closes**), then V2.1 deploy, then V2.2 the README rewrite. Sequence: commit Phase 8 → Final Phase (cost) → V2.0 gate → V2.1/V2.2 → rest of V2 scoped in its own session. Nothing mid-flight.
 
 **This section is deliberately just the line above.** Full detail — every phase, sub-phase, design decision, bug found, and review round — lives in `notes-logs/project-log.md`, which is the single master log for this project. Read that file for context, not this section.
 

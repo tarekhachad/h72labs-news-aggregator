@@ -49,9 +49,15 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
 // roll over several hours before their own local midnight, silently
 // reclassifying that day's digest as history. Deferred, not fixed —
 // see docs/(C) ROADMAP.md's "Explicitly deferred" section for what a real
-// fix needs (this function is duplicated in
-// src/app/(paper)/topic/[slug]/page.tsx too — both call sites would need it).
-function todayDateString(): string {
+// fix needs.
+//
+// Exported as of Phase 8.1 so the history route guards can ask "is this
+// date today?" without minting yet another copy. Every server-side caller
+// now imports it from here. It remains duplicated by hand in FrontPage.tsx
+// and DigestGenerationContext.tsx, which are client components and so
+// genuinely cannot import this server module — those two are the other
+// call sites a real timezone fix has to reach.
+export function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -234,6 +240,34 @@ export interface DigestDateSummary {
  * behind the Phase 3 history list. `range` is the extension point for a
  * future real calendar-grid view: a month view would call this with that
  * month's bounds instead of leaving it unbounded.
+ *
+ * Strictly *past* dates: today is excluded (Phase 8.1). The front page is
+ * today's home, so listing it here too was pure duplication — and worse
+ * than cosmetic, because upsertDigestForToday creates the `digests` row
+ * the moment generation *starts*, so today appeared in history while it
+ * was still mid-generation and had nothing to show. It reappears here
+ * tomorrow, when it genuinely is history.
+ *
+ * Dates with zero cards are dropped for the same reason, and this is
+ * where the two "does a digest exist" checks in this file are brought
+ * back into agreement: Phase 7.2 changed digestExistsForDate to require
+ * at least one `cards` row rather than trusting the bare `digests` row,
+ * for exactly this reason, but left this function checking row existence
+ * only — so a day whose generation started and produced nothing (every
+ * cluster failing triage, or an abandoned run) still rendered as a
+ * clickable "0 cards" entry leading to an empty page.
+ *
+ * Note the exclusion is against the UTC day, like every other date
+ * boundary in this app — see todayDateString()'s comment above for the
+ * known, deferred consequence of that for users well west of UTC.
+ *
+ * The zero-card filter runs in JS after the query rather than in SQL
+ * because PostgREST can't filter parent rows on an embedded aggregate's
+ * value without a view or RPC — not worth either for a list this small.
+ * That's fine for the date-range windowing `range` is meant for, but it
+ * would break true row-based pagination: a LIMIT/OFFSET page would be
+ * counted before this filter and could come back short. Move the filter
+ * into a view or RPC first if that's ever built.
  */
 export async function listDigestDatesForUser(
   supabase: SupabaseClient,
@@ -244,6 +278,7 @@ export async function listDigestDatesForUser(
     .from("digests")
     .select("date, cards(count)")
     .eq("user_id", userId)
+    .lt("date", todayDateString())
     .order("date", { ascending: false });
 
   if (range) {
@@ -253,11 +288,13 @@ export async function listDigestDatesForUser(
   const { data, error } = await query;
   if (error) throw new Error(`listDigestDatesForUser: ${error.message}`);
 
-  return (data ?? []).map((row) => {
-    const cards = row.cards as { count: number }[] | { count: number } | null;
-    const cardCount = Array.isArray(cards) ? (cards[0]?.count ?? 0) : (cards?.count ?? 0);
-    return { date: row.date as string, cardCount };
-  });
+  return (data ?? [])
+    .map((row) => {
+      const cards = row.cards as { count: number }[] | { count: number } | null;
+      const cardCount = Array.isArray(cards) ? (cards[0]?.count ?? 0) : (cards?.count ?? 0);
+      return { date: row.date as string, cardCount };
+    })
+    .filter((summary) => summary.cardCount > 0);
 }
 
 /**
@@ -327,8 +364,8 @@ export async function upsertDigestForToday(
  *
  * generatedAt is passed in (not computed here) so the caller can stamp the
  * exact same value onto the in-memory Card objects it returns to the client
- * — that's what lets the feed draw a run divider immediately after a
- * second same-day generation, without needing a reload to see it.
+ * — that's what lets the feed badge the newest run's cards immediately
+ * after a second same-day generation, without needing a reload to see it.
  *
  * existingRankUpdates is rank.ts's fail-open contract made concrete: an
  * empty array (ranking failed, or there was nothing new to rank this run)

@@ -37,8 +37,14 @@ export async function POST(
   if (error) return new Response("Something went wrong", { status: 500 });
   if (!card) return new Response("Card not found", { status: 404 });
 
-  // Already generated once — cached read, no Claude call.
-  if (card.expanded_report) {
+  // Already generated once — cached read, no Claude call. Checked against
+  // null rather than falsiness: generateExpandedReport falls back to ""
+  // when Claude's structured output has no report field, and a truthy test
+  // would treat that persisted "" as "never generated" and pay for another
+  // Sonnet call on every single expand of that card, forever. The client
+  // (NewsCard's generate guard, FocusOverlay's render branch) already
+  // treats "" as generated; this keeps the server's half of that contract.
+  if (card.expanded_report !== null && card.expanded_report !== undefined) {
     return Response.json({ expandedReport: card.expanded_report });
   }
 

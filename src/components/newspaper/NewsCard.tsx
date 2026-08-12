@@ -12,6 +12,7 @@ import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
 import { useFocusMode } from "@/components/newspaper/FocusModeContext";
 import { labelColor } from "@/lib/labelColor";
 import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
+import { ENTRANCE_DURATION_SECONDS } from "@/lib/entranceTiming";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -64,8 +65,10 @@ export function NewsCard({
   tier,
   gridPosition,
   showTopicBadge,
-  isNew = false,
+  showNewBadge = false,
+  animateEntrance = false,
   entranceDelay = 0,
+  onEntrancePlayed,
 }: {
   card: Card;
   tier: GridTier;
@@ -73,10 +76,20 @@ export function NewsCard({
   gridPosition?: GridPosition;
   /** Front page spans multiple topics (badge needed); a topic page's cards are all the same topic (badge is redundant there). */
   showTopicBadge: boolean;
+  /**
+   * Renders the "New" chip: this card came from the most recent generation
+   * run on a page that holds cards from more than one (see newRun.ts).
+   * Deliberately distinct from `animateEntrance` below, which is about this
+   * session rather than about the data — reload the page after a second run
+   * and the badge stays while the entrance animation does not.
+   */
+  showNewBadge?: boolean;
   /** True only for cards that landed live via this session's own digest generation, not ones already on the page from the initial server render — see FrontPage.tsx. Plays a short fade/scale-in. */
-  isNew?: boolean;
-  /** Stagger offset (seconds) so a multi-card generation reads as cards arriving one after another, not all at once. */
+  animateEntrance?: boolean;
+  /** Stagger offset (seconds) so a multi-card generation reads as cards arriving one after another, not all at once. Must stay fixed for a given card — a changing value is a changing Motion transition, which re-triggers the entrance. */
   entranceDelay?: number;
+  /** Called once this card's entrance animation finishes, so the owner can retire it and never play it again (see DigestGenerationContext's pendingEntrances). */
+  onEntrancePlayed?: (cardId: string) => void;
 }) {
   const [flipped, setFlipped] = useState(false);
   // The full-report fetch is owned entirely here, not in FocusOverlay —
@@ -94,10 +107,14 @@ export function NewsCard({
   // this card's report," not the overlay that merely displays it.
   const [report, setReport] = useState<string | null>(card.expandedReport);
   const [reportError, setReportError] = useState<string | null>(null);
-  // Not React state — starting a fetch shouldn't itself trigger a
-  // re-render, only the eventual report/error does. Reset to false in the
-  // .catch() branch specifically, so a failed fetch can be retried on the
-  // next open rather than being permanently stuck.
+  // Real state, not derived from `report`/`reportError` being empty: since
+  // Phase 8.3 gated generation behind a button, "not requested yet" and
+  // "request in flight" are genuinely different states that both have a
+  // null report. The overlay shows a button for the first and a progress
+  // line for the second.
+  const [loadingReport, setLoadingReport] = useState(false);
+  // Not React state — the synchronous in-flight guard. See
+  // handleGenerateReport below for why both this and loadingReport exist.
   const fetchStarted = useRef(false);
   const [bookmarked, setBookmarked] = useState(card.bookmarked);
   const [bookmarkPending, setBookmarkPending] = useState(false);
@@ -166,30 +183,45 @@ export function NewsCard({
     prevFocused.current = focused;
   }, [focused]);
 
-  // Fires once per card, whenever it's first opened without an existing
-  // report — not on mount, so no report is ever fetched for a card that's
-  // never actually focused. fetchStarted (not React state) guards against
-  // firing a second real request: a genuine re-open before the first
-  // request resolves just waits on the same one already running, since
-  // `report` will update whenever it lands regardless of whether the
-  // overlay happens to be open again by then.
-  useEffect(() => {
-    if (!focused) return;
+  // Explicitly user-triggered as of Phase 8.3 — this used to be an effect
+  // keyed on `focused`, so merely opening focus mode spent a Sonnet call.
+  // Opening a card is often just how you read the *short* summary in full
+  // (the grid clamps it to fit), which made the old behavior pay for a
+  // report the reader never asked to see. Now the overlay shows a button
+  // and nothing is generated until it's pressed.
+  //
+  // Two overlapping guards, deliberately:
+  //   - `report !== null` — already have it, from a seed or an earlier
+  //     generation. No request, and the overlay renders it directly.
+  //     Checked against null rather than falsiness so a legitimately
+  //     empty report still counts as generated; FocusOverlay's render
+  //     branches on `!== null` too, and the two must agree or the button
+  //     shows for a card this guard then refuses to generate.
+  //   - `fetchStarted` (a ref, not state) — synchronous, so two clicks
+  //     landing in the same batch can't both get past it. `loadingReport`
+  //     also disables the button, but state updates are async and that
+  //     alone can't rule out a double-fire. Getting this wrong means
+  //     paying Anthropic twice for one report.
+  // Reset in the catch so a failure is retryable, in place, from the
+  // button — which no longer requires closing and reopening the card.
+  async function handleGenerateReport() {
     if (report !== null) return;
     if (fetchStarted.current) return;
     fetchStarted.current = true;
+    setLoadingReport(true);
     setReportError(null);
-    fetch(`/api/cards/${card.id}/expand`, { method: "POST" })
-      .then((res) => {
-        if (!res.ok) throw new Error("Couldn't load the full report — try again.");
-        return res.json() as Promise<{ expandedReport: string }>;
-      })
-      .then((data) => setReport(data.expandedReport))
-      .catch((e) => {
-        setReportError(e instanceof Error ? e.message : "Something went wrong");
-        fetchStarted.current = false; // Allow a retry on the next open.
-      });
-  }, [focused, report, card.id]);
+    try {
+      const res = await fetch(`/api/cards/${card.id}/expand`, { method: "POST" });
+      if (!res.ok) throw new Error("Couldn't load the full report — try again.");
+      const data = (await res.json()) as { expandedReport: string };
+      setReport(data.expandedReport);
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : "Something went wrong");
+      fetchStarted.current = false;
+    } finally {
+      setLoadingReport(false);
+    }
+  }
 
   async function handleBookmarkToggle(e: React.MouseEvent) {
     e.stopPropagation();
@@ -245,12 +277,21 @@ export function NewsCard({
       setFlipped(false);
       return;
     }
-    // Cleared synchronously here, not left to the fetch effect: on a
-    // reopen-to-retry after a prior failure, the effect's own
-    // setReportError(null) doesn't land until after this render commits,
-    // so FocusOverlay would otherwise briefly flash the previous attempt's
-    // stale error message before flipping to the loading view.
-    setReportError(null);
+    // A previous failure's error is deliberately NOT cleared here. It used
+    // to be, because reopening immediately re-fired the fetch effect and
+    // the stale message would flash before the loading view replaced it.
+    // Nothing auto-fires on open any more (Phase 8.3), so the error simply
+    // stays visible alongside a "Try again" button — which is the useful
+    // thing to show someone reopening a card whose report failed.
+    //
+    // Retire the entrance early: opening focus mode swaps this card's
+    // motion.div for a placeholder, and Motion clears its event
+    // subscriptions on unmount, so a card opened *while still animating
+    // in* would never fire onAnimationComplete. The provider retires it on
+    // a timer regardless, so this is only about retiring it promptly —
+    // having looked at a card is reason enough to stop treating it as
+    // just-arrived.
+    onEntrancePlayed?.(card.id);
     setFocusedCardId(card.id);
   }
 
@@ -289,8 +330,22 @@ export function NewsCard({
           onKeyDown={handleOpenKeyDown}
           className="relative cursor-pointer"
           style={{ ...gridPosition, perspective: "1200px" }}
-          initial={isNew && !prefersReducedMotion ? { opacity: 0, scale: 0.97 } : false}
-          animate={isNew && !prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
+          initial={animateEntrance && !prefersReducedMotion ? { opacity: 0, scale: 0.97 } : false}
+          animate={animateEntrance && !prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
+          // Retires this card's entrance the moment it finishes — the
+          // common, tidy path. This only ever fires for the entrance's own
+          // opacity/scale animation: Motion raises a separate
+          // LayoutAnimationComplete event for the `layout` projection, so
+          // the instant reflow above can't trigger it (verified in
+          // motion-dom's VisualElement source). Every case where it can't
+          // fire — reduced motion, an interrupting unmount — is caught by
+          // the provider's own timer instead, so nothing here needs to be
+          // exhaustive.
+          onAnimationComplete={
+            animateEntrance && !prefersReducedMotion
+              ? () => onEntrancePlayed?.(card.id)
+              : undefined
+          }
           // Scoped per-property (not a blanket transition on the whole
           // element) so the entrance's duration/delay can't leak into this
           // same element's OTHER animatable changes — layoutId enables
@@ -298,7 +353,7 @@ export function NewsCard({
           // prop would otherwise also govern a later grid-position reflow
           // (e.g. a second same-session generation reordering the front
           // page), giving an ordinary layout catch-up a stale entrance delay.
-          // `layout` is always present (not just when isNew): whichever
+          // `layout` is always present (not just when animateEntrance): whichever
           // motion.div is newly mounting in a shared-layoutId handoff reads
           // its OWN transition, never the other side's — FocusOverlay's own
           // duration:0 (Phase 6.3) only covers the open direction. On close,
@@ -307,10 +362,18 @@ export function NewsCard({
           // eased tween, animating the exit even though entry was instant.
           transition={{
             layout: { duration: 0 },
-            ...(isNew
+            ...(animateEntrance
               ? {
-                  opacity: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
-                  scale: { duration: 0.3, ease: "easeOut", delay: entranceDelay },
+                  opacity: {
+                    duration: ENTRANCE_DURATION_SECONDS,
+                    ease: "easeOut",
+                    delay: entranceDelay,
+                  },
+                  scale: {
+                    duration: ENTRANCE_DURATION_SECONDS,
+                    ease: "easeOut",
+                    delay: entranceDelay,
+                  },
                 }
               : {}),
           }}
@@ -332,17 +395,50 @@ export function NewsCard({
               inert={flipped}
             >
               <div className="flex items-center justify-between gap-2">
-                {showTopicBadge ? (
-                  <span
-                    className="w-fit rounded px-2 py-0.5 text-xs font-semibold"
-                    style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
-                  >
-                    {card.topic}
-                  </span>
-                ) : (
-                  <span />
-                )}
-                <span className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+                {/* A left-hand group rather than the old
+                    `showTopicBadge ? chip : <span />` placeholder: the
+                    placeholder existed only to keep justify-between pushing
+                    the timestamp right on topic pages, and it couldn't hold
+                    a second chip. This handles all four combinations of
+                    topic-chip × New-badge, including the topic-page case
+                    where the badge shows and the topic chip doesn't. An
+                    empty group is zero-width, so alignment is unchanged. */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  {showTopicBadge && (
+                    <span
+                      className="w-fit truncate rounded px-2 py-0.5 text-xs font-semibold"
+                      style={{
+                        background: "var(--color-muted)",
+                        color: "var(--color-muted-foreground)",
+                      }}
+                    >
+                      {card.topic}
+                    </span>
+                  )}
+                  {/* The literal string "New", never a formatted time.
+                      FrontPage is a client component that is also
+                      server-rendered, so any locale- or timezone-dependent
+                      text here would reintroduce the exact SSR/hydration
+                      mismatch that forced RunDivider to use
+                      useSyncExternalStore in Phase 5.7 — the component this
+                      badge replaced. shrink-0 so a long topic name
+                      truncates instead of squeezing the badge out. */}
+                  {showNewBadge && (
+                    <span
+                      className="w-fit shrink-0 rounded px-2 py-0.5 text-xs font-semibold"
+                      style={{
+                        background: "var(--color-accent)",
+                        color: "var(--color-on-accent)",
+                      }}
+                    >
+                      New
+                    </span>
+                  )}
+                </div>
+                <span
+                  className="shrink-0 text-xs"
+                  style={{ color: "var(--color-muted-foreground)" }}
+                >
                   {formatRelativeTime(card.publishedAt)}
                 </span>
               </div>
@@ -473,8 +569,9 @@ export function NewsCard({
             layoutId={layoutId}
             onClose={handleClose}
             report={report}
-            loadingReport={report === null && reportError === null}
+            loadingReport={loadingReport}
             reportError={reportError}
+            onGenerateReport={handleGenerateReport}
           />,
           document.body
         )}

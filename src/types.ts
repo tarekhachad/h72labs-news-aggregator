@@ -108,7 +108,8 @@ export interface Card {
    * When this card's generation run persisted it — distinct from
    * publishedAt (source-article recency). Every card from the same
    * same-day run shares an identical value (see persist_generated_cards),
-   * which is what lets the feed draw a divider between runs.
+   * which is what lets the feed identify the latest run and badge its
+   * cards as New (see newRun.ts).
    */
   generatedAt: string;
   bookmarked: boolean;

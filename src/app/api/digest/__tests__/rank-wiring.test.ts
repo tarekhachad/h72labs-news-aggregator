@@ -145,6 +145,10 @@ function persistedCardsArg() {
 function existingRankUpdatesArg() {
   return mocks.saveGeneratedCards.mock.calls[0][4] as { id: string; frontPageRank: number | null }[];
 }
+/** The terminal NDJSON line the client actually consumes. */
+function doneEvent(lines: Array<Record<string, unknown>>) {
+  return lines.find((line) => line.stage === "done")!;
+}
 
 describe("digest route: front-page ranking wiring", () => {
   it("calls rankFrontPage with the merged pool -- existing cards first, then this run's new cards, in that order", async () => {
@@ -293,5 +297,63 @@ describe("digest route: front-page ranking wiring", () => {
     expect(stages).toContain("ranking");
     expect(stages.indexOf("ranking")).toBeGreaterThan(stages.indexOf("writing"));
     expect(stages.indexOf("ranking")).toBeLessThan(stages.indexOf("done"));
+  });
+});
+
+describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
+  it("sends the same rank updates it persists, so the client can re-tier without a reload", async () => {
+    // The actual regression guard. The server always computed and persisted
+    // these updates; before 8.4 it simply never put them on the wire, so
+    // already-rendered cards kept a stale frontPageRank and two cards could
+    // both claim rank 1 — two hero-sized cards until the page reloaded.
+    mocks.upsertDigestForToday.mockResolvedValue({
+      digestId: "digest-1",
+      lastGeneratedAt: "2026-07-31T10:00:00Z",
+    });
+
+    const done = doneEvent(await runPostLines());
+
+    expect(done.rankUpdates).toEqual(existingRankUpdatesArg());
+    expect(done.rankUpdates).toEqual([{ id: "card-existing-1", frontPageRank: 3 }]);
+  });
+
+  it("survives JSON round-tripping when a card is demoted to null", async () => {
+    // null is a meaningful value here (dropped off the front page), and it
+    // travels as a real JSON null rather than being dropped from the object.
+    mocks.upsertDigestForToday.mockResolvedValue({
+      digestId: "digest-1",
+      lastGeneratedAt: "2026-07-31T10:00:00Z",
+    });
+    mocks.rankFrontPage.mockResolvedValue([null, 1]);
+
+    const done = doneEvent(await runPostLines());
+
+    expect(done.rankUpdates).toEqual([{ id: "card-existing-1", frontPageRank: null }]);
+  });
+
+  it("sends an empty list when ranking fails open, meaning 'change nothing'", async () => {
+    mocks.upsertDigestForToday.mockResolvedValue({
+      digestId: "digest-1",
+      lastGeneratedAt: "2026-07-31T10:00:00Z",
+    });
+    mocks.rankFrontPage.mockResolvedValue(null);
+
+    const done = doneEvent(await runPostLines());
+
+    expect(done.rankUpdates).toEqual([]);
+  });
+
+  it("sends an empty list when the existing-cards fetch failed", async () => {
+    // Ranking is skipped entirely on an incomplete view of the day, so
+    // there are no updates to broadcast either.
+    mocks.upsertDigestForToday.mockResolvedValue({
+      digestId: "digest-1",
+      lastGeneratedAt: "2026-07-31T10:00:00Z",
+    });
+    mocks.getTodaysCardSummaries.mockRejectedValue(new Error("db down"));
+
+    const done = doneEvent(await runPostLines());
+
+    expect(done.rankUpdates).toEqual([]);
   });
 });
