@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
+import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
 
@@ -19,22 +20,26 @@ function sourceTextFor(card: Pick<Card, "sources">): string {
 }
 
 async function generateReport(card: Pick<Card, "topic" | "shortSummary" | "sources">) {
-  const response = await client.messages.parse({
-    model: "claude-sonnet-5",
-    max_tokens: 4096,
-    // Same reasoning as writeCard.ts: Sonnet 5's adaptive thinking would
-    // otherwise eat into max_tokens on a bounded writing task that doesn't
-    // need it.
-    thinking: { type: "disabled" },
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Topic: ${card.topic}\n\nShort summary already shown to the reader:\n${card.shortSummary}\n\nSource material:\n${sourceTextFor(card)}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(ExpandedReport) },
-  });
+  // Inside generateReport, not around generateExpandedReport, so the
+  // ambiguous-truncation retry records both attempts — see writeCard.ts.
+  const response = await recordCall("expand", "claude-sonnet-5", () =>
+    client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 4096,
+      // Same reasoning as writeCard.ts: Sonnet 5's adaptive thinking would
+      // otherwise eat into max_tokens on a bounded writing task that doesn't
+      // need it.
+      thinking: { type: "disabled" },
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Topic: ${card.topic}\n\nShort summary already shown to the reader:\n${card.shortSummary}\n\nSource material:\n${sourceTextFor(card)}`,
+        },
+      ],
+      output_config: { format: zodOutputFormat(ExpandedReport) },
+    })
+  );
 
   return {
     text: response.parsed_output?.report ?? "",

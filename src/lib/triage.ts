@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Cluster } from "@/types";
+import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
 
@@ -45,18 +46,20 @@ export async function triageCluster(cluster: Cluster): Promise<TriageOutcome> {
     .map((a) => `- ${a.title}\n  ${a.snippet.slice(0, 200)}`)
     .join("\n");
 
-  const response = await client.messages.parse({
-    model: "claude-haiku-4-5",
-    max_tokens: 256,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Topic: ${cluster.topic}\n\nCoverage of this cluster:\n${context}\n\nDoes this belong in today's briefing? If so, how significant is it relative to this topic's own typical-day baseline?`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(TriageResult) },
-  });
+  const response = await recordCall("triage", "claude-haiku-4-5", () =>
+    client.messages.parse({
+      model: "claude-haiku-4-5",
+      max_tokens: 256,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Topic: ${cluster.topic}\n\nCoverage of this cluster:\n${context}\n\nDoes this belong in today's briefing? If so, how significant is it relative to this topic's own typical-day baseline?`,
+        },
+      ],
+      output_config: { format: zodOutputFormat(TriageResult) },
+    })
+  );
 
   const result = response.parsed_output ?? {
     notable: false,

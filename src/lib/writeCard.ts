@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card, Cluster } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
+import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
 
@@ -34,23 +35,30 @@ function sourceTextFor(cluster: Cluster): string {
 }
 
 async function generateSummary(cluster: Cluster) {
-  const response = await client.messages.parse({
-    model: "claude-sonnet-5",
-    max_tokens: 2048,
-    // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
-    // thinking + output combined — thinking was eating the budget and
-    // truncating this short, bounded writing task. Not worth the cost
-    // or latency here anyway.
-    thinking: { type: "disabled" },
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Topic: ${cluster.topic}\n\n${sourceTextFor(cluster)}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(CardSummary) },
-  });
+  // Wrapped here rather than around writeCard() as a whole so that the
+  // ambiguous-truncation retry in generateWithRetryOnAmbiguousTruncation
+  // records BOTH attempts — that retry is the single most expensive event
+  // in the pipeline, and counting only the winning one would under-report
+  // exactly where it hurts most.
+  const response = await recordCall("writeCard", "claude-sonnet-5", () =>
+    client.messages.parse({
+      model: "claude-sonnet-5",
+      max_tokens: 2048,
+      // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
+      // thinking + output combined — thinking was eating the budget and
+      // truncating this short, bounded writing task. Not worth the cost
+      // or latency here anyway.
+      thinking: { type: "disabled" },
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Topic: ${cluster.topic}\n\n${sourceTextFor(cluster)}`,
+        },
+      ],
+      output_config: { format: zodOutputFormat(CardSummary) },
+    })
+  );
 
   // Trimmed/filtered defensively here at the JS level, not via a zod
   // `.min(1)` constraint on the schema fed to zodOutputFormat — a schema

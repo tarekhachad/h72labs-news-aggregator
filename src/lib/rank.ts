@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Topic } from "@/types";
+import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
 
@@ -59,18 +60,20 @@ export async function rankFrontPage(
       )
       .join("\n\n");
 
-    const response = await client.messages.parse({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Candidate stories:\n\n${list}\n\nWhich belong on today's front page, and in what order?`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(RankResult) },
-    });
+    const response = await recordCall("rank", "claude-haiku-4-5", () =>
+      client.messages.parse({
+        model: "claude-haiku-4-5",
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Candidate stories:\n\n${list}\n\nWhich belong on today's front page, and in what order?`,
+          },
+        ],
+        output_config: { format: zodOutputFormat(RankResult) },
+      })
+    );
 
     if (!response.parsed_output) {
       // A missing parsed_output isn't the same thing as "the model

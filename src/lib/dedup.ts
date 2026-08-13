@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
 import { embed, cosineSimilarity } from "@/lib/embeddings";
+import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
 
@@ -50,18 +51,20 @@ export async function isSameStory(
   existingSummary: string
 ): Promise<boolean> {
   try {
-    const response = await client.messages.parse({
-      model: "claude-haiku-4-5",
-      max_tokens: 256,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Already in today's briefing:\n${existingSummary}\n\nCandidate story's source coverage:\n${candidateText}\n\nIs the candidate the same real-world story as what's already in today's briefing?`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(SameStoryResult) },
-    });
+    const response = await recordCall("dedup", "claude-haiku-4-5", () =>
+      client.messages.parse({
+        model: "claude-haiku-4-5",
+        max_tokens: 256,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Already in today's briefing:\n${existingSummary}\n\nCandidate story's source coverage:\n${candidateText}\n\nIs the candidate the same real-world story as what's already in today's briefing?`,
+          },
+        ],
+        output_config: { format: zodOutputFormat(SameStoryResult) },
+      })
+    );
 
     return response.parsed_output?.sameStory ?? false;
   } catch (err) {

@@ -1,0 +1,120 @@
+# (C) Implementation Plan — Final Phase (Cost diagnosis + cost optimization)
+
+> Copied from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts.
+
+# Final Phase — Cost diagnosis + cost optimization
+
+## Context
+
+Phases 0–8 are built, reviewed, and pushed. This is the last phase of v1, scoped per [`(C) ROADMAP.md`](<(C) ROADMAP.md>) to **cost diagnosis and cost optimization only** — no deployment, no external users.
+
+The app has **zero cost instrumentation**. `response.usage` is never read anywhere in `src/`; there are no token counters, no cost arithmetic, no timing. The only cost figures that exist are two manual Anthropic Console readings recorded in docs, and they contradict each other:
+
+- [`(C) TECH_STACK.md`](<(C) TECH_STACK.md>) line 48 estimates **$0.20–0.30 per digest**.
+- Line 50 records a real measurement: **$0.17 — 14¢ Haiku triage + 3¢ Sonnet writing** (2026-07-28, 2-topic/3-source dev profile).
+- [`(C) ARCHITECTURE.md`](<(C) ARCHITECTURE.md>) line 45 says the opposite: *"Steps 1–3 cost nothing or close to it. Step 4 [Sonnet writing] is the only real per-use cost."*
+
+The measurement is likely the correct one and the architecture note wrong: triage fires **one Haiku call per cluster**, unbounded, each re-sending a ~1.6 KB system prompt, while Sonnet writing fires only for the handful that pass. Confirming that with real per-stage numbers — rather than one console total — is this phase's job.
+
+It matters beyond the doc correction: **V2.0** is a hard blocking gate, and its recommended option (Tarek's key, server-side, hard caps) is sized by arithmetic that takes the per-digest cost as input. A wrong number here produces a wrong cap there.
+
+**Two pricing facts, verified 2026-08-13:**
+
+1. **`claude-sonnet-5` is on introductory pricing — $2.00/$10.00 per MTok — through 2026-08-31.** List is $3.00/$15.00. Any figure measured now understates steady-state Sonnet cost by ~50%. Every cost this phase reports carries **both** the billed figure and the at-list figure.
+2. **`claude-haiku-4-5`'s prompt-cache minimum is 4096 tokens**; the triage system prompt is ~350 tokens. Prompt caching — the obvious-looking fix for "same system prompt sent N times" — **is not available for triage**. The lever is call count, not prefix caching.
+
+**Decisions taken up front (Tarek, 2026-08-13):** instrumentation is console-only and ships permanently (V2.0's caps will need it); the measurement runs against his **real full profile**, not the dev profile; the optimize step is scoped with him **after** he sees the numbers, not pre-authorized.
+
+Sub-phases are ordered **risk-ascending**, matching the Phase 6/7/8 precedent. Each code-changing sub-phase goes through the standard `qa` + `code-reviewer` convergence loop — **both agents, every round, until a round comes back genuinely clean.**
+
+---
+
+## Design decision: ambient collector, not threaded return values
+
+This repo's convention is explicit injection (`supabase: SupabaseClient` as the first param), so threading usage back through return values was the obvious first choice. **It does not work here.** Every billed call site has a path that never reaches its `return`:
+
+- [rank.ts:102-105](../src/lib/rank.ts#L102-L105) catches and returns `null` — a load-bearing sentinel meaning "ranking didn't happen this run".
+- [dedup.ts:67-70](../src/lib/dedup.ts#L67-L70) catches and returns a bare `false`.
+- `triageCluster` throwing is swallowed by the route's per-cluster catch, [route.ts:128-131](../src/app/api/digest/route.ts#L128-L131).
+- `writeCard` rejecting is absorbed by `Promise.allSettled`, [route.ts:154-156](../src/app/api/digest/route.ts#L154-L156).
+- [claudeText.ts:44-76](../src/lib/claudeText.ts#L44-L76) has **three throw paths**, and the worst fires *after two billed Sonnet calls* at max_tokens 2048/4096.
+
+Under threaded returns, the single most expensive event in the pipeline reports **$0.00** — and cost diagnosis of a partially-failing pipeline is exactly when the number matters. Attaching usage to thrown `Error` objects to work around that is the design telling you it is fighting the codebase.
+
+**Decision:** an `AsyncLocalStorage` collector. Five one-line wraps around the existing `client.messages.parse(...)` calls, **zero signature changes**, `claudeText.ts` untouched — and because `recordCall` sits *inside* `generateSummary`/`generateReport`, both retry attempts are counted for free, on both the retry-succeeds and retry-fails paths.
+
+---
+
+## F.1 — The pure module and the collector
+
+Two new files; no existing call site touched.
+
+**Changes**
+
+- [src/lib/usage.ts](../src/lib/usage.ts) *(new — pure, no I/O, house style of `entranceTiming.ts`/`rankUpdates.ts`)*. `TRACKED_MODELS`/`TrackedModel`, `PRICING: Record<TrackedModel, ModelPricing>` (so adding a model without a price fails `tsc`), `PRICING_VERIFIED_ON`, plus:
+  - `normalizeUsage(usage: unknown): CallTokens | null` — returns **`null`, never zero-filled tokens**, when usage is absent or unrecognizable. Zeros would silently under-report; null routes the call into a loud warning. This is also what keeps the ~30 existing `mockParse` mocks (no `usage` field) passing untouched.
+  - `costFor(model, tokens, at: Date): CostBreakdown` → `{billedUsd, listUsd, promoApplied, promoEndsOn}`. The Sonnet intro rate is `promo: {rate, throughUtcDate}` **alongside** a permanent `list` rate — a date gate, not a swapped table. Nothing is hardcoded to "now", so after 2026-08-31 it self-expires with no code change.
+  - `summarizeUsage(calls, at)` grouping by the **`(stage, model)` pair** — never stage alone, since pricing a mixed-model stage once would be wrong by up to 3×.
+  - `formatUsageSummary` / `formatCallLine` / `formatUsd`.
+- [src/lib/usageCollector.ts](../src/lib/usageCollector.ts) *(new — thin, impure, imports only `usage.ts`)*. `createUsageCollector()`, `withUsageCollector(collector, fn)`, `recordCall(stage, model, call)` — records usage on success, records a usage-less entry on throw (`messages.parse` can throw on schema validation *after* a billed 200) and **rethrows unchanged**; a no-op when no collector is in scope.
+
+**Tests.** `usage.test.ts` — exact cost math; the promo boundary at `2026-08-31T23:59:59Z` (still promo, inclusive) vs `2026-09-01T00:00:00Z` (billed === list); cache multipliers; `normalizeUsage` on `undefined`/`{}`/null cache fields; `(stage, model)` grouping; footer wording flipping across the date. `usageCollector.test.ts` — no-scope no-op (the ~30-mocks guarantee, tested directly); missing usage → `callsWithoutUsage`; throwing call propagates *and* counts; **two concurrent scopes stay isolated** (a module-level singleton fails this); a 20-way `Promise.all` fan-out records 20 entries.
+
+---
+
+## F.2 — Wire the call sites and routes
+
+**The one real hazard.** Do **not** wrap `runDigestPipeline` in a single scope — it is an async generator, and ALS propagation across `yield`/`next()` suspension is not something to bet the instrumentation on; the failure mode is a silent $0.00. Enter the scope around each awaited stage expression the route already has; each is a plain async call whose whole subtree inherits correctly.
+
+**Changes**
+
+- [triage.ts:48](../src/lib/triage.ts#L48), [dedup.ts:53](../src/lib/dedup.ts#L53), [rank.ts:62](../src/lib/rank.ts#L62), [writeCard.ts:37](../src/lib/writeCard.ts#L37), [cards.ts:22](../src/lib/cards.ts#L22) — each `await client.messages.parse({...})` becomes `await recordCall("<stage>", "<model>", () => client.messages.parse({...}))`. Stage is an explicit literal — self-documenting, matches the adjacent `[triage]`/`[dedup]` console tags, no action-at-a-distance.
+- [src/app/api/digest/route.ts](../src/app/api/digest/route.ts) — one collector per run; four `withUsageCollector` wraps around the existing `filterAlreadyCovered`, triage `Promise.all`, writeCard `Promise.allSettled`, and `rankFrontPage` awaits. Summary emitted in the generator's existing `finally` beside `releaseDigestGeneration`: that block already runs on completion, throw, and client cancellation, and a generator's `finally` runs at most once — exactly one summary per run. **A run cancelled halfway still paid for triage**, and that is the case most likely to surprise.
+- [src/app/api/cards/[id]/expand/route.ts](../src/app/api/cards/%5Bid%5D/expand/route.ts) — one wrap plus a `finally` emission, so the 502 path still reports its spend.
+
+**Output.** One `console.log` per call — same precedent as [triage.ts:69](../src/lib/triage.ts#L69), which already logs per-cluster for observability alone — then a per-stage table with `billed` and `at list` columns, an intro-pricing footer, and a `writeCard made N calls for M cards` line that surfaces retry double-billing without reading code. Three conditional warnings: unrecorded calls (*"every total above is a FLOOR"*), cards produced with zero recorded calls (*"instrumentation is not wired up"*), and a zero-call run.
+
+**Tests.** Do not touch any existing mock — they become the regression suite proving safe degradation. Add `claudeText.usage.test.ts` (truncated-then-complete → **2** recorded calls; truncated-then-truncated throw → **2**; empty-first throw → **1**); one `it` appended to each of the `triage`/`dedup`/`rank`/`writeCard` tests plus a new `cards.test.ts`, pinning the stage/model literals so a copy-paste error is caught; and `src/app/api/digest/__tests__/usage-wiring.test.ts` on the `rank-wiring.test.ts` template, driving the real `POST` through the NDJSON stream — the ALS-across-generator hazard **only** manifests there. It asserts exactly one summary on the success, error, and cancellation paths.
+
+---
+
+## F.3 — Measure (the only paid step)
+
+One real digest generation against Tarek's **real full profile**, plus 2–3 card expands. Full console output captured verbatim into `notes-logs/`.
+
+Two reconciliations no test can do:
+- **Cross-check the run's total against the Anthropic Console usage page for that day.** If the table's arithmetic disagrees with the real bill, the pricing table is wrong and every downstream number is too.
+- **Compare against the old $0.17 dev-profile figure** and state the scaling relationship, so `TECH_STACK.md`'s line 50 is superseded honestly rather than contradicted.
+
+Standing cost discipline applies: reuse the existing account, no exploratory re-runs.
+
+---
+
+## F.4 — Optimize (scoped with Tarek after F.3)
+
+Nothing is built until Tarek sees the numbers. He gets a ranked menu with measured savings and quality risk per item. Candidates identified in advance, to be confirmed or discarded by the data:
+
+- **Batch triage** — one Haiku call per topic instead of one per cluster. Likely the largest single win if triage dominates, but it changes model behavior: the prompt explicitly states clusters are judged independently against a typical-day baseline. A quality risk, not a free win.
+- **Cap the rank candidate pool** — grows monotonically across same-day runs; item count is uncapped (already flagged as deferred in `ROADMAP.md`).
+- **Trim `writeCard` input** — the only prompt sending **untruncated** RSS snippets; every other site caps at 200–300 chars.
+- **Prompt caching** — Sonnet's 1024-token minimum may be reachable for `writeCard`; Haiku's 4096-token minimum rules out triage. Decide from measured `input` counts, not by guessing.
+
+Whatever ships goes through the full review loop, then **one re-measurement run** to prove the saving is real.
+
+---
+
+## Verification (every sub-phase)
+
+`npx tsc --noEmit` · `npx eslint` · `npx vitest run` clean at every step, plus `next build` on F.2 since it touches both API routes.
+
+Every code-changing sub-phase (F.1, F.2, F.4) goes through the standard convergence loop from `CLAUDE.md`: **`qa` and `code-reviewer`, both agents, every round, until a round comes back genuinely clean from both.** Never drop to one agent; never decide in advance that a round is the last one regardless of what it finds. F.2 is the escalation case — it touches pipeline decision points and both API routes, so any consequential fix there gets a full fresh cold review rather than a narrowed round.
+
+Instrumentation failure modes and how each is caught: **silent zeros** (`normalizeUsage` returns null, never zeros → the run is labelled a FLOOR); **a scope never entered** (route-level self-check warns when cards exist but zero calls were recorded); **ALS lost across the generator boundary** (only visible through the real streamed route — hence the wiring test goes through `POST()`); **cross-request bleed** (the two-concurrent-scopes test); **retry under-count** (`claudeText.usage.test.ts`, plus `N calls for M cards` visible in the log); **stale list pricing** (undetectable in code — hence `PRICING_VERIFIED_ON` prints in every footer and F.3 reconciles against the real Console bill).
+
+**Total API spend for the phase:** one full digest generation plus a few expands in F.3, and one re-measurement run in F.4 if an optimization ships. All of F.1 and F.2 is verified against mocked responses at zero cost.
+
+---
+
+## Docs
+
+When the phase lands: correct `(C) TECH_STACK.md` (lines 48 and 50, including its dangling reference to "the Phase 5 cost/quality pass" — a phase label that no longer exists) and `(C) ARCHITECTURE.md` line 45; mark the Final Phase done in `(C) ROADMAP.md` and record the per-digest figure **inside V2.0**, whose cap arithmetic currently assumes a $0.20 digest; write the full detail into `notes-logs/project-log.md`; refresh the one-paragraph status line in `CLAUDE.md` and nothing more; then run the bundled `project-resume-sync` skill.

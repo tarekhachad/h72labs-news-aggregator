@@ -16,6 +16,8 @@ import {
   getTodaysCardSummaries,
 } from "@/lib/digests";
 import type { Card, Source, Topic } from "@/types";
+import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
+import type { UsageStage } from "@/lib/usage";
 
 // The embedding model needs Node APIs (not available on the Edge runtime).
 export const runtime = "nodejs";
@@ -63,6 +65,27 @@ async function* runDigestPipeline(
   profile: { topics: Topic[]; preferredSources: Source[] },
   sinceIso: string | null
 ): AsyncGenerator<DigestEvent> {
+  // Cost accounting for this run. Scopes are entered around each awaited
+  // stage below rather than once around this whole generator: context
+  // propagation across a generator's yield/next suspension isn't something
+  // to stake the instrumentation on, and the failure mode would be a silent
+  // $0.00 — indistinguishable from a genuinely free run.
+  const usage = createUsageCollector();
+  // Filled in as each stage's size becomes known, so the summary can compare
+  // calls made against work done. Declared out here because the finally
+  // block needs whatever was known at the point of an early exit.
+  //
+  // Deliberately has no `dedup` entry: how many calls filterAlreadyCovered
+  // makes depends on its internal embedding-similarity threshold, and
+  // predicting it here would mean duplicating that logic — a second copy to
+  // drift out of sync, producing false warnings about the very numbers this
+  // is meant to make trustworthy. The trade is a narrow blind spot: a
+  // regression that stopped dedup recording wouldn't trip a warning on a run
+  // where other stages still billed. callSiteUsage.test.ts covers that
+  // directly instead.
+  const expectedCalls: Partial<Record<UsageStage, number>> = {};
+  let reachedDone = false;
+
   // The whole body is wrapped so the generation claim (see claimDigestForGeneration
   // in the POST handler below) is always released on every exit path —
   // normal completion, a thrown error, or early cancellation (toNdjsonStream's
@@ -110,7 +133,9 @@ async function* runDigestPipeline(
     let survivingClusters = clusters;
     if (sinceIso !== null) {
       try {
-        survivingClusters = await filterAlreadyCovered(clusters, existingCards);
+        survivingClusters = await withUsageCollector(usage, () =>
+          filterAlreadyCovered(clusters, existingCards)
+        );
       } catch (err) {
         console.error("[digest] cross-run dedup failed, proceeding without it:", err);
       }
@@ -120,24 +145,28 @@ async function* runDigestPipeline(
     // A single triage call failing (rate limit, network blip) shouldn't take
     // down the whole digest and discard every other cluster that already
     // succeeded — fail closed (treat as not notable) and keep going.
-    const triaged = await Promise.all(
-      survivingClusters.map(async (cluster) => {
-        try {
-          const outcome = await triageCluster(cluster);
-          return { cluster, notable: outcome.notable, severity: outcome.severity };
-        } catch (err) {
-          console.error(`[digest] triageCluster failed for ${cluster.topic}:`, err);
-          return { cluster, notable: false, severity: 1 };
-        }
-      })
+    expectedCalls.triage = survivingClusters.length;
+    const triaged = await withUsageCollector(usage, () =>
+      Promise.all(
+        survivingClusters.map(async (cluster) => {
+          try {
+            const outcome = await triageCluster(cluster);
+            return { cluster, notable: outcome.notable, severity: outcome.severity };
+          } catch (err) {
+            console.error(`[digest] triageCluster failed for ${cluster.topic}:`, err);
+            return { cluster, notable: false, severity: 1 };
+          }
+        })
+      )
     );
     const notableClusters = triaged.filter((t) => t.notable);
 
     yield { stage: "writing", notableCount: notableClusters.length };
     // One verbose cluster failing to write shouldn't take down the rest of
     // the digest — log it and drop that card instead of rejecting the batch.
-    const written = await Promise.allSettled(
-      notableClusters.map((nc) => writeCard(nc.cluster, nc.severity))
+    expectedCalls.writeCard = notableClusters.length;
+    const written = await withUsageCollector(usage, () =>
+      Promise.allSettled(notableClusters.map((nc) => writeCard(nc.cluster, nc.severity)))
     );
 
     // One canonical timestamp for the whole run — every card gets stamped
@@ -193,8 +222,10 @@ async function* runDigestPipeline(
         ...existingCards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
         ...cards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
       ];
+      // rankFrontPage short-circuits without calling Claude on an empty pool.
+      expectedCalls.rank = candidatePool.length > 0 ? 1 : 0;
       try {
-        rankResult = await rankFrontPage(candidatePool);
+        rankResult = await withUsageCollector(usage, () => rankFrontPage(candidatePool));
       } catch (err) {
         // rankFrontPage already fails open internally (catches its own SDK
         // errors and returns null) — this second layer is defense-in-depth
@@ -241,6 +272,7 @@ async function* runDigestPipeline(
     // per-cluster retry tracking; see that entry for the reasoning.
     await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates);
 
+    reachedDone = true;
     yield {
       stage: "done",
       cards,
@@ -248,6 +280,17 @@ async function* runDigestPipeline(
       rankUpdates: existingCardRankUpdates,
     };
   } finally {
+    // Reported here, not after the `done` yield, so a run that errors or is
+    // cancelled mid-flight still says what it spent — that's the case most
+    // likely to surprise, since a cancelled run has already paid for triage.
+    // A generator's finally runs at most once, so this is exactly one
+    // summary per run. `report` swallows its own failures, so it can't stop
+    // the generation claim below from being released and lock the user out
+    // of generating again.
+    usage.report({
+      label: reachedDone ? "digest complete" : "digest ended early (error or cancelled)",
+      expectedCalls,
+    });
     await releaseDigestGeneration(supabase, digestId);
   }
 }

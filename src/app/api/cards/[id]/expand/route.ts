@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { generateExpandedReport } from "@/lib/cards";
 import type { Card, Topic } from "@/types";
+import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 
 const CardId = z.string().uuid();
 
@@ -48,16 +49,35 @@ export async function POST(
     return Response.json({ expandedReport: card.expanded_report });
   }
 
+  // Only reached on a genuine cache miss, so exactly one Sonnet call is
+  // expected here. Reported in a finally so the 502 path below still says
+  // what it spent — a failed generation is billed the same as a successful
+  // one, and it's the case most likely to go unnoticed.
+  const usage = createUsageCollector();
+  let generated = false;
   let expandedReport: string;
   try {
-    expandedReport = await generateExpandedReport({
-      topic: card.topic as Topic,
-      shortSummary: card.short_summary,
-      sources: card.sources as Card["sources"],
-    });
+    expandedReport = await withUsageCollector(usage, () =>
+      generateExpandedReport({
+        topic: card.topic as Topic,
+        shortSummary: card.short_summary,
+        sources: card.sources as Card["sources"],
+      })
+    );
+    generated = true;
   } catch (err) {
     console.error("[cards/expand] generateExpandedReport failed:", err);
     return new Response("Couldn't generate the full report — try again.", { status: 502 });
+  } finally {
+    // Labelled by what actually happened, matching the digest route: a
+    // failed generation is billed exactly like a successful one, and a line
+    // reading "complete" for a run that returned a 502 would misattribute
+    // that spend to anyone grepping these logs. `report` swallows its own
+    // failures, so this can't affect the response either way.
+    usage.report({
+      label: generated ? "expand complete" : "expand failed",
+      expectedCalls: { expand: 1 },
+    });
   }
 
   // Conditioned on still being null: the read-then-generate above isn't
