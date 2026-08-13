@@ -39,7 +39,7 @@ What's chosen, and why, in plain language. Every non-obvious term also lives in 
 **What it is:** The step that turns raw articles into readable cards. Rather than sending every raw article straight to the most capable (and most expensive) Claude model, the pipeline is split:
 
 1. **Clustering — free, local, no API.** Articles about the same story are grouped using **text embeddings** (a way of turning text into numbers so "similar meaning" articles land near each other mathematically) via a free, open-source embedding model. No Claude call, no cost.
-2. **Notability triage — Claude Haiku (cheapest tier).** One quick, cheap call per cluster decides if it's actually distinct/notable enough to become a card. Filters volume down before the expensive step.
+2. **Notability triage — Claude Haiku (cheapest tier).** One quick, cheap call judges a batch of up to 20 clusters from the same topic (batched in F.4.5, after the F.3 cost measurement found 91% of a per-cluster call's input was the same prompt bytes re-sent), deciding for each whether it's distinct/notable enough to become a card. Filters volume down before the expensive step.
 3. **Card writing — Claude Sonnet.** Only for clusters that pass triage — this is the one step that genuinely needs a capable model, since turning multi-source text into clean briefing-style prose is a real writing task, not something a classical/free method does well.
 4. **Expanded report — Claude Sonnet, generated lazily.** Not pre-built for every card; generated once, the first time a user actually opens that card, then cached. Saves cost on cards nobody ever expands.
 

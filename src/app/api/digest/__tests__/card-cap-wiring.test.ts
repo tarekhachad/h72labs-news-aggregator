@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -34,8 +34,21 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", () => ({ ingestArticles: mocks.ingestArticles }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
-vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
-vi.mock("@/lib/triage", () => ({ triageCluster: mocks.triageCluster }));
+vi.mock("@/lib/dedup", () => ({
+  filterAlreadyCovered: mocks.filterAlreadyCovered,
+}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 vi.mock("@/lib/writeCard", () => ({ writeCard: mocks.writeCard }));
 vi.mock("@/lib/rank", () => ({ rankFrontPage: mocks.rankFrontPage }));
 vi.mock("@/lib/digests", () => ({
@@ -91,7 +104,10 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
-  mocks.getUserProfile.mockResolvedValue({ topics: ["Tech/AI"], preferredSources: ["BBC"] });
+  mocks.getUserProfile.mockResolvedValue({
+    topics: ["Tech/AI"],
+    preferredSources: ["BBC"],
+  });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   mocks.claimDigestForGeneration.mockResolvedValue(true);
@@ -101,7 +117,7 @@ beforeEach(() => {
   mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
   mocks.rankFrontPage.mockResolvedValue(null);
   mocks.writeCard.mockImplementation(async (c: Cluster, severity: number) =>
-    cardFor(c, severity)
+    cardFor(c, severity),
   );
 });
 
@@ -122,12 +138,18 @@ async function runPostLines(): Promise<Array<Record<string, unknown>>> {
 
 /** N clusters in one topic, severities descending from 5 then flat at 1. */
 function setupTopic(topic: Topic, n: number) {
-  const clusters = Array.from({ length: n }, (_, i) => cluster(topic, `${topic}-${i}`));
+  const clusters = Array.from({ length: n }, (_, i) =>
+    cluster(topic, `${topic}-${i}`),
+  );
   mocks.clusterArticles.mockResolvedValue(clusters);
-  mocks.triageCluster.mockImplementation(async (c: Cluster) => {
-    const i = clusters.indexOf(c);
-    return { notable: true, severity: Math.max(1, 5 - i) };
-  });
+  // Severity keyed off each cluster's position in the batch argument, so the
+  // cap still gets a distinct ordering to select on.
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map((c) => ({
+      notable: true,
+      severity: Math.max(1, 5 - clusters.indexOf(c)),
+    })),
+  );
   return clusters;
 }
 
@@ -179,7 +201,10 @@ describe("digest route: per-topic card cap", () => {
 
     await runPostLines();
 
-    for (const [c, severity] of mocks.writeCard.mock.calls as [Cluster, number][]) {
+    for (const [c, severity] of mocks.writeCard.mock.calls as [
+      Cluster,
+      number,
+    ][]) {
       const i = Number(c.articles[0].title.split("-").pop());
       expect(severity).toBe(Math.max(1, 5 - i));
     }
@@ -190,7 +215,9 @@ describe("digest route: per-topic card cap", () => {
 
     await runPostLines();
 
-    const line = logLines.find((l) => l.includes("kept") && l.includes("dropped"));
+    const line = logLines.find(
+      (l) => l.includes("kept") && l.includes("dropped"),
+    );
     expect(line).toContain("Tech/AI");
     expect(line).toContain("dropped 4");
   });
@@ -206,20 +233,32 @@ describe("digest route: per-topic card cap", () => {
   });
 
   it("caps each topic independently rather than the digest as a whole", async () => {
-    const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
-    const b = Array.from({ length: 12 }, (_, i) => cluster("Morocco", `b-${i}`));
+    const a = Array.from({ length: 12 }, (_, i) =>
+      cluster("Tech/AI", `a-${i}`),
+    );
+    const b = Array.from({ length: 12 }, (_, i) =>
+      cluster("Morocco", `b-${i}`),
+    );
     mocks.getUserProfile.mockResolvedValue({
       topics: ["Tech/AI", "Morocco"],
       preferredSources: ["BBC"],
     });
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
-    mocks.triageCluster.mockResolvedValue({ notable: true, severity: 3 });
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+      cs.map(() => ({ notable: true, severity: 3 })),
+    );
 
     await runPostLines();
 
-    const written = mocks.writeCard.mock.calls.map((c) => (c[0] as Cluster).topic);
-    expect(written.filter((t) => t === "Tech/AI")).toHaveLength(MAX_CARDS_PER_TOPIC);
-    expect(written.filter((t) => t === "Morocco")).toHaveLength(MAX_CARDS_PER_TOPIC);
+    const written = mocks.writeCard.mock.calls.map(
+      (c) => (c[0] as Cluster).topic,
+    );
+    expect(written.filter((t) => t === "Tech/AI")).toHaveLength(
+      MAX_CARDS_PER_TOPIC,
+    );
+    expect(written.filter((t) => t === "Morocco")).toHaveLength(
+      MAX_CARDS_PER_TOPIC,
+    );
   });
 
   it("still reaches done and persists only the capped set", async () => {

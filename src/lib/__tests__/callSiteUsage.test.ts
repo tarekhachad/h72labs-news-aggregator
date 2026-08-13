@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
-import type { Card, Cluster } from "@/types";
+import type { Card, Cluster, Topic } from "@/types";
 
 // Pins that each of the five Claude call sites is actually wrapped in
 // `recordCall`, with the right stage label and the right model.
@@ -54,6 +54,23 @@ function makeCluster(): Cluster {
   };
 }
 
+/** n clusters, all one topic, distinct titles. */
+function clustersOf(topic: Topic, n: number): Cluster[] {
+  return Array.from({ length: n }, (_, i) => ({
+    topic,
+    articles: [
+      {
+        title: `${topic}-${i}`,
+        snippet: "A snippet",
+        url: `https://example.com/${topic}-${i}`,
+        source: "BBC",
+        topic,
+        publishedAt: "2026-07-31T12:00:00Z",
+      },
+    ],
+  }));
+}
+
 /** Two outlets on the same story — the case writeCard keeps Sonnet for. */
 function makeMultiSourceCluster(): Cluster {
   const base = makeCluster();
@@ -101,14 +118,14 @@ async function recordedDuring(fn: () => Promise<unknown>) {
 }
 
 describe("Claude call sites report their token usage", () => {
-  it("triageCluster records against the triage stage on Haiku", async () => {
+  it("triageClusters records one triage call per batch on Haiku", async () => {
     mockParse.mockResolvedValue({
-      parsed_output: { notable: true, severity: 4, reason: "significant" },
+      parsed_output: { verdicts: [{ index: 0, notable: true, severity: 4 }] },
       usage: USAGE,
     });
-    const { triageCluster } = await import("@/lib/triage");
+    const { triageClusters } = await import("@/lib/triage");
 
-    const calls = await recordedDuring(() => triageCluster(makeCluster()));
+    const calls = await recordedDuring(() => triageClusters([makeCluster()]));
 
     expect(calls).toEqual([
       { stage: "triage", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS },
@@ -223,16 +240,25 @@ describe("Claude call sites still report on their failure paths", () => {
     expect(collector.calls()).toEqual([{ stage: "rank", model: "claude-haiku-4-5", tokens: null }]);
   });
 
-  it("records a triage call that threw, even though the route swallows the throw", async () => {
+  it("records every triage attempt that threw, including the split-retry ladder", async () => {
+    // triageClusters swallows the throw itself now (the route lost its
+    // per-cluster catch when batching landed), so the ONLY evidence these
+    // calls happened is the collector. A failed attempt still costs a
+    // request; leaving it unrecorded would report a cheaper run than the
+    // real one, which is exactly what this module exists to prevent.
     mockParse.mockRejectedValue(new Error("rate limited"));
-    const { triageCluster } = await import("@/lib/triage");
+    const { triageClusters } = await import("@/lib/triage");
 
     const collector = createUsageCollector(AT);
     await expect(
-      withUsageCollector(collector, () => triageCluster(makeCluster()))
-    ).rejects.toThrow("rate limited");
+      withUsageCollector(collector, () => triageClusters([makeCluster()]))
+      // Resolves, fail-closed — it does not reject.
+    ).resolves.toEqual([{ notable: false, severity: 1 }]);
 
+    // The initial attempt plus one retry at each of the two split depths.
     expect(collector.calls()).toEqual([
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null },
       { stage: "triage", model: "claude-haiku-4-5", tokens: null },
     ]);
   });
@@ -246,5 +272,122 @@ describe("Claude call sites still report on their failure paths", () => {
 
     expect(collector.calls()).toEqual([]);
     expect(mockParse).not.toHaveBeenCalled();
+  });
+});
+
+// F.4.5 final review round: closes a specific gap in the existing coverage.
+// callSiteUsage.test.ts above proves the REAL triage.ts retry ladder records
+// one collector entry per real attempt (including retries). usage-wiring.test
+// proves formatUsageSummary prints the right line shape ("made N calls for
+// M" vs "WARNING: ... recorded") -- but only against a HAND-SIMULATED
+// sequence of recordCall invocations standing in for triage. Nothing before
+// this combines all three real pieces at once: the real triageBatchCount
+// prediction, the real triageClusters retry ladder actually producing extra
+// attempts, and the real formatUsageSummary rendering that combination. A
+// regression in how any one of those three fit together (e.g. triageBatchCount
+// silently starting to disagree with planTriageBatches under some cluster
+// shape, or the split-retry ladder starting to under-count) could still slip
+// through with every existing test green, because each existing test only
+// ever exercises two of the three at once.
+describe("cost summary: triageBatchCount's real prediction against triageClusters' real retry-ladder call count", () => {
+  it("prints the retry ladder's extra attempts as the informational line, never a FLOOR warning, for a single-batch topic that fails once then recovers", async () => {
+    let attempt = 0;
+    mockParse.mockImplementation(async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("rate limited");
+      return {
+        parsed_output: { verdicts: [{ index: 0, notable: true, severity: 4 }] },
+        usage: USAGE,
+      };
+    });
+    const { triageClusters, triageBatchCount } = await import("@/lib/triage");
+    const { formatUsageSummary } = await import("@/lib/usage");
+
+    const clusters = [makeCluster()];
+    const expected = triageBatchCount(clusters);
+    expect(expected).toBe(1);
+
+    const collector = createUsageCollector(AT);
+    await withUsageCollector(collector, () => triageClusters(clusters));
+
+    const text = formatUsageSummary(collector.summarize(), {
+      label: "test run",
+      expectedCalls: { triage: expected },
+    }).join("\n");
+
+    expect(attempt).toBe(2);
+    expect(text).toContain("triage made 2 calls for 1");
+    expect(text).not.toContain("WARNING: triage recorded");
+  });
+
+  it("prints the full 7-call worst-case ladder against a real 1-batch prediction without ever under-counting", async () => {
+    // 20 clusters, one topic -> triageBatchCount predicts exactly 1 batch.
+    // Every attempt at every depth fails, bottoming the ladder out at 7 real
+    // recordCall invocations (1 + 2 + 4). The dangerous direction this round
+    // is asked to rule out is triageBatchCount's prediction exceeding the
+    // real recorded count (a false "spent less than we think" FLOOR) -- this
+    // is the largest gap between predicted and actual the module can produce,
+    // so it's the sharpest check of that direction.
+    mockParse.mockRejectedValue(new Error("always fails"));
+    const { triageClusters, triageBatchCount } = await import("@/lib/triage");
+    const { formatUsageSummary } = await import("@/lib/usage");
+
+    const clusters = clustersOf("Tech/AI", 20);
+    const expected = triageBatchCount(clusters);
+    expect(expected).toBe(1);
+
+    const collector = createUsageCollector(AT);
+    await withUsageCollector(collector, () => triageClusters(clusters));
+
+    expect(collector.calls()).toHaveLength(7);
+    const text = formatUsageSummary(collector.summarize(), {
+      label: "test run",
+      expectedCalls: { triage: expected },
+    }).join("\n");
+
+    expect(text).toContain("triage made 7 calls for 1");
+    expect(text).not.toContain("WARNING: triage recorded");
+  });
+
+  it("holds across a spread of cluster shapes and failure patterns: real recorded triage attempts are never fewer than triageBatchCount's real prediction", async () => {
+    // Property check standing in for "can expectedCalls.triage ever disagree
+    // with the real call count in a way that misleads" — the misleading
+    // direction is specifically actual < expected (the FLOOR warning, which
+    // usage.ts reserves for "a billed call went unrecorded"). Every planned
+    // batch's FIRST judgeBatch attempt runs unconditionally before any retry
+    // logic, so structurally the real module can only ever match or exceed
+    // its own prediction — this pins that invariant across shapes rather
+    // than trusting the single-topic examples above to generalize.
+    const shapes: Array<{ clusters: Cluster[]; fail: "never" | "always" | "once" }> = [
+      { clusters: clustersOf("Tech/AI", 1), fail: "never" },
+      { clusters: clustersOf("Tech/AI", 1), fail: "always" },
+      { clusters: clustersOf("Tech/AI", 4), fail: "always" },
+      { clusters: clustersOf("Tech/AI", 4), fail: "once" },
+      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco", 30)], fail: "never" },
+      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco", 30)], fail: "always" },
+    ];
+
+    for (const { clusters, fail } of shapes) {
+      mockParse.mockReset();
+      let attempt = 0;
+      mockParse.mockImplementation(async () => {
+        attempt += 1;
+        if (fail === "always") throw new Error("always fails");
+        if (fail === "once" && attempt === 1) throw new Error("first attempt fails");
+        return {
+          parsed_output: { verdicts: [{ index: 0, notable: true, severity: 4 }] },
+          usage: USAGE,
+        };
+      });
+
+      const { triageClusters, triageBatchCount } = await import("@/lib/triage");
+      const expected = triageBatchCount(clusters);
+
+      const collector = createUsageCollector(AT);
+      await withUsageCollector(collector, () => triageClusters(clusters));
+
+      const actual = collector.calls().length;
+      expect(actual).toBeGreaterThanOrEqual(expected);
+    }
   });
 });

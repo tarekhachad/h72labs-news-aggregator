@@ -4,7 +4,7 @@ import { getUserProfile } from "@/lib/profile";
 import { ingestArticles } from "@/lib/ingest";
 import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
-import { triageCluster } from "@/lib/triage";
+import { triageClusters, triageBatchCount } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
 import { rankFrontPage } from "@/lib/rank";
 import type { RankUpdate } from "@/lib/rankUpdates";
@@ -131,7 +131,7 @@ async function* runDigestPipeline(
     // this keeps that guarantee visible at the call site rather than
     // depending on the callee's internals.
     //
-    // Best-effort, not required for success: unlike triageCluster/writeCard
+    // Best-effort, not required for success: unlike triageClusters/writeCard
     // (which fail closed per-cluster), a failure here (embedding error)
     // falls back to the un-deduplicated cluster list rather than failing the
     // whole run — occasionally showing a duplicate is a much smaller cost
@@ -149,23 +149,29 @@ async function* runDigestPipeline(
     }
 
     yield { stage: "triaging", clusterCount: survivingClusters.length };
-    // A single triage call failing (rate limit, network blip) shouldn't take
-    // down the whole digest and discard every other cluster that already
-    // succeeded — fail closed (treat as not notable) and keep going.
-    expectedCalls.triage = survivingClusters.length;
-    const triaged = await withUsageCollector(usage, () =>
-      Promise.all(
-        survivingClusters.map(async (cluster) => {
-          try {
-            const outcome = await triageCluster(cluster);
-            return { cluster, notable: outcome.notable, severity: outcome.severity };
-          } catch (err) {
-            console.error(`[digest] triageCluster failed for ${cluster.topic}:`, err);
-            return { cluster, notable: false, severity: 1 };
-          }
-        })
-      )
+    // Batched: one call per ~20 same-topic clusters rather than one per
+    // cluster. The per-cluster try/catch that used to live here moved
+    // inside triageClusters, which never rejects — with batching, a
+    // rejection escaping would discard a whole batch's clusters rather
+    // than one, so that guarantee has to sit where the batch boundary is.
+    //
+    // Predicted from the same function that builds the batches, not a
+    // second copy of the arithmetic. Note the split-retry ladder means a
+    // run that hits failures legitimately makes MORE calls than predicted.
+    // That direction prints as an informational line rather than a
+    // `WARNING:` (usage.ts reserves the warning prefix for the opposite,
+    // dangerous direction — fewer calls than the work implies), which is
+    // right: extra calls here are real signal that retries happened, not a
+    // miscount.
+    expectedCalls.triage = triageBatchCount(survivingClusters);
+    const outcomes = await withUsageCollector(usage, () =>
+      triageClusters(survivingClusters)
     );
+    const triaged = survivingClusters.map((cluster, i) => ({
+      cluster,
+      notable: outcomes[i].notable,
+      severity: outcomes[i].severity,
+    }));
     // Capped BEFORE the writing event is yielded and before
     // expectedCalls.writeCard is set: the client renders "Writing N cards…"
     // straight off notableCount, and the cost summary compares calls made

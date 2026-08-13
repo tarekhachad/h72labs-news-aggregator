@@ -33,11 +33,13 @@ Sub-phases are ordered **risk-ascending**, matching the Phase 6/7/8 precedent. E
 
 This repo's convention is explicit injection (`supabase: SupabaseClient` as the first param), so threading usage back through return values was the obvious first choice. **It does not work here.** Every billed call site has a path that never reaches its `return`:
 
-- [rank.ts:102-105](../src/lib/rank.ts#L102-L105) catches and returns `null` — a load-bearing sentinel meaning "ranking didn't happen this run".
-- [dedup.ts:67-70](../src/lib/dedup.ts#L67-L70) catches and returns a bare `false`.
-- `triageCluster` throwing is swallowed by the route's per-cluster catch, [route.ts:128-131](../src/app/api/digest/route.ts#L128-L131).
-- `writeCard` rejecting is absorbed by `Promise.allSettled`, [route.ts:154-156](../src/app/api/digest/route.ts#L154-L156).
-- [claudeText.ts:44-76](../src/lib/claudeText.ts#L44-L76) has **three throw paths**, and the worst fires *after two billed Sonnet calls* at max_tokens 2048/4096.
+> Referenced by symbol, not line number, on purpose: these anchors were pinned to line ranges and all three had silently drifted by F.4.5 — twice from edits made *in the same round that cited them*. A stale anchor in a design doc is the same defect class as a stale comment, just harder to notice.
+
+- `rankFrontPage`'s catch in [rank.ts](../src/lib/rank.ts) returns `null` — a load-bearing sentinel meaning "ranking didn't happen this run".
+- `isSameStory`'s catch in [dedup.ts](../src/lib/dedup.ts) returns a bare `false`.
+- `triageCluster` throwing is swallowed by the route's per-cluster catch. *(As of F.4.5 this reads `triageClusters`, which swallows the throw itself and fails its residue closed — the route no longer catches per cluster. The argument is unchanged: the throw is still absorbed before any `return` carries usage out, which is the point.)*
+- `writeCard` rejecting is absorbed by the `Promise.allSettled` around the writing stage in [route.ts](../src/app/api/digest/route.ts).
+- `generateWithRetryOnAmbiguousTruncation` in [claudeText.ts](../src/lib/claudeText.ts) has **three throw paths**, and the worst fires *after two billed Sonnet calls* at max_tokens 2048/4096.
 
 Under threaded returns, the single most expensive event in the pipeline reports **$0.00** — and cost diagnosis of a partially-failing pipeline is exactly when the number matters. Attaching usage to thrown `Error` objects to work around that is the design telling you it is fighting the codebase.
 
@@ -68,11 +70,11 @@ Two new files; no existing call site touched.
 
 **Changes**
 
-- [triage.ts:48](../src/lib/triage.ts#L48), [dedup.ts:53](../src/lib/dedup.ts#L53), [rank.ts:62](../src/lib/rank.ts#L62), [writeCard.ts:37](../src/lib/writeCard.ts#L37), [cards.ts:22](../src/lib/cards.ts#L22) — each `await client.messages.parse({...})` becomes `await recordCall("<stage>", "<model>", () => client.messages.parse({...}))`. Stage is an explicit literal — self-documenting, matches the adjacent `[triage]`/`[dedup]` console tags, no action-at-a-distance.
+- The `messages.parse` call inside `judgeBatch` ([triage.ts](../src/lib/triage.ts)), `isSameStory` ([dedup.ts](../src/lib/dedup.ts)), `rankFrontPage` ([rank.ts](../src/lib/rank.ts)), and — one level deeper, in the private helpers `generateSummary` ([writeCard.ts](../src/lib/writeCard.ts)) and `generateReport` ([cards.ts](../src/lib/cards.ts)) rather than in the exported `writeCard`/`generateExpandedReport` that reach them through `generateWithRetryOnAmbiguousTruncation` — each `await client.messages.parse({...})` becomes `await recordCall("<stage>", "<model>", () => client.messages.parse({...}))`. Stage is an explicit literal — self-documenting, matches the adjacent `[triage]`/`[dedup]` console tags, no action-at-a-distance.
 - [src/app/api/digest/route.ts](../src/app/api/digest/route.ts) — one collector per run; four `withUsageCollector` wraps around the existing `filterAlreadyCovered`, triage `Promise.all`, writeCard `Promise.allSettled`, and `rankFrontPage` awaits. Summary emitted in the generator's existing `finally` beside `releaseDigestGeneration`: that block already runs on completion, throw, and client cancellation, and a generator's `finally` runs at most once — exactly one summary per run. **A run cancelled halfway still paid for triage**, and that is the case most likely to surprise.
 - [src/app/api/cards/[id]/expand/route.ts](../src/app/api/cards/%5Bid%5D/expand/route.ts) — one wrap plus a `finally` emission, so the 502 path still reports its spend.
 
-**Output.** One `console.log` per call — same precedent as [triage.ts:69](../src/lib/triage.ts#L69), which already logs per-cluster for observability alone — then a per-stage table with `billed` and `at list` columns, an intro-pricing footer, and a `writeCard made N calls for M cards` line that surfaces retry double-billing without reading code. Three conditional warnings: unrecorded calls (*"every total above is a FLOOR"*), cards produced with zero recorded calls (*"instrumentation is not wired up"*), and a zero-call run.
+**Output.** One `console.log` per call — same precedent as the per-verdict log in `judgeBatch` ([triage.ts](../src/lib/triage.ts)), which already logs per-cluster for observability alone (still one line per cluster after F.4.5's batching, emitted per verdict rather than per call) — then a per-stage table with `billed` and `at list` columns, an intro-pricing footer, and a `writeCard made N calls for M cards` line that surfaces retry double-billing without reading code. Three conditional warnings: unrecorded calls (*"every total above is a FLOOR"*), cards produced with zero recorded calls (*"instrumentation is not wired up"*), and a zero-call run.
 
 **Tests.** Do not touch any existing mock — they become the regression suite proving safe degradation. Add `claudeText.usage.test.ts` (truncated-then-complete → **2** recorded calls; truncated-then-truncated throw → **2**; empty-first throw → **1**); one `it` appended to each of the `triage`/`dedup`/`rank`/`writeCard` tests plus a new `cards.test.ts`, pinning the stage/model literals so a copy-paste error is caught; and `src/app/api/digest/__tests__/usage-wiring.test.ts` on the `rank-wiring.test.ts` template, driving the real `POST` through the NDJSON stream — the ALS-across-generator hazard **only** manifests there. It asserts exactly one summary on the success, error, and cancellation paths.
 
@@ -139,7 +141,17 @@ Shipped as designed, plus three things the review loop forced:
 
 Tests 277 → 332. Two deferred items raised to `ROADMAP.md`: the per-row generation mutex (a midnight rollover can let one user run two pipelines) and the missing `digests(user_id, last_generated_at)` index. Neither introduced here.
 
-## F.4.5 — Batch triage (highest risk in the phase)
+## F.4.5 — DONE (2026-08-13, converged clean at round 7)
+
+Shipped as designed. `triageCluster(cluster)` → `planTriageBatches` / `triageBatchCount` / `triageClusters`, one Haiku call per ≤20 same-topic clusters. Every design point below held up: per-topic batching, size-evened chunks, batch-local indices mapped back via `rank.ts`'s precedent, the split-retry ladder, `triageClusters` never rejecting, env-gated reasons, and `expectedCalls.triage` derived from the same function that builds the batches.
+
+Three things the loop changed. **Size-evening was wrong on the first pass** — a fixed `ceil(n/batchCount)` stride gives 62 → 16/16/16/14, relocating the runt rather than evening anything; the remainder is now distributed across leading batches. **`max_tokens` is 2048 when `TRIAGE_REASONS=1`** — the flat 1024's "~2x headroom" only held with reasons off, and a full batch with reasons lands near 900, i.e. ~1.1x, in exactly the mode F.4.6 uses. **The `console.error` in the retry ladder's catch was unguarded** — the one functional defect in seven rounds, found at round 4: that catch is the only thing between a failed batch and `triageClusters` rejecting, so a throwing logger would have turned one failed batch into a failed digest, breaking the contract the route gave up its per-cluster catch to rely on.
+
+**Seven rounds; the module itself was defect-free from round 1 except that guard.** Everything else was accuracy of the prose around the code — including comments in three files this change never touched (`usageCollector.ts`, `rank.ts`, `dedup.ts`) that still described the deleted per-cluster architecture, and stale line-pinned anchors in this very document. Anchors here are symbol-based now, for that reason. Three of the fixes needed fixing themselves.
+
+Tests 332 → 378. Zero API spend. One deferred item raised: `dedup.ts`'s `isSameStory` is now the last one-Claude-call-per-item fan-out in the pipeline — deliberately left for F.4.6's numbers to judge rather than optimized on a guess.
+
+### Original design (kept for reference)
 
 One Haiku call per **~20 clusters of the same topic**. `src/lib/rank.ts` already solves the same index-mapping problem and is the precedent to follow throughout.
 
@@ -185,4 +197,4 @@ Instrumentation failure modes and how each is caught: **silent zeros** (`normali
 
 ## Docs
 
-When the phase lands: correct `(C) TECH_STACK.md` (lines 48 and 50, including its dangling reference to "the Phase 5 cost/quality pass" — a phase label that no longer exists) and `(C) ARCHITECTURE.md` line 45; mark the Final Phase done in `(C) ROADMAP.md` and record the per-digest figure **inside V2.0**, whose cap arithmetic currently assumes a $0.20 digest; write the full detail into `notes-logs/project-log.md`; refresh the one-paragraph status line in `CLAUDE.md` and nothing more; then run the bundled `project-resume-sync` skill.
+When the phase lands: correct `(C) TECH_STACK.md` (lines 48 and 50, including its dangling reference to "the Phase 5 cost/quality pass" — a phase label that no longer exists) and `(C) ARCHITECTURE.md` line 45. Those are the **cost-figure** corrections, which have to wait for F.4.6's real numbers. The **architecture** descriptions in the same two files (`ARCHITECTURE.md`'s pipeline table and `TECH_STACK.md`'s triage bullet) were already wrong the moment F.4.5 landed — they still said "one call per cluster" — and were corrected then rather than deferred, since batching is a fact independent of what the re-measurement reports. Keep the two classes apart when doing this pass: a claim about *how the pipeline works* is stale immediately; a claim about *what it costs* is stale only once measured. Also: mark the Final Phase done in `(C) ROADMAP.md` and record the per-digest figure **inside V2.0**, whose cap arithmetic currently assumes a $0.20 digest; write the full detail into `notes-logs/project-log.md`; refresh the one-paragraph status line in `CLAUDE.md` and nothing more; then run the bundled `project-resume-sync` skill.

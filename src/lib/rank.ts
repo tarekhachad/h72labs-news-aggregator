@@ -31,14 +31,16 @@ Pick up to 6 stories for the front page, ranked 1 (most significant overall) thr
 Respond with the index (from the numbered list) and rank (1-6) of each pick — nothing else.`;
 
 /**
- * One Claude call for the WHOLE candidate pool, not a per-item Promise.all
- * like triageCluster/isSameStory — ranking is inherently a cross-cluster
+ * One Claude call for the WHOLE candidate pool, rather than the fan-out
+ * triageClusters/isSameStory use — ranking is inherently a cross-cluster
  * comparison (this candidate vs. every other one), unlike those two, whose
  * judgments are genuinely independent per item. This also means it can't
- * compound the pipeline's existing unbounded-triage-concurrency risk (see
- * ROADMAP.md's deferred section) the way a per-item version would.
+ * compound the triage stage's concurrency (bounded to one call per batch of
+ * ~20 same-topic clusters since F.4.5, but still growing with the profile's
+ * topic and cluster count — see ROADMAP.md's deferred section) the way a
+ * per-item version would.
  *
- * Fails open, mirroring dedup.ts's isSameStory rather than triageCluster's
+ * Fails open, mirroring dedup.ts's isSameStory rather than triageClusters'
  * fail-closed convention: this is a refinement layer on top of core
  * notability filtering (already done by triage), not the safety-critical
  * suppression decision triage is. Returns null (not a partial array) on

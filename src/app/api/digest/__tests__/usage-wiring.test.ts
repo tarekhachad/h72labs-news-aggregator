@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -41,8 +41,21 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", () => ({ ingestArticles: mocks.ingestArticles }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
-vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
-vi.mock("@/lib/triage", () => ({ triageCluster: mocks.triageCluster }));
+vi.mock("@/lib/dedup", () => ({
+  filterAlreadyCovered: mocks.filterAlreadyCovered,
+}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 vi.mock("@/lib/writeCard", () => ({ writeCard: mocks.writeCard }));
 vi.mock("@/lib/rank", () => ({ rankFrontPage: mocks.rankFrontPage }));
 vi.mock("@/lib/digests", () => ({
@@ -115,7 +128,10 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
-  mocks.getUserProfile.mockResolvedValue({ topics: ["Tech/AI"], preferredSources: ["BBC"] });
+  mocks.getUserProfile.mockResolvedValue({
+    topics: ["Tech/AI"],
+    preferredSources: ["BBC"],
+  });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([EXISTING_CARD_SUMMARY]);
@@ -128,19 +144,28 @@ beforeEach(() => {
   // Each collaborator bills through the real recordCall, so what the route
   // must supply is the surrounding scope.
   mocks.filterAlreadyCovered.mockImplementation(async () => {
-    await recordCall("dedup", "claude-haiku-4-5", async () => ({ usage: usage(50) }));
+    await recordCall("dedup", "claude-haiku-4-5", async () => ({
+      usage: usage(50),
+    }));
     return FAKE_CLUSTERS;
   });
-  mocks.triageCluster.mockImplementation(async () => {
-    await recordCall("triage", "claude-haiku-4-5", async () => ({ usage: usage(100) }));
-    return { notable: true, severity: 4 };
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) => {
+    await recordCall("triage", "claude-haiku-4-5", async () => ({
+      usage: usage(100),
+    }));
+    // One recorded call for the whole batch, matching triageBatchCount.
+    return cs.map(() => ({ notable: true, severity: 4 }));
   });
   mocks.writeCard.mockImplementation(async () => {
-    await recordCall("writeCard", "claude-sonnet-5", async () => ({ usage: usage(1000) }));
+    await recordCall("writeCard", "claude-sonnet-5", async () => ({
+      usage: usage(1000),
+    }));
     return NEW_CARD;
   });
   mocks.rankFrontPage.mockImplementation(async () => {
-    await recordCall("rank", "claude-haiku-4-5", async () => ({ usage: usage(200) }));
+    await recordCall("rank", "claude-haiku-4-5", async () => ({
+      usage: usage(200),
+    }));
     return [3, 1];
   });
 });
@@ -169,7 +194,9 @@ function summaryText() {
 
 /** The header line of the per-stage summary table, one per emitted report. */
 function summaryHeaders() {
-  return summaryLines().filter((line) => /digest (complete|ended early)/.test(line));
+  return summaryLines().filter((line) =>
+    /digest (complete|ended early)/.test(line),
+  );
 }
 
 describe("digest route: cost instrumentation is wired into every stage", () => {
@@ -240,9 +267,10 @@ describe("digest route: cost instrumentation is wired into every stage", () => {
   });
 
   it("warns that the total is a floor when a stage's call reported no usage", async () => {
-    mocks.triageCluster.mockImplementation(async () => {
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) => {
       await recordCall("triage", "claude-haiku-4-5", async () => ({}));
-      return { notable: true, severity: 4 };
+      // One recorded call for the whole batch, matching triageBatchCount.
+      return cs.map(() => ({ notable: true, severity: 4 }));
     });
 
     await runPostToCompletion();
@@ -258,13 +286,19 @@ describe("digest route: cost instrumentation is wired into every stage", () => {
     await runPostToCompletion();
 
     expect(summaryText()).toContain("WARNING");
-    expect(summaryText()).toContain("writeCard recorded 0 calls but 1 were expected");
+    expect(summaryText()).toContain(
+      "writeCard recorded 0 calls but 1 were expected",
+    );
   });
 
   it("counts the extra billed attempt when a stage calls Claude more than once per unit of work", async () => {
     mocks.writeCard.mockImplementation(async () => {
-      await recordCall("writeCard", "claude-sonnet-5", async () => ({ usage: usage(1000) }));
-      await recordCall("writeCard", "claude-sonnet-5", async () => ({ usage: usage(1000) }));
+      await recordCall("writeCard", "claude-sonnet-5", async () => ({
+        usage: usage(1000),
+      }));
+      await recordCall("writeCard", "claude-sonnet-5", async () => ({
+        usage: usage(1000),
+      }));
       return NEW_CARD;
     });
 
@@ -273,13 +307,60 @@ describe("digest route: cost instrumentation is wired into every stage", () => {
     expect(summaryText()).toContain("writeCard made 2 calls for 1");
   });
 
+  it("reports triage's split-retry ladder as extra billed attempts against triageBatchCount, not a FLOOR warning", async () => {
+    // triageBatchCount predicts the CLEAN-path call count (one call for
+    // this single-cluster, single-topic run). A batch that fails and
+    // retries makes MORE real calls than that prediction -- this must
+    // surface as the informational "made N calls for M" line (real signal:
+    // retries happened), not the unrecorded-calls FLOOR warning, which
+    // would misdiagnose "spent more than predicted" as "spent less than
+    // recorded".
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) => {
+      // Simulates a whole-batch failure followed by a successful retry --
+      // two billed attempts for the one batch triageBatchCount predicted.
+      await recordCall("triage", "claude-haiku-4-5", async () => {
+        throw new Error("rate limited");
+      }).catch(() => {});
+      await recordCall("triage", "claude-haiku-4-5", async () => ({
+        usage: usage(100),
+      }));
+      return cs.map(() => ({ notable: true, severity: 4 }));
+    });
+
+    await runPostToCompletion();
+
+    const text = summaryText();
+    expect(text).toContain("triage made 2 calls for 1");
+    expect(text).not.toContain("WARNING: triage recorded");
+  });
+
+  it("warns triage's total is a FLOOR when it bills fewer calls than triageBatchCount predicted", async () => {
+    // The inverse of the above: triageBatchCount predicts 1 call for this
+    // shape, but the stage records zero (e.g. a bug that skipped recordCall
+    // entirely on some path). This must name "triage" specifically in the
+    // unrecorded-calls warning, not just a generic FLOOR notice, since the
+    // whole point of comparing per-stage is to say WHICH stage lied.
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+      cs.map(() => ({ notable: true, severity: 4 })),
+    );
+
+    await runPostToCompletion();
+
+    const text = summaryText();
+    expect(text).toContain("WARNING");
+    expect(text).toContain("triage recorded 0 calls but 1 were expected");
+  });
+
   it("does not claim a rank call was expected when the candidate pool is empty", async () => {
     // rankFrontPage short-circuits without touching Claude on an empty pool,
     // so expecting one call would produce a false FLOOR warning.
     mocks.getTodaysCardSummaries.mockResolvedValue([]);
-    mocks.triageCluster.mockImplementation(async () => {
-      await recordCall("triage", "claude-haiku-4-5", async () => ({ usage: usage(100) }));
-      return { notable: false, severity: 1 };
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) => {
+      await recordCall("triage", "claude-haiku-4-5", async () => ({
+        usage: usage(100),
+      }));
+      // One recorded call for the whole batch, matching triageBatchCount.
+      return cs.map(() => ({ notable: false, severity: 1 }));
     });
     mocks.rankFrontPage.mockResolvedValue([]);
 

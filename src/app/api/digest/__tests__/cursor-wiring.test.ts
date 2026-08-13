@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -50,9 +50,18 @@ vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
 }));
 
-vi.mock("@/lib/triage", () => ({
-  triageCluster: mocks.triageCluster,
-}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
@@ -99,7 +108,9 @@ beforeEach(() => {
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.filterAlreadyCovered.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
-  mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map(() => ({ notable: false, severity: 1 })),
+  );
   mocks.writeCard.mockResolvedValue(undefined);
   mocks.rankFrontPage.mockResolvedValue([]);
   mocks.claimDigestForGeneration.mockResolvedValue(true);
@@ -124,7 +135,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     expect(mocks.ingestArticles).toHaveBeenCalledWith(
       ["Tech/AI"],
       ["BBC"],
-      "2026-08-01T03:00:00Z"
+      "2026-08-01T03:00:00Z",
     );
   });
 
@@ -133,7 +144,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
 
     expect(mocks.getLatestGeneratedAtForUser).toHaveBeenCalledWith(
       expect.anything(),
-      "user-1"
+      "user-1",
     );
   });
 
@@ -142,7 +153,11 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
 
     await runPost();
 
-    expect(mocks.ingestArticles).toHaveBeenCalledWith(["Tech/AI"], ["BBC"], null);
+    expect(mocks.ingestArticles).toHaveBeenCalledWith(
+      ["Tech/AI"],
+      ["BBC"],
+      null,
+    );
   });
 
   it("uses the cross-day cursor even on a brand-new day's first run, not today's (empty) row", async () => {
@@ -158,12 +173,14 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     expect(mocks.ingestArticles).toHaveBeenCalledWith(
       ["Tech/AI"],
       ["BBC"],
-      "2026-08-12T23:50:00Z"
+      "2026-08-12T23:50:00Z",
     );
   });
 
   it("never starts the pipeline (no claim, no ingest) when getLatestGeneratedAtForUser throws", async () => {
-    mocks.getLatestGeneratedAtForUser.mockRejectedValue(new Error("connection reset"));
+    mocks.getLatestGeneratedAtForUser.mockRejectedValue(
+      new Error("connection reset"),
+    );
 
     const { POST } = await import("@/app/api/digest/route");
     await expect(POST()).rejects.toThrow("connection reset");
@@ -222,13 +239,13 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
       () =>
         new Promise((resolve) => {
           resolveUpsert = resolve;
-        })
+        }),
     );
     mocks.getLatestGeneratedAtForUser.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveCursor = resolve;
-        })
+        }),
     );
 
     const { POST } = await import("@/app/api/digest/route");
@@ -259,7 +276,10 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     resolveUpsert({ digestId: "digest-1" });
     await postPromise;
 
-    expect(mocks.claimDigestForGeneration).toHaveBeenCalledWith(expect.anything(), "digest-1");
+    expect(mocks.claimDigestForGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      "digest-1",
+    );
   });
 
   it("surfaces upsertDigestForToday's rejection (not getLatestGeneratedAtForUser's) when both reject, and still takes no claim", async () => {
@@ -271,7 +291,9 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     // pinning it down here means a future refactor that reorders the array
     // is a visible, deliberate choice instead of a silent behavior change.
     mocks.upsertDigestForToday.mockRejectedValue(new Error("upsert failed"));
-    mocks.getLatestGeneratedAtForUser.mockRejectedValue(new Error("cursor failed"));
+    mocks.getLatestGeneratedAtForUser.mockRejectedValue(
+      new Error("cursor failed"),
+    );
 
     const { POST } = await import("@/app/api/digest/route");
     await expect(POST()).rejects.toThrow("upsert failed");

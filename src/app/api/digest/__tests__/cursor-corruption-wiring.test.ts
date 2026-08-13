@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
   parseURL: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -66,9 +66,18 @@ vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
 }));
 
-vi.mock("@/lib/triage", () => ({
-  triageCluster: mocks.triageCluster,
-}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
@@ -107,7 +116,7 @@ function feedWithAges(...ages: number[]) {
 }
 
 // clusterArticles turned into an identity map (one cluster per surviving
-// article) so the test can read straight off what triageCluster receives --
+// article) so the test can read straight off what triageClusters receives --
 // that's the observable proxy for "which articles survived ingestArticles's
 // real cutoff filter."
 function identityCluster(articles: Article[]): Cluster[] {
@@ -125,11 +134,15 @@ beforeEach(() => {
     preferredSources: ["BBC"],
   });
   mocks.clusterArticles.mockImplementation(async (articles: Article[]) =>
-    identityCluster(articles)
+    identityCluster(articles),
   );
-  mocks.filterAlreadyCovered.mockImplementation(async (clusters: Cluster[]) => clusters);
+  mocks.filterAlreadyCovered.mockImplementation(
+    async (clusters: Cluster[]) => clusters,
+  );
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
-  mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map(() => ({ notable: false, severity: 1 })),
+  );
   mocks.writeCard.mockResolvedValue(undefined);
   mocks.rankFrontPage.mockResolvedValue([]);
   mocks.claimDigestForGeneration.mockResolvedValue(true);
@@ -146,9 +159,10 @@ async function titlesReachingTriage(): Promise<string[]> {
   const { POST } = await import("@/app/api/digest/route");
   const res = await POST();
   await res.text();
-  return mocks.triageCluster.mock.calls.map(
-    (call) => (call[0] as Cluster).articles[0].title
-  );
+  // One batched call now carries every cluster, so the titles come from its
+  // single argument rather than one call per cluster.
+  const batched = (mocks.triageClusters.mock.calls[0]?.[0] ?? []) as Cluster[];
+  return batched.map((c) => c.articles[0].title);
 }
 
 describe("digest route + real ingest.ts: corrupted far-future cursor recovery", () => {
@@ -159,7 +173,7 @@ describe("digest route + real ingest.ts: corrupted far-future cursor recovery", 
     // the max forever (persist_generated_cards only ever advances TODAY's
     // row), so the guard has to catch it at the ingest layer instead.
     mocks.getLatestGeneratedAtForUser.mockResolvedValue(
-      new Date(new Date(NOW).getTime() + 72 * HOURS).toISOString()
+      new Date(new Date(NOW).getTime() + 72 * HOURS).toISOString(),
     );
     feedWithAges(1, 47, 49, 100);
 
@@ -175,7 +189,7 @@ describe("digest route + real ingest.ts: corrupted far-future cursor recovery", 
     // NOT be treated as corrupt, or every subsequent run would re-ingest
     // the full ceiling window -- a permanent duplicate storm.
     mocks.getLatestGeneratedAtForUser.mockResolvedValue(
-      new Date(new Date(NOW).getTime() + 60 * 1000).toISOString()
+      new Date(new Date(NOW).getTime() + 60 * 1000).toISOString(),
     );
     feedWithAges(0.5, 1, 47);
 

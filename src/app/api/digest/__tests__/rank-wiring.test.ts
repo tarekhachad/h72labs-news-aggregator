@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -50,9 +50,18 @@ vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
 }));
 
-vi.mock("@/lib/triage", () => ({
-  triageCluster: mocks.triageCluster,
-}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
@@ -121,7 +130,9 @@ beforeEach(() => {
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.filterAlreadyCovered.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([EXISTING_CARD_SUMMARY]);
-  mocks.triageCluster.mockResolvedValue({ notable: true, severity: 4 });
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map(() => ({ notable: true, severity: 4 })),
+  );
   mocks.writeCard.mockResolvedValue(NEW_CARD);
   mocks.rankFrontPage.mockResolvedValue([3, 1]); // [existing card, new card]
   mocks.claimDigestForGeneration.mockResolvedValue(true);
@@ -147,7 +158,10 @@ function persistedCardsArg() {
   return mocks.saveGeneratedCards.mock.calls[0][2] as Card[];
 }
 function existingRankUpdatesArg() {
-  return mocks.saveGeneratedCards.mock.calls[0][4] as { id: string; frontPageRank: number | null }[];
+  return mocks.saveGeneratedCards.mock.calls[0][4] as {
+    id: string;
+    frontPageRank: number | null;
+  }[];
 }
 /** The terminal NDJSON line the client actually consumes. */
 function doneEvent(lines: Array<Record<string, unknown>>) {
@@ -156,7 +170,6 @@ function doneEvent(lines: Array<Record<string, unknown>>) {
 
 describe("digest route: front-page ranking wiring", () => {
   it("calls rankFrontPage with the merged pool -- existing cards first, then this run's new cards, in that order", async () => {
-
     await runPostLines();
 
     expect(mocks.rankFrontPage).toHaveBeenCalledTimes(1);
@@ -182,7 +195,9 @@ describe("digest route: front-page ranking wiring", () => {
     // failed to rank (frontPageRank stuck at null) could never be
     // reconsidered if every following run happened to add no new cards.
     // Ranking must still run here so that card gets re-evaluated.
-    mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+      cs.map(() => ({ notable: false, severity: 1 })),
+    );
     mocks.rankFrontPage.mockResolvedValue([2]); // ranks the one existing card
 
     const lines = await runPostLines();
@@ -193,7 +208,9 @@ describe("digest route: front-page ranking wiring", () => {
     expect(mocks.rankFrontPage).toHaveBeenCalledWith([
       { topic: "Tech/AI", severity: 2, text: "existing card summary" },
     ]);
-    expect(existingRankUpdatesArg()).toEqual([{ id: "card-existing-1", frontPageRank: 2 }]);
+    expect(existingRankUpdatesArg()).toEqual([
+      { id: "card-existing-1", frontPageRank: 2 },
+    ]);
   });
 
   it("skips ranking entirely (not just narrows the pool) when getTodaysCardSummaries fails -- an incomplete view of what's already ranked risks two cards colliding on the same rank", async () => {
@@ -209,12 +226,13 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("applies a successful rank result atomically: existing-card updates and this run's new cards' frontPageRank go through the SAME saveGeneratedCards call", async () => {
-
     await runPostLines();
 
     expect(mocks.saveGeneratedCards).toHaveBeenCalledTimes(1);
     // Existing card demoted from whatever it was to rank 3.
-    expect(existingRankUpdatesArg()).toEqual([{ id: "card-existing-1", frontPageRank: 3 }]);
+    expect(existingRankUpdatesArg()).toEqual([
+      { id: "card-existing-1", frontPageRank: 3 },
+    ]);
     // New card gets rank 1 (rankFrontPage's second output slot), not the
     // null writeCard originally set it to.
     const persisted = persistedCardsArg();
@@ -228,7 +246,9 @@ describe("digest route: front-page ranking wiring", () => {
 
     await runPostLines();
 
-    expect(existingRankUpdatesArg()).toEqual([{ id: "card-existing-1", frontPageRank: null }]);
+    expect(existingRankUpdatesArg()).toEqual([
+      { id: "card-existing-1", frontPageRank: null },
+    ]);
   });
 
   it("leaves existing ranks untouched (empty update list, not null-filled) and new cards at frontPageRank: null when rankFrontPage fails open (returns null)", async () => {
@@ -258,12 +278,13 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("emits a 'ranking' stage event between writing and done", async () => {
-
     const lines = await runPostLines();
     const stages = lines.map((l) => l.stage);
 
     expect(stages).toContain("ranking");
-    expect(stages.indexOf("ranking")).toBeGreaterThan(stages.indexOf("writing"));
+    expect(stages.indexOf("ranking")).toBeGreaterThan(
+      stages.indexOf("writing"),
+    );
     expect(stages.indexOf("ranking")).toBeLessThan(stages.indexOf("done"));
   });
 });
@@ -278,7 +299,9 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
     const done = doneEvent(await runPostLines());
 
     expect(done.rankUpdates).toEqual(existingRankUpdatesArg());
-    expect(done.rankUpdates).toEqual([{ id: "card-existing-1", frontPageRank: 3 }]);
+    expect(done.rankUpdates).toEqual([
+      { id: "card-existing-1", frontPageRank: 3 },
+    ]);
   });
 
   it("survives JSON round-tripping when a card is demoted to null", async () => {
@@ -288,7 +311,9 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
 
     const done = doneEvent(await runPostLines());
 
-    expect(done.rankUpdates).toEqual([{ id: "card-existing-1", frontPageRank: null }]);
+    expect(done.rankUpdates).toEqual([
+      { id: "card-existing-1", frontPageRank: null },
+    ]);
   });
 
   it("sends an empty list when ranking fails open, meaning 'change nothing'", async () => {

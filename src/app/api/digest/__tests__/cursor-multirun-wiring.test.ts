@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -52,9 +52,18 @@ vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
 }));
 
-vi.mock("@/lib/triage", () => ({
-  triageCluster: mocks.triageCluster,
-}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
@@ -99,8 +108,12 @@ beforeEach(() => {
   });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
-  mocks.filterAlreadyCovered.mockImplementation(async (clusters: Cluster[]) => clusters);
-  mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
+  mocks.filterAlreadyCovered.mockImplementation(
+    async (clusters: Cluster[]) => clusters,
+  );
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map(() => ({ notable: false, severity: 1 })),
+  );
   mocks.writeCard.mockResolvedValue(undefined);
   mocks.rankFrontPage.mockResolvedValue([]);
   mocks.claimDigestForGeneration.mockResolvedValue(true);
@@ -121,39 +134,45 @@ async function runPost() {
 describe("digest route: cursor across a sequence of same-day runs", () => {
   it("run 2 sees run 1's stamp, and run 3 sees run 2's -- never the first run's cursor replayed and never null", async () => {
     // Run 1: a returning user, last generated yesterday evening.
-    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce("2026-08-12T22:00:00.000Z");
+    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce(
+      "2026-08-12T22:00:00.000Z",
+    );
     await runPost();
     expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
       1,
       ["Tech/AI"],
       ["BBC"],
-      "2026-08-12T22:00:00.000Z"
+      "2026-08-12T22:00:00.000Z",
     );
 
     // Run 1 "finished" and (via persist_generated_cards) advanced
     // digest-today's last_generated_at to this run's own generatedAt. The
     // next call to getLatestGeneratedAtForUser must reflect that, not the
     // value run 1 itself was given.
-    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce("2026-08-13T10:00:00.000Z");
+    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce(
+      "2026-08-13T10:00:00.000Z",
+    );
     await runPost();
     expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
       2,
       ["Tech/AI"],
       ["BBC"],
-      "2026-08-13T10:00:00.000Z"
+      "2026-08-13T10:00:00.000Z",
     );
 
     // Run 3: same pattern, one more advance. A regression that re-derived
     // the cursor from something fixed at request-sequence start (rather
     // than re-querying fresh each time) would replay run 2's -- or run 1's
     // -- value here instead.
-    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce("2026-08-13T11:30:00.000Z");
+    mocks.getLatestGeneratedAtForUser.mockResolvedValueOnce(
+      "2026-08-13T11:30:00.000Z",
+    );
     await runPost();
     expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
       3,
       ["Tech/AI"],
       ["BBC"],
-      "2026-08-13T11:30:00.000Z"
+      "2026-08-13T11:30:00.000Z",
     );
 
     expect(mocks.ingestArticles).toHaveBeenCalledTimes(3);
@@ -171,21 +190,38 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
     // the route re-fetches it fresh on every run rather than caching run
     // 1's snapshot, so a growing list is actually visible to run 3's dedup
     // gate.
-    mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-08-13T09:00:00.000Z");
+    mocks.getLatestGeneratedAtForUser.mockResolvedValue(
+      "2026-08-13T09:00:00.000Z",
+    );
 
     mocks.getTodaysCardSummaries.mockResolvedValueOnce([]);
     await runPost();
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
 
     mocks.getTodaysCardSummaries.mockResolvedValueOnce([
-      { id: "c1", topic: "Tech/AI" as const, shortSummary: "run 1's card", severity: 2 },
+      {
+        id: "c1",
+        topic: "Tech/AI" as const,
+        shortSummary: "run 1's card",
+        severity: 2,
+      },
     ]);
     await runPost();
     expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
 
     mocks.getTodaysCardSummaries.mockResolvedValueOnce([
-      { id: "c1", topic: "Tech/AI" as const, shortSummary: "run 1's card", severity: 2 },
-      { id: "c2", topic: "Tech/AI" as const, shortSummary: "run 2's card", severity: 3 },
+      {
+        id: "c1",
+        topic: "Tech/AI" as const,
+        shortSummary: "run 1's card",
+        severity: 2,
+      },
+      {
+        id: "c2",
+        topic: "Tech/AI" as const,
+        shortSummary: "run 2's card",
+        severity: 3,
+      },
     ]);
     await runPost();
     expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(2);
@@ -194,7 +230,7 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "c1" }),
         expect.objectContaining({ id: "c2" }),
-      ])
+      ]),
     );
 
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(3);

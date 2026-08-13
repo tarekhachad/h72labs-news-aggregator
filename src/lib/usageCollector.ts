@@ -21,8 +21,12 @@ import {
  * pass-the-dependency-as-an-argument convention. The reason it can't work
  * here: every billed call site has a path that never reaches its `return`.
  * `rankFrontPage` catches and returns `null`; `isSameStory` catches and
- * returns `false`; `triageCluster`'s throw is swallowed by the digest
- * route's per-cluster catch; `writeCard`'s rejection is absorbed by
+ * returns `false`; a failed triage attempt is swallowed inside
+ * `triageClusters`, which catches per batch and fails its residue closed
+ * (it used to be the digest route catching per cluster — F.4.5 moved that
+ * guarantee into the module when batching made a rejection cost twenty
+ * clusters instead of one, but the shape of the problem here is the same
+ * either way); `writeCard`'s rejection is absorbed by
  * `Promise.allSettled`; and `generateWithRetryOnAmbiguousTruncation` has
  * three throw paths, the worst firing *after two billed Sonnet calls*. A
  * return value can't carry usage off a path that doesn't return, so
@@ -33,9 +37,11 @@ import {
  *
  * Ambient also gets two things free that matter here: per-request isolation
  * (two concurrent digests never merge, which a module-level singleton would
- * do silently), and correct attribution across the unbounded `Promise.all`
+ * do silently), and correct attribution across the uncapped `Promise.all`
  * fan-outs in the triage and dedup stages, since children inherit the scope
- * at call time.
+ * at call time. (Triage's fan-out is over ~20-cluster batches since F.4.5
+ * rather than over individual clusters; dedup's inner one is still per
+ * candidate. Neither is throttled, which is what matters here.)
  *
  * Node-only — both consuming routes already declare `runtime = "nodejs"`.
  * Never import this from a client component.

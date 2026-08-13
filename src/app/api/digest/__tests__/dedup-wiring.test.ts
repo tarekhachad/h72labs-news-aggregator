@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   ingestArticles: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
-  triageCluster: vi.fn(),
+  triageClusters: vi.fn(),
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
@@ -53,9 +53,18 @@ vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
 }));
 
-vi.mock("@/lib/triage", () => ({
-  triageCluster: mocks.triageCluster,
-}));
+vi.mock("@/lib/triage", async () => {
+  // triageBatchCount is pulled through real: it is what the cost summary
+  // compares actual calls against, and a mocked-away version returns
+  // undefined, which formatUsageSummary skips silently -- the expectation
+  // would vanish rather than fail.
+  const actual =
+    await vi.importActual<typeof import("@/lib/triage")>("@/lib/triage");
+  return {
+    triageClusters: mocks.triageClusters,
+    triageBatchCount: actual.triageBatchCount,
+  };
+});
 
 vi.mock("@/lib/writeCard", () => ({
   writeCard: mocks.writeCard,
@@ -104,7 +113,9 @@ beforeEach(() => {
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   // Not notable -> skips writeCard entirely, keeping the rest of the
   // pipeline trivial for this wiring-focused test.
-  mocks.triageCluster.mockResolvedValue({ notable: false, severity: 1 });
+  mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+    cs.map(() => ({ notable: false, severity: 1 })),
+  );
   mocks.writeCard.mockResolvedValue(undefined);
   // Empty candidate pool by default (no existing cards, no notable clusters
   // in this suite's trivial setup) -- irrelevant to what these tests assert.
@@ -155,7 +166,7 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(1);
     // The clusters produced by clusterArticles should flow straight through
     // to triage unfiltered when the dedup filter itself is skipped.
-    expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
+    expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
   });
 
   it("skips dedup on a new day's first run even though the since-cursor is now non-null", async () => {
@@ -168,19 +179,27 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
     await runPost();
 
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
-    expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
+    expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
   });
 
   it("runs the dedup step on a later same-day run (existing cards present)", async () => {
-    const existing = [{ topic: "Tech/AI" as const, shortSummary: "existing card" }];
+    const existing = [
+      { topic: "Tech/AI" as const, shortSummary: "existing card" },
+    ];
     mocks.getTodaysCardSummaries.mockResolvedValue(existing);
 
     await runPost();
 
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(1);
-    expect(mocks.getTodaysCardSummaries).toHaveBeenCalledWith(expect.anything(), "digest-1");
+    expect(mocks.getTodaysCardSummaries).toHaveBeenCalledWith(
+      expect.anything(),
+      "digest-1",
+    );
     expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
-    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(FAKE_CLUSTERS, existing);
+    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(
+      FAKE_CLUSTERS,
+      existing,
+    );
   });
 
   it("still releases the generation claim when the dedup step is skipped", async () => {
@@ -211,7 +230,7 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     // documented early return made a no-op; skipping is the same behaviour
     // decided one level up. Either way the clusters reach triage intact.
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
-    expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
+    expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
 
     // The generation-mutex claim must still be released even on this
     // caught-internally failure path.
@@ -222,7 +241,9 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     mocks.getTodaysCardSummaries.mockResolvedValue([
       { topic: "Tech/AI", shortSummary: "existing card" },
     ]);
-    mocks.filterAlreadyCovered.mockRejectedValue(new Error("embedding model failure"));
+    mocks.filterAlreadyCovered.mockRejectedValue(
+      new Error("embedding model failure"),
+    );
 
     const lines = await runPostLines();
 
@@ -235,7 +256,7 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
     // Despite the throw, the original un-deduplicated clusters must still
     // reach triage.
-    expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
+    expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
     expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
   });
 });

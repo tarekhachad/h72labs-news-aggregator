@@ -37,12 +37,13 @@ function clusterText(cluster: Cluster): string {
 }
 
 /**
- * One Haiku call, same tier/shape as triageCluster — asks whether a
- * candidate cluster is the same real-world story as an already-covered
- * card. Deliberately fails open (returns false, i.e. "let it through") on
- * any error: the opposite of triageCluster's fail-closed convention. Fail-
- * closed there suppresses noise on uncertainty, which is the safe default
- * for that decision; here, dropping a cluster on uncertainty risks silently
+ * One Haiku call, same tier as triage's batched calls but still one per
+ * candidate — asks whether a candidate cluster is the same real-world story
+ * as an already-covered card. Deliberately fails open (returns false, i.e.
+ * "let it through") on any error: the opposite of triageClusters'
+ * fail-closed convention. Fail-closed there suppresses noise on
+ * uncertainty, which is the safe default for that decision; here, dropping
+ * a cluster on uncertainty risks silently
  * losing a genuinely new, notable story, which is worse than occasionally
  * showing a duplicate a user can just ignore.
  */
@@ -99,9 +100,14 @@ export async function filterAlreadyCovered(
   const topics = new Set(clusters.map((c) => c.topic));
   const survivingByIndex = new Array<boolean>(clusters.length).fill(true);
 
-  // Topics are independent of each other, so process them concurrently —
-  // same reasoning as triageCluster's per-cluster Promise.all elsewhere in
-  // this pipeline, just applied one level up.
+  // Topics are independent of each other, so process them concurrently.
+  // This fan-out is one group per topic, however many clusters that topic
+  // holds — deliberately NOT the same shape as triageClusters' batching,
+  // which splits a topic further into ≤20-cluster batches. The inner
+  // `checks` fan-out below is the one to compare against triage: it still
+  // issues one Haiku call per candidate cluster, unbatched, which is
+  // exactly the one-call-per-item pattern F.4.5 removed from triage and
+  // did not touch here. See ROADMAP.md's deferred section.
   await Promise.all(
     Array.from(topics).map(async (topic) => {
       const topicClusterIndices = clusters

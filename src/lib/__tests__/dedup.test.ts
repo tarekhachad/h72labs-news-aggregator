@@ -206,4 +206,37 @@ describe("filterAlreadyCovered", () => {
     // similarButDifferent) should have triggered a Haiku call.
     expect(mockParse).toHaveBeenCalledTimes(2);
   });
+
+  it("F.4.5 CANARY: issues one unbatched Haiku call per candidate even past triage's 20-cluster batch cap, within a single topic", async () => {
+    // F.4.5 batched triage.ts's per-cluster fan-out into ≤20-cluster groups
+    // (planTriageBatches / MAX_CLUSTERS_PER_BATCH), but deliberately left
+    // dedup.ts's isSameStory fan-out untouched -- this is the exact claim
+    // the F.4.5 review round's rewritten comments make (dedup.ts's
+    // filterAlreadyCovered comment, usageCollector.ts's ambient-collector
+    // comment, and ROADMAP.md's new deferred entry all assert it). Prove it
+    // numerically: 25 same-topic candidates, all clearing the embedding
+    // gate, must produce exactly 25 separate Haiku calls -- not the ~2
+    // batched calls triage's MAX_CLUSTERS_PER_BATCH=20 would produce for
+    // the same input shape, and not 1 combined call either.
+    mockParse.mockResolvedValue({ parsed_output: { sameStory: false } });
+    const { filterAlreadyCovered } = await import("@/lib/dedup");
+
+    const candidates = Array.from({ length: 25 }, (_, i) =>
+      makeCluster("Tech/AI", `SAME_STORY_MARKER-${i}`)
+    );
+
+    const result = await filterAlreadyCovered(candidates, [
+      { topic: "Tech/AI", shortSummary: "EXISTING_AI_SUMMARY" },
+    ]);
+
+    expect(result).toEqual(candidates);
+    expect(mockParse).toHaveBeenCalledTimes(25);
+    // Each call carries exactly one candidate's text, not several batched
+    // into one prompt the way triage.ts's judgeBatch numbers a list.
+    for (const call of mockParse.mock.calls) {
+      const content = (call[0] as { messages: { content: string }[] }).messages[0].content;
+      const markerHits = content.match(/SAME_STORY_MARKER-\d+/g) ?? [];
+      expect(new Set(markerHits).size).toBe(1);
+    }
+  });
 });

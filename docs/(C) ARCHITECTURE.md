@@ -21,7 +21,7 @@ You ask for news (either "give me today's news," or something ad-hoc like "what'
                     NOT a Claude call). "5 outlets covering the Fed
                     decision" becomes one cluster, not 5 separate items.
 
- 3. Triage          One cheap Claude Haiku call per cluster asks:
+ 3. Triage          One cheap Claude Haiku call per ~20 same-topic clusters asks:
                     "is this actually a distinct, notable story?"
                     Filters out noise before the expensive step.
 
