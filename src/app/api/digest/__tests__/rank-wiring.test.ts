@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
+  getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
   claimDigestForGeneration: vi.fn(),
   releaseDigestGeneration: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock("@/lib/rank", () => ({
 
 vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
+  getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
   claimDigestForGeneration: mocks.claimDigestForGeneration,
   releaseDigestGeneration: mocks.releaseDigestGeneration,
@@ -125,6 +127,8 @@ beforeEach(() => {
   mocks.claimDigestForGeneration.mockResolvedValue(true);
   mocks.releaseDigestGeneration.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
+  mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
+  mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
 });
 
 async function runPostLines(): Promise<Array<Record<string, unknown>>> {
@@ -152,10 +156,6 @@ function doneEvent(lines: Array<Record<string, unknown>>) {
 
 describe("digest route: front-page ranking wiring", () => {
   it("calls rankFrontPage with the merged pool -- existing cards first, then this run's new cards, in that order", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
 
     await runPostLines();
 
@@ -167,10 +167,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("runs ranking even on the first digest of the day, unlike the dedup filter", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: null,
-    });
     mocks.getTodaysCardSummaries.mockResolvedValue([]);
 
     await runPostLines();
@@ -180,10 +176,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("still runs ranking even when this run produces zero new cards -- a card left unranked by an earlier run's failure must get another chance", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     // Not notable -> writeCard never runs -> cards.length === 0 this run.
     // An earlier fix skipped ranking entirely in exactly this case, which
     // created a real bug: an existing card that a PRIOR run's rankFrontPage
@@ -205,10 +197,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("skips ranking entirely (not just narrows the pool) when getTodaysCardSummaries fails -- an incomplete view of what's already ranked risks two cards colliding on the same rank", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.getTodaysCardSummaries.mockRejectedValue(new Error("db blip"));
 
     const lines = await runPostLines();
@@ -221,10 +209,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("applies a successful rank result atomically: existing-card updates and this run's new cards' frontPageRank go through the SAME saveGeneratedCards call", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
 
     await runPostLines();
 
@@ -239,10 +223,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("demotes a previously-ranked existing card back to null when this run's ranking no longer picks it, not just promotes", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     // This run's ranking pass doesn't pick the existing card at all.
     mocks.rankFrontPage.mockResolvedValue([null, 1]);
 
@@ -252,10 +232,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("leaves existing ranks untouched (empty update list, not null-filled) and new cards at frontPageRank: null when rankFrontPage fails open (returns null)", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.rankFrontPage.mockResolvedValue(null);
 
     const lines = await runPostLines();
@@ -272,10 +248,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("still reaches done (not an error stage) if rankFrontPage itself throws, via route.ts's own defense-in-depth catch", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.rankFrontPage.mockRejectedValue(new Error("unexpected failure"));
 
     const lines = await runPostLines();
@@ -286,10 +258,6 @@ describe("digest route: front-page ranking wiring", () => {
   });
 
   it("emits a 'ranking' stage event between writing and done", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
 
     const lines = await runPostLines();
     const stages = lines.map((l) => l.stage);
@@ -306,10 +274,6 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
     // these updates; before 8.4 it simply never put them on the wire, so
     // already-rendered cards kept a stale frontPageRank and two cards could
     // both claim rank 1 — two hero-sized cards until the page reloaded.
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
 
     const done = doneEvent(await runPostLines());
 
@@ -320,10 +284,6 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
   it("survives JSON round-tripping when a card is demoted to null", async () => {
     // null is a meaningful value here (dropped off the front page), and it
     // travels as a real JSON null rather than being dropped from the object.
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.rankFrontPage.mockResolvedValue([null, 1]);
 
     const done = doneEvent(await runPostLines());
@@ -332,10 +292,6 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
   });
 
   it("sends an empty list when ranking fails open, meaning 'change nothing'", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.rankFrontPage.mockResolvedValue(null);
 
     const done = doneEvent(await runPostLines());
@@ -346,10 +302,6 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
   it("sends an empty list when the existing-cards fetch failed", async () => {
     // Ranking is skipped entirely on an incomplete view of the day, so
     // there are no updates to broadcast either.
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.getTodaysCardSummaries.mockRejectedValue(new Error("db down"));
 
     const done = doneEvent(await runPostLines());

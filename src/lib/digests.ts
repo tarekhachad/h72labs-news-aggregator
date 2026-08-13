@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Card, Digest, Topic } from "@/types";
 import { getBookmarkedCardIds } from "@/lib/bookmarks";
+import { plausibleCursorLimitIso } from "@/lib/cursor";
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -298,29 +299,81 @@ export async function listDigestDatesForUser(
 }
 
 /**
- * Finds or creates today's digest row for this user, returning its id and
- * the cursor (`lastGeneratedAt`) the pipeline should filter articles
- * "since." Null means no successful generation run has completed for this
- * digest yet — the pipeline's ingest step already treats null the same way
- * as a first-ever digest (falls back to its own lookback window), which is
- * exactly right for a freshly created row too.
+ * The cursor the pipeline filters articles "since": when this user last
+ * successfully generated *anything*, across every digest they own — not
+ * just today's row. Null means no run has ever completed for this user.
+ *
+ * Scoping this to today's row (which is what upsertDigestForToday used to
+ * return) made every new day's first run start from null and fall back to
+ * ingest's lookback window, so it re-ingested the previous 48 hours and
+ * re-covered stories yesterday's digest already had. Cross-run dedup
+ * couldn't catch those either — it only compares against *today's* cards,
+ * and on a new day there aren't any yet.
+ *
+ * The null-filter is load-bearing, not defensive: Postgres sorts NULLs
+ * first under DESC, so a row for a day that was created but never
+ * successfully generated (an interrupted run, or today's row moments after
+ * upsertDigestForToday created it) would otherwise win the ordering and
+ * hand back null — reintroducing the exact bug this function exists to fix.
+ *
+ * The future-timestamp filter is load-bearing for a subtler reason. This is
+ * a MAX query: it returns one row and discards every other timestamp before
+ * any caller sees them. So a single corrupt far-future value (a bad manual
+ * insert, a seeded test row — schema.sql has no CHECK on this column and no
+ * DELETE policy on digests) would win the ordering on every call, forever,
+ * and the legitimate next-most-recent cursor would be unrecoverable
+ * downstream. Excluding it *here* is what lets the query fall through to
+ * that real cursor instead. ingestArticles refuses such a value too, but by
+ * then the alternative is already gone and all it can do is re-ingest the
+ * full lookback window on every run.
+ */
+export async function getLatestGeneratedAtForUser(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("digests")
+    .select("last_generated_at")
+    .eq("user_id", userId)
+    .not("last_generated_at", "is", null)
+    // Tolerance rather than `<= now`: a cursor a few seconds ahead is
+    // ordinary clock skew and is still the correct cursor. Excluding it
+    // would skip today's real timestamp in favour of yesterday's and
+    // re-ingest a day of already-covered stories.
+    .lte("last_generated_at", plausibleCursorLimitIso())
+    .order("last_generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`getLatestGeneratedAtForUser: ${error.message}`);
+
+  return data?.last_generated_at ?? null;
+}
+
+/**
+ * Finds or creates today's digest row for this user and returns its id.
+ *
+ * Deliberately does *not* return a since-cursor: the cursor is a property of
+ * the user, not of today's row (see getLatestGeneratedAtForUser). A freshly
+ * created row's own last_generated_at is always null, and treating that as
+ * "nothing to filter since" is what produced cross-day duplicate cards.
  */
 export async function upsertDigestForToday(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ digestId: string; lastGeneratedAt: string | null }> {
+): Promise<{ digestId: string }> {
   const date = todayDateString();
 
   const { data: existing, error: selectError } = await supabase
     .from("digests")
-    .select("id, last_generated_at")
+    .select("id")
     .eq("user_id", userId)
     .eq("date", date)
     .maybeSingle();
 
   if (selectError) throw new Error(`upsertDigestForToday: ${selectError.message}`);
   if (existing) {
-    return { digestId: existing.id, lastGeneratedAt: existing.last_generated_at };
+    return { digestId: existing.id };
   }
 
   const id = crypto.randomUUID();
@@ -339,7 +392,7 @@ export async function upsertDigestForToday(
     throw new Error(`upsertDigestForToday: failed to create digest: ${insertError.message}`);
   }
 
-  return { digestId: id, lastGeneratedAt: null };
+  return { digestId: id };
 }
 
 /**

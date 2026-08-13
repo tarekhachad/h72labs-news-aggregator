@@ -126,13 +126,18 @@ Whatever ships goes through the full review loop, then **one re-measurement run*
 
 Review found one real bug: selection tracked by object identity let a duplicated reference exceed the cap. Now index-based, and the drop-reporting was merged into the same function so the two can't disagree. Note the two agents disagreed here — `code-reviewer` reasoned "can't happen in today's pipeline" (true) while `qa` reproduced it; the docstring's absolute claim was taken as the standard.
 
-## F.4.4 — Carry the since-cursor across days
+## F.4.4 — DONE (2026-08-13, converged clean at round 8)
 
-The cursor should be "when did this user last successfully generate, **ever**", not "…today". Add a query in `src/lib/digests.ts` for the user's most recent `last_generated_at` across all their digests, and use it in place of today's-row-only value.
+Shipped as designed, plus three things the review loop forced:
 
-In `src/lib/ingest.ts`, `FIRST_RUN_LOOKBACK_MS` changes role from *fallback* to *ceiling*: `cutoff = max(lastGeneratedAt, now − 48h)`. A brand-new user still gets 48h; someone returning after a week gets 48h, not seven days. Update the stale comment blaming "the browser's localStorage was cleared" — never the mechanism.
+- **`getLatestGeneratedAtForUser`** (`src/lib/digests.ts`) — newest `last_generated_at` across all of the user's rows. `upsertDigestForToday` now returns `{ digestId }` only; the cursor is a property of the user, not of today's row. Two filters, both load-bearing: `.not(... is null)` because Postgres sorts NULLs first under DESC (today's fresh row would win and hand back null), and `.lte(plausibleCursorLimitIso())` because this is a MAX query — one corrupt far-future row would win the ordering *forever* and the legitimate cursor is unrecoverable downstream.
+- **`LOOKBACK_CEILING_MS`** (`src/lib/ingest.ts`) — was `FIRST_RUN_LOOKBACK_MS`; `cutoff = max(cursor, now − 48h)`. A cursor >5 min ahead of the clock is corrupt: discarded for the ceiling, with a **guarded** `console.warn`. The tolerance is not fussiness — always falling back would mean a writer running seconds fast makes every run re-ingest 48h, a permanent duplicate storm at ~10× cost.
+- **`src/lib/cursor.ts`** — the tolerance constant + helpers, shared so the query and the consumer can't drift (the `entranceTiming.ts` precedent). Drift here is silent: the query accepts a value the consumer then discards.
+- **`route.ts`** — dedup gate moved from `sinceIso !== null` to `existingCards.length > 0` (the old proxy only coincided with the real precondition while the cursor reset at midnight); the upsert and cursor query issue concurrently under `Promise.all`.
 
-Roughly halves cluster volume and removes cross-day duplicate cards.
+**Eight rounds; six found something real, and four of those were comments asserting a property the code did not have** — a false "self-healing" claim, a false "one re-ingested window" claim, a tick-margin that didn't exist, and a concurrency test that couldn't detect a reversed serial ordering. The logic stabilised at round 3; everything after was the description of it failing review. Round 7 was **void, not clean** — `code-reviewer` read `route.ts` while `qa` had it mutated for a load-bearing check and reported the change as missing. Fixed by giving `code-reviewer` an immutable snapshot while `qa` keeps the live tree; that separation is worth keeping for any future round that runs both concurrently.
+
+Tests 277 → 332. Two deferred items raised to `ROADMAP.md`: the per-row generation mutex (a midnight rollover can let one user run two pipelines) and the missing `digests(user_id, last_generated_at)` index. Neither introduced here.
 
 ## F.4.5 — Batch triage (highest risk in the phase)
 

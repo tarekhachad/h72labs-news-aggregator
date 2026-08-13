@@ -10,6 +10,7 @@ import { rankFrontPage } from "@/lib/rank";
 import type { RankUpdate } from "@/lib/rankUpdates";
 import {
   upsertDigestForToday,
+  getLatestGeneratedAtForUser,
   saveGeneratedCards,
   claimDigestForGeneration,
   releaseDigestGeneration,
@@ -121,9 +122,14 @@ async function* runDigestPipeline(
     // update, or just another outlet picking it up late) has a publishedAt
     // after the since-cursor and forms its own cluster — the ingest filter
     // only excludes stale articles, it has no notion of "already covered."
-    // Skipped entirely on the first run of the day (sinceIso === null): the
-    // fetch above is guaranteed empty then anyway (nothing persisted yet),
-    // so there's nothing to compare against.
+    // Skipped when there's nothing to compare against, which is the real
+    // precondition here. This used to be expressed as `sinceIso !== null`,
+    // a proxy that only coincided with it while the cursor reset every
+    // midnight; now that the cursor carries across days (F.4.4), a new day's
+    // first run has a non-null cursor and zero existing cards, and the proxy
+    // would be wrong. filterAlreadyCovered no-ops on an empty list anyway —
+    // this keeps that guarantee visible at the call site rather than
+    // depending on the callee's internals.
     //
     // Best-effort, not required for success: unlike triageCluster/writeCard
     // (which fail closed per-cluster), a failure here (embedding error)
@@ -132,7 +138,7 @@ async function* runDigestPipeline(
     // than losing an entire digest generation over what's fundamentally a
     // quality-of-life check, not core pipeline logic.
     let survivingClusters = clusters;
-    if (sinceIso !== null) {
+    if (existingCards.length > 0) {
       try {
         survivingClusters = await withUsageCollector(usage, () =>
           filterAlreadyCovered(clusters, existingCards)
@@ -377,14 +383,24 @@ export async function POST() {
     return new Response("Onboarding incomplete", { status: 400 });
   }
 
-  // The since-cursor is now server-owned (digests.last_generated_at), not a
+  // The since-cursor is server-owned (digests.last_generated_at), not a
   // client-supplied value — this also makes "one digest per user per day,
   // appended to across multiple runs" an enforced fact instead of a client
   // convention (see upsertDigestForToday's unique (user_id, date) reliance).
-  const { digestId, lastGeneratedAt } = await upsertDigestForToday(supabase, user.id);
+  //
+  // Two separate concerns, deliberately two calls: which row this run writes
+  // into (always today's), and how far back this run reads (the user's last
+  // successful generation, whatever day that was). Neither depends on the
+  // other's result — the row upsertDigestForToday may create always has a
+  // null last_generated_at, which the cursor query filters out — so they
+  // issue concurrently rather than costing two serial round trips.
+  const [{ digestId }, sinceCursor] = await Promise.all([
+    upsertDigestForToday(supabase, user.id),
+    getLatestGeneratedAtForUser(supabase, user.id),
+  ]);
 
   // Mutual exclusion: without this, a double-click or two open tabs could
-  // both reach this point with the same digestId/lastGeneratedAt and both
+  // both reach this point with the same digestId/since-cursor and both
   // run the full pipeline, producing duplicate cards and doubling Claude
   // spend for the same window. Released in runDigestPipeline's finally
   // block once this run actually finishes (success, error, or cancellation).
@@ -397,7 +413,7 @@ export async function POST() {
   }
 
   return new Response(
-    toNdjsonStream(runDigestPipeline(supabase, digestId, profile, lastGeneratedAt)),
+    toNdjsonStream(runDigestPipeline(supabase, digestId, profile, sinceCursor)),
     { headers: { "Content-Type": "application/x-ndjson" } }
   );
 }

@@ -87,11 +87,18 @@ create table public.digests (
   user_id uuid not null references auth.users(id) on delete cascade,
   date date not null,
   requested_topic text,
-  -- Null until the first generation run for this digest actually finishes
-  -- and persists cards (set explicitly then, not via a column default) —
-  -- a fresh row must still look like "no prior run today" to the pipeline,
-  -- so its since-cursor falls back to the normal first-run lookback window
-  -- instead of filtering against its own creation timestamp.
+  -- Null until this row's first generation run actually finishes (set
+  -- explicitly then, not via a column default, so a row that exists but has
+  -- never generated is distinguishable from one that has).
+  --
+  -- The pipeline's since-cursor is the newest non-null value across ALL of
+  -- the user's rows, not this row's own (see getLatestGeneratedAtForUser in
+  -- src/lib/digests.ts). Reading it per-row is what this comment used to
+  -- describe, and it meant every new day started null and re-ingested the
+  -- full lookback window, re-covering stories the previous day already had.
+  -- The null-vs-set distinction still matters: that query filters nulls out
+  -- in SQL precisely because Postgres sorts them first under DESC, so a
+  -- freshly created row would otherwise win the ordering.
   last_generated_at timestamptz,
   -- Mutual exclusion for concurrent generation requests (double-click, two
   -- open tabs) — claimed via an atomic compare-and-swap UPDATE (see

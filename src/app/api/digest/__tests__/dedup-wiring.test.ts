@@ -6,8 +6,13 @@ import type { Cluster } from "@/types";
 // call counts rather than just re-reading the source. The one thing under
 // test is the wiring in runDigestPipeline: does the dedup step
 // (filterAlreadyCovered / getTodaysCardSummaries) actually get invoked --
-// or fully skipped -- based on sinceIso (lastGeneratedAt), not just
-// "cheaply" short-circuited.
+// or fully skipped -- based on whether there are existing cards to compare
+// against, not just "cheaply" short-circuited.
+//
+// The gate used to be sinceIso !== null. F.4.4 made the since-cursor carry
+// across days, so a new day's first run now has a non-null cursor and zero
+// existing cards -- the two stopped coinciding, and the gate moved to the
+// condition it always actually meant.
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
@@ -19,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
+  getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
   claimDigestForGeneration: vi.fn(),
   releaseDigestGeneration: vi.fn(),
@@ -61,6 +67,7 @@ vi.mock("@/lib/rank", () => ({
 
 vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
+  getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
   claimDigestForGeneration: mocks.claimDigestForGeneration,
   releaseDigestGeneration: mocks.releaseDigestGeneration,
@@ -105,6 +112,10 @@ beforeEach(() => {
   mocks.claimDigestForGeneration.mockResolvedValue(true);
   mocks.releaseDigestGeneration.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
+  mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
+  // A returning user by default -- the cursor no longer decides whether
+  // dedup runs, so tests that care set getTodaysCardSummaries instead.
+  mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
 });
 
 async function runPost() {
@@ -131,44 +142,49 @@ async function runPostLines(): Promise<Array<Record<string, unknown>>> {
 }
 
 describe("digest route: dedup step wiring on first run vs. later runs", () => {
-  it("fully skips the dedup filter step on the first digest of the day (lastGeneratedAt === null), but still fetches existing cards for ranking", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: null,
-    });
+  it("fully skips the dedup filter step when there are no existing cards to compare against, but still fetches them for ranking", async () => {
+    mocks.getTodaysCardSummaries.mockResolvedValue([]);
 
     await runPost();
 
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
-    // Unlike filterAlreadyCovered, getTodaysCardSummaries is no longer
-    // gated on sinceIso -- the front-page ranking pass needs today's
-    // existing cards on every run, including the first, so this now always
-    // fires (it's just guaranteed to resolve empty on a genuine first run).
+    // Unlike filterAlreadyCovered, getTodaysCardSummaries isn't gated at all
+    // -- the front-page ranking pass needs today's existing cards on every
+    // run, including the first, so this always fires (it's just guaranteed
+    // to resolve empty on the first run of a day).
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(1);
     // The clusters produced by clusterArticles should flow straight through
     // to triage unfiltered when the dedup filter itself is skipped.
     expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
   });
 
-  it("runs the dedup step on a later same-day run (lastGeneratedAt !== null)", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
+  it("skips dedup on a new day's first run even though the since-cursor is now non-null", async () => {
+    // The regression guard for F.4.4's gate change: a returning user's
+    // cursor points at yesterday, so the old `sinceIso !== null` gate would
+    // fire here against an empty card list.
+    mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-30T22:00:00Z");
+    mocks.getTodaysCardSummaries.mockResolvedValue([]);
+
+    await runPost();
+
+    expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
+    expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
+  });
+
+  it("runs the dedup step on a later same-day run (existing cards present)", async () => {
+    const existing = [{ topic: "Tech/AI" as const, shortSummary: "existing card" }];
+    mocks.getTodaysCardSummaries.mockResolvedValue(existing);
 
     await runPost();
 
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledTimes(1);
     expect(mocks.getTodaysCardSummaries).toHaveBeenCalledWith(expect.anything(), "digest-1");
     expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
-    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(FAKE_CLUSTERS, []);
+    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(FAKE_CLUSTERS, existing);
   });
 
-  it("still releases the generation claim when the dedup step is skipped (first run)", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: null,
-    });
+  it("still releases the generation claim when the dedup step is skipped", async () => {
+    mocks.getTodaysCardSummaries.mockResolvedValue([]);
 
     await runPost();
 
@@ -177,11 +193,7 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
 });
 
 describe("digest route: dedup step failure falls back to un-deduplicated clusters", () => {
-  it("falls back to an empty existing-cards list (and still runs the dedup filter against it) when getTodaysCardSummaries throws", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
+  it("degrades to skipping dedup (not failing the run) when getTodaysCardSummaries throws", async () => {
     mocks.getTodaysCardSummaries.mockRejectedValue(new Error("db blip"));
 
     const lines = await runPostLines();
@@ -193,12 +205,12 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     expect(lines[lines.length - 1].stage).toBe("done");
 
     // The fetch failure is caught by its own dedicated try/catch, separate
-    // from the dedup filter's -- existingCards falls back to [], and the
-    // dedup gate (still sinceIso !== null here) proceeds to call
-    // filterAlreadyCovered against that empty fallback rather than being
-    // skipped outright.
-    expect(mocks.filterAlreadyCovered).toHaveBeenCalledTimes(1);
-    expect(mocks.filterAlreadyCovered).toHaveBeenCalledWith(FAKE_CLUSTERS, []);
+    // from the dedup filter's -- existingCards falls back to [], which the
+    // gate then reads as "nothing to compare against." Previously this
+    // called filterAlreadyCovered with an empty list, which its own
+    // documented early return made a no-op; skipping is the same behaviour
+    // decided one level up. Either way the clusters reach triage intact.
+    expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
     expect(mocks.triageCluster).toHaveBeenCalledTimes(FAKE_CLUSTERS.length);
 
     // The generation-mutex claim must still be released even on this
@@ -207,10 +219,6 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
   });
 
   it("completes the digest using original clusters when filterAlreadyCovered throws (e.g. an embedding failure)", async () => {
-    mocks.upsertDigestForToday.mockResolvedValue({
-      digestId: "digest-1",
-      lastGeneratedAt: "2026-07-31T10:00:00Z",
-    });
     mocks.getTodaysCardSummaries.mockResolvedValue([
       { topic: "Tech/AI", shortSummary: "existing card" },
     ]);

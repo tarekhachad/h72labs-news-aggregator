@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   writeCard: vi.fn(),
   rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(),
+  getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
   claimDigestForGeneration: vi.fn(),
   releaseDigestGeneration: vi.fn(),
@@ -46,6 +47,7 @@ vi.mock("@/lib/writeCard", () => ({ writeCard: mocks.writeCard }));
 vi.mock("@/lib/rank", () => ({ rankFrontPage: mocks.rankFrontPage }));
 vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
+  getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
   claimDigestForGeneration: mocks.claimDigestForGeneration,
   releaseDigestGeneration: mocks.releaseDigestGeneration,
@@ -120,10 +122,8 @@ beforeEach(() => {
   mocks.claimDigestForGeneration.mockResolvedValue(true);
   mocks.releaseDigestGeneration.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
-  mocks.upsertDigestForToday.mockResolvedValue({
-    digestId: "digest-1",
-    lastGeneratedAt: "2026-07-31T10:00:00Z",
-  });
+  mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
+  mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
 
   // Each collaborator bills through the real recordCall, so what the route
   // must supply is the surrounding scope.

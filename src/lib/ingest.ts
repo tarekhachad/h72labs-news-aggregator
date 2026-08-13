@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { FEEDS } from "@/config/feeds";
+import { isImplausiblyFuture } from "@/lib/cursor";
 import type { Article, Source, Topic } from "@/types";
 
 const parser = new Parser({
@@ -39,11 +40,12 @@ async function fetchFeed(
   }));
 }
 
-// When there's no "last digest" timestamp yet (very first run, or the
-// browser's localStorage was cleared) there's nothing to filter "since" —
-// fall back to a fixed lookback window so the first-ever digest doesn't
-// pull a feed's entire history instead of just recent news.
-const FIRST_RUN_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+// A ceiling on how far back any single run reaches, not just a first-run
+// fallback: the cutoff is the *later* of the caller's since-cursor and
+// now − 48h. A brand-new user (no cursor yet) gets the full 48h rather than
+// a feed's entire history; someone returning after a week gets 48h too,
+// rather than seven days of backlog in one digest.
+const LOOKBACK_CEILING_MS = 48 * 60 * 60 * 1000;
 
 /**
  * Pulls the RSS feeds configured for the given topics and preferred
@@ -51,8 +53,10 @@ const FIRST_RUN_LOOKBACK_MS = 48 * 60 * 60 * 1000;
  * down) doesn't take down the whole digest — it's logged and skipped.
  *
  * Only articles published after `sinceIso` are kept, so a slow-moving feed
- * can't hand back stale multi-day-old items in a "daily" digest. Pass
- * `null` on the first-ever run (see FIRST_RUN_LOOKBACK_MS fallback above).
+ * can't hand back stale multi-day-old items in a "daily" digest, and so a
+ * story already covered in an earlier run isn't ingested a second time.
+ * Pass `null` when the user has never generated (see LOOKBACK_CEILING_MS
+ * above, which also caps how far back a stale cursor can reach).
  */
 export async function ingestArticles(
   topics: Topic[],
@@ -92,14 +96,58 @@ export async function ingestArticles(
     return true;
   });
 
-  // A malformed sinceIso (e.g. a client bug) must not silently turn into a
-  // cutoff of "everything fails the >= check" — fall back to the same
-  // lookback window used when there's no timestamp at all.
+  // A malformed sinceIso (e.g. a corrupted stored timestamp) must not
+  // silently turn into a cutoff of "everything fails the >= check" — it's
+  // treated as no cursor at all, leaving the ceiling as the cutoff.
+  //
+  // A cursor ahead of this machine's clock is split in two, because the two
+  // ends of that range fail in opposite directions:
+  //
+  //  - Ordinary skew (within tolerance) is honoured as-is. It yields a run
+  //    that finds nothing, which is the truthful answer to "what's new since
+  //    a moment ago." Falling back to the ceiling here would be actively
+  //    harmful: if the process stamping the cursor runs a few seconds fast,
+  //    EVERY subsequent run would see a future cursor, fall back, and
+  //    re-ingest a full 48h — a permanent duplicate storm at roughly 10× the
+  //    per-digest cost, not a one-off.
+  //
+  //  - A cursor implausibly far ahead is corrupt, and using it would empty
+  //    the digest silently. Falling back to the ceiling is the better of two
+  //    bad outcomes, but it is genuinely a *bad* one and not self-correcting:
+  //    if a stored row really does hold a garbage timestamp, this branch
+  //    fires on every run until wall-clock time overtakes it or someone
+  //    fixes the row. That's why the primary defence is one layer up, in
+  //    getLatestGeneratedAtForUser, which excludes such rows from the query
+  //    so a legitimate older cursor can win instead — see the note there.
+  //    This branch is the backstop for a value that reaches here anyway
+  //    (ingestArticles is exported and callable with any cursor, and the
+  //    clock can move between the query and this line), so it should
+  //    essentially never fire in production; the warning is what makes it
+  //    say so out loud rather than degrading quietly.
   const parsedSince = sinceIso ? new Date(sinceIso) : null;
-  const cutoff =
-    parsedSince && !Number.isNaN(parsedSince.getTime())
-      ? parsedSince
-      : new Date(Date.now() - FIRST_RUN_LOOKBACK_MS);
+  const now = Date.now();
+  const ceiling = new Date(now - LOOKBACK_CEILING_MS);
+
+  let cutoff = ceiling;
+  if (parsedSince && !Number.isNaN(parsedSince.getTime())) {
+    if (isImplausiblyFuture(parsedSince, now)) {
+      // Guarded for the same reason usageCollector.ts guards its own logging:
+      // a diagnostic on a critical path must not be able to fail the thing it
+      // is reporting on. Unguarded, a throwing logger here would turn a
+      // deliberate graceful fallback into a failed digest run — the exact
+      // shape of the F.2 bug where an unguarded console.log dropped a card
+      // and turned a successful expand into a 502.
+      try {
+        console.warn(
+          `[ingest] since-cursor ${parsedSince.toISOString()} is implausibly far ahead of this machine's clock — treating as corrupt and falling back to the ${LOOKBACK_CEILING_MS / (60 * 60 * 1000)}h window`
+        );
+      } catch {
+        // Losing the line is strictly better than losing the digest.
+      }
+    } else if (parsedSince > ceiling) {
+      cutoff = parsedSince;
+    }
+  }
 
   return deduped.filter((a) => new Date(a.publishedAt) >= cutoff);
 }
