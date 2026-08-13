@@ -103,6 +103,69 @@ Whatever ships goes through the full review loop, then **one re-measurement run*
 
 ---
 
+---
+
+# F.4 — Cost optimization (added 2026-08-13, after F.3 measured)
+
+**F.3's result: $1.66 billed / $1.94 at list per digest — ~10× the docs' figure.** Full analysis in `notes-logs/(C) cost-diagnosis-2026-08-13.md`; raw capture in `notes-logs/cost-test-log`. Four findings drive this sub-phase:
+
+1. **Triage is 65% of spend** ($1.081 of $1.66), not writeCard. `(C) ARCHITECTURE.md:45` claims the opposite.
+2. **91% of triage input is the same bytes re-sent 794 times.** Input is near-flat (`min=794 median=839 max=1271`) because ~770 tok/call is fixed prompt + `zodOutputFormat` schema against ~80 tok of content. **Prompt caching cannot fix this** — Haiku 4.5's minimum cacheable prefix is 4,096 tokens and this prompt is ~600. The lever is call count.
+3. **Every day's first run re-ingests 48h.** `upsertDigestForToday` scopes the cursor to *today's* row, so each new day starts with `last_generated_at = null` and hits `FIRST_RUN_LOOKBACK_MS`. Dedup doesn't catch it (skipped on first runs, and only compares against today's cards). A duplicate-stories bug, not just cost.
+4. **130 cards from 9 topics, no cap anywhere.** ~89% of clusters are single-article. `profile.ts` enforces only `.min(1)` on topics despite `(C) ARCHITECTURE.md:61` documenting "up to 5".
+
+**Goal:** as close to **$0.20/digest** as possible (Tarek's target, not a hard constraint). Modelled landing: **~$0.25 at list, an 87% cut.**
+
+**Tarek's decisions (2026-08-13):** 4–8 cards per topic, floor being a design target and **not** a backfill quota — a thin topic yields only what passed triage, per the triage prompt's own "don't stretch to fill a quota". Carry the since-cursor across days, 48h ceiling. Capped-out stories accepted as permanently lost. Card writing goes **hybrid** — Haiku for single-source clusters, Sonnet retained for multi-source, where the "synthesized from multiple sources" product claim lives.
+
+## F.4.1–F.4.3 — DONE (2026-08-13, reviewed clean)
+
+- **`writeCard` input cap** — `SOURCE_CHARS_PER_ARTICLE = 1200` in `sourceTextFor`; it was the only prompt builder without a per-article cap.
+- **Per-topic card cap** — new `src/lib/cardCap.ts`: `applyCardCap` returns `{ kept, cuts }`, keeping ≤ `MAX_CARDS_PER_TOPIC = 8` highest-severity per topic. Applied in `route.ts` **before** the `writing` stage event and **before** `expectedCalls.writeCard` — capping after either makes the client's "Writing N cards…" text or the cost summary lie.
+- **Hybrid model** — `modelForCluster` routes on `cluster.articles.length === 1`. `thinking` is sent **only** on the Sonnet path (Haiku 4.5 has no adaptive thinking; no other Haiku call site sends it).
+
+Review found one real bug: selection tracked by object identity let a duplicated reference exceed the cap. Now index-based, and the drop-reporting was merged into the same function so the two can't disagree. Note the two agents disagreed here — `code-reviewer` reasoned "can't happen in today's pipeline" (true) while `qa` reproduced it; the docstring's absolute claim was taken as the standard.
+
+## F.4.4 — Carry the since-cursor across days
+
+The cursor should be "when did this user last successfully generate, **ever**", not "…today". Add a query in `src/lib/digests.ts` for the user's most recent `last_generated_at` across all their digests, and use it in place of today's-row-only value.
+
+In `src/lib/ingest.ts`, `FIRST_RUN_LOOKBACK_MS` changes role from *fallback* to *ceiling*: `cutoff = max(lastGeneratedAt, now − 48h)`. A brand-new user still gets 48h; someone returning after a week gets 48h, not seven days. Update the stale comment blaming "the browser's localStorage was cleared" — never the mechanism.
+
+Roughly halves cluster volume and removes cross-day duplicate cards.
+
+## F.4.5 — Batch triage (highest risk in the phase)
+
+One Haiku call per **~20 clusters of the same topic**. `src/lib/rank.ts` already solves the same index-mapping problem and is the precedent to follow throughout.
+
+- **Unit: per-topic, then size-evened chunks** — `perBatch = ceil(n / ceil(n / 20))`, so 62 clusters become 16/16/15/15, not 20/20/20/2. A 2-cluster batch is judged at a different context density than a 20-cluster one. Mixing topics would break the prompt's topic-relative calibration; the ~8 extra partial calls cost $0.006.
+- **N = 20, `max_tokens: 1024`.** Cost curve is flat past ~20 (N=20→40 saves a further $0.013 while doubling a failed batch's blast radius). Output binds: 20 verdicts × ~24 tok + wrapper ≈ 490, giving 2× headroom.
+- **Schema** `{ verdicts: [{ index, notable, severity }] }`, index **batch-local**. Map back via `rank.ts`'s `seenIndices` precedent: out-of-range dropped, duplicate index first-wins, missing verdicts leave a typed `null` hole. **Throw** (with `stop_reason`) only on a missing/unparseable whole response — a truncated response is not "the model judged nothing."
+- **Failure: split-retry ladder.** On throw or unfilled slots, split the unjudged set in half and retry, depth 2 (20 → 2×10 → 4×5), then fail closed on the residual. Today one failure loses one cluster; unmitigated batching loses 20 (~3 real stories, permanently, since the cursor advances regardless). Bounded worst case 7 calls per failing batch, only on failure.
+- **`triageClusters` must never reject** — the route's per-cluster `try/catch` disappears with this change, so "one failure doesn't take down the digest" has to move inside.
+- **Prompt: minimal change.** The system prompt already says *"Each cluster is judged independently … rather than against other clusters you happen to see in the same batch"* — written for exactly this. Keep every calibration paragraph verbatim; append one paragraph on the response contract (one verdict per index, never merge, never skip, never invent).
+- **`reason`: env-gated (`TRIAGE_REASONS=1`), default off**, capped at 12 words *in the prompt* — not via `z.string().max()`, which would throw and kill the batch. Saves ~$0.06/digest and stays available for F.4.6's calibration check.
+- **`expectedCalls.triage` becomes `triageBatchCount(clusters)`**, a one-liner over the *same* `planTriageBatches` the implementation uses. Divergence makes the module whose premise is "a confidently-wrong number is worse than a crash" emit a false warning every run.
+- **Guard the per-cluster `console.log`.** `ROADMAP.md` defers this hazard; batching turns it from "loses 1 cluster" into "loses 20 already-paid-for clusters."
+
+**Tests that matter most:** misalignment canaries — verdicts returned shuffled *and* reverse-ordered with **distinct** severities, asserted per index. A count- or set-based assertion passes under a rotation. Plus `triageBatchCount === planTriageBatches().length`; a route-level `triage-wiring` test through the real NDJSON stream proving the route's zip preserves alignment; and batch-failure isolation (one batch fails every attempt → those fail closed, others unaffected, stream still reaches `done`).
+
+**Migration hazards:** `dedup-wiring.test.ts` has three `toHaveBeenCalledTimes(FAKE_CLUSTERS.length)` assertions → become `toHaveBeenCalledWith(FAKE_CLUSTERS)` (the real intent, not a proxy). Any wiring test that mocks `triageBatchCount` away gets `undefined`, which `formatUsageSummary` skips silently — pull it through `vi.importActual`.
+
+## F.4.6 — Re-measure (paid)
+
+One real digest, same 9-topic profile, `TRIAGE_REASONS=1`, plus 2–3 expands (still unmeasured). **Acceptance band set before running**, since batching's worst failure is silent drift:
+
+| metric | baseline | accept if |
+|---|---|---|
+| triage pass rate | 16.4% (130/794) | 12–21% |
+| mean severity | from baseline log | ±0.5 |
+| cost/digest at list | $1.944 | ≤ ~$0.30 |
+
+Also reconcile against the Anthropic Console for that day. Out of band → fix the prompt, don't roll back.
+
+---
+
 ## Verification (every sub-phase)
 
 `npx tsc --noEmit` · `npx eslint` · `npx vitest run` clean at every step, plus `next build` on F.2 since it touches both API routes.

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Card, Cluster } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
 import { recordCall } from "@/lib/usageCollector";
+import type { TrackedModel } from "@/lib/usage";
 
 const client = new Anthropic();
 
@@ -28,27 +29,63 @@ const SYSTEM_PROMPT = `You write the content for one card in a daily news briefi
 
 Always write everything in English, even when the source articles are in another language.`;
 
+// Every other prompt builder in this app caps its per-article text —
+// triage.ts slices snippets at 200 chars, dedup.ts has
+// SNIPPET_CHARS_PER_ARTICLE, rank.ts has SUMMARY_CHARS_PER_CANDIDATE. This
+// was the one that didn't, and the Final Phase's measurements showed it:
+// writeCard input reached 5,142 tokens at the tail against a median of 871.
+// Deliberately far more generous than the others — this is the step that
+// actually writes the prose, so it needs the substance, not just enough
+// text to recognize which story it's looking at.
+const SOURCE_CHARS_PER_ARTICLE = 1200;
+
 function sourceTextFor(cluster: Cluster): string {
   return cluster.articles
-    .map((a) => `Source: ${a.source}\nTitle: ${a.title}\n${a.snippet}`)
+    .map(
+      (a) =>
+        `Source: ${a.source}\nTitle: ${a.title}\n${a.snippet.slice(0, SOURCE_CHARS_PER_ARTICLE)}`
+    )
     .join("\n\n");
 }
 
+/**
+ * Single-source clusters are written by Haiku, multi-source ones by Sonnet.
+ *
+ * This step's whole claim on a capable model is the prompt's own
+ * instruction — "Synthesize across sources; don't just paraphrase one" —
+ * and the Final Phase measured that ~89% of clusters are a single article,
+ * where there is nothing to synthesize and the task is ordinary short-form
+ * summarization of text already in the prompt. Sonnet is kept for exactly
+ * the clusters the product claim is about.
+ *
+ * Judged on article count rather than anything subtler because that IS the
+ * distinction: one source means one account of events.
+ */
+function modelForCluster(cluster: Cluster): TrackedModel {
+  return cluster.articles.length === 1 ? "claude-haiku-4-5" : "claude-sonnet-5";
+}
+
 async function generateSummary(cluster: Cluster) {
+  const model = modelForCluster(cluster);
+  // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
+  // thinking + output combined — thinking was eating the budget and
+  // truncating this short, bounded writing task. Not worth the cost or
+  // latency here anyway. Sent only on the Sonnet path: Haiku 4.5 has no
+  // adaptive thinking to turn off, and every other Haiku call site in this
+  // app (triage, dedup, rank) passes no `thinking` at all. Undefined is
+  // omitted from the serialized request rather than sent as null.
+  const thinking = model === "claude-sonnet-5" ? ({ type: "disabled" } as const) : undefined;
+
   // Wrapped here rather than around writeCard() as a whole so that the
   // ambiguous-truncation retry in generateWithRetryOnAmbiguousTruncation
   // records BOTH attempts — that retry is the single most expensive event
   // in the pipeline, and counting only the winning one would under-report
   // exactly where it hurts most.
-  const response = await recordCall("writeCard", "claude-sonnet-5", () =>
+  const response = await recordCall("writeCard", model, () =>
     client.messages.parse({
-      model: "claude-sonnet-5",
+      model,
       max_tokens: 2048,
-      // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
-      // thinking + output combined — thinking was eating the budget and
-      // truncating this short, bounded writing task. Not worth the cost
-      // or latency here anyway.
-      thinking: { type: "disabled" },
+      thinking,
       system: SYSTEM_PROMPT,
       messages: [
         {

@@ -1,6 +1,26 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-08-13 (Final Phase, F.3 + F.4.1–F.4.3) — real cost measured at ~10× the documented figure; first three optimizations shipped
+
+**F.3 measured it: $1.66 billed / $1.94 at list per digest, 930 Claude calls, 130 cards from 9 topics.** `(C) TECH_STACK.md` claimed $0.20–0.30 and recorded $0.17 measured — that figure came from a 2-topic/3-source dev profile, and cost scales with topics far harder than the doc assumed. Full analysis in `notes-logs/(C) cost-diagnosis-2026-08-13.md`; raw capture in `notes-logs/cost-test-log`.
+
+**Four findings.** (1) **Triage is 65% of spend**, not writeCard — `(C) ARCHITECTURE.md:45` has the cost model backwards, and the 2026-07-28 console reading already contradicted it without being reconciled. (2) **91% of triage input is the same bytes re-sent 794 times**: the input distribution is near-flat (`min=794 median=839 max=1271`) because ~770 tok/call is fixed prompt + `zodOutputFormat` schema against ~80 tok of actual content — and **prompt caching can't fix it**, since Haiku 4.5's minimum cacheable prefix is 4,096 tokens against a ~600-token prompt. The lever is call count. (3) **Every day's first run re-ingests 48 hours**: `upsertDigestForToday` scopes the cursor to *today's* row, so each new day starts null and hits the lookback fallback — a cross-day duplicate-stories bug the code comment misattributes to "the browser's localStorage was cleared." (4) **130 cards with no cap anywhere**; ~89% of clusters are single-article, and `profile.ts` enforces only `.min(1)` on topics despite `(C) ARCHITECTURE.md:61` documenting "up to 5".
+
+**Consequence for V2.0:** its worked example assumes a $0.20 digest → $60/month for ten friends. At the measured figure it's **$583/month**. The gate's arithmetic is off by ~10×, which is exactly why the Final Phase was sequenced before it.
+
+**Tarek's decisions**, after being shown that a 4–8 per-topic band across 9 topics lands near $0.43 rather than $0.20: keep 4–8 per topic with the floor as a design target and **not** a backfill quota; carry the since-cursor across days with a 48h ceiling; accept capped-out stories as permanently lost; and — after asking directly how much quality a Haiku switch would cost — go **hybrid**, Haiku for single-source clusters and Sonnet retained for multi-source, where the product's "synthesized from multiple sources" claim actually lives. That last one turns on the measured 89%-single-article figure: for nearly nine cards in ten there is nothing to synthesize.
+
+**F.4.1–F.4.3 shipped** (three review rounds; round 2's `qa` died on a Cloudflare 521 and didn't count, round 3 clean from both): a per-article input cap on `writeCard` — the only prompt builder that lacked one; a new `src/lib/cardCap.ts` capping each topic at 8 by severity, applied *before* the `writing` event and `expectedCalls.writeCard` so neither the client's progress text nor the cost summary can lie; and hybrid model routing.
+
+**The review loop found a real bug, and the two agents disagreed about it.** `qa` reproduced `capPerTopic` returning 9 items for a cap of 8 when the same object reference appears twice — `Set` membership is by identity and can't distinguish two array slots holding one reference. `code-reviewer` had reasoned the opposite: that duplicate references can't occur in today's pipeline. Both were right on the facts; the docstring's absolute claim ("keeps at most") was taken as the standard, since a guarantee stated absolutely shouldn't quietly mean "given today's callers." Fixed structurally — selection tracks array indices, and `capPerTopic`/`droppedByCap` were collapsed into one `applyCardCap` returning `{kept, cuts}` so the two halves can't disagree about what was discarded. On re-review `code-reviewer` agreed its earlier standard was wrong.
+
+**An F.1 design decision paid off here at zero cost:** `summarizeUsage` groups by the **(stage, model)** pair, written then purely on principle since every stage used one model. `writeCard` now spans two and prices correctly with no change — verified end-to-end including a retry adding an extra billed Sonnet call.
+
+**Test suite 248 → 277.** Includes a fuzz test (200 randomized trials over duplicate references and severities, independently recomputing the expected top-N) recovered from the crashed `qa` agent's scratch file rather than deleted — better coverage than what it was auditing.
+
+**Next: F.4.4** (carry the since-cursor across days) and **F.4.5** (batch triage — 794 calls → ~42, the highest-risk change in the phase), then F.4.6's paid re-measurement against a pre-set calibration band. Full design for both in `docs/(C) IMPLEMENTATION_PLAN_FINAL_PHASE.md`.
+
 ## 2026-08-13 (Final Phase, F.1 + F.2) — cost instrumentation built and wired; measurement still pending
 
 The Final Phase opened. Planned in Plan Mode: three Explore agents mapped the call sites, the docs' existing cost claims, and the schema/logging/test infrastructure in parallel; a Plan agent designed the instrumentation; the `claude-api` skill was loaded for current pricing rather than trusting recall. Full plan at `docs/(C) IMPLEMENTATION_PLAN_FINAL_PHASE.md`. Sub-phases risk-ascending, per the Phase 6/7/8 precedent.

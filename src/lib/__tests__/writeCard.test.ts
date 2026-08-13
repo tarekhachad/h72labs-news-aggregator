@@ -32,6 +32,28 @@ beforeEach(() => {
   mockParse.mockReset();
 });
 
+describe("writeCard prompt input", () => {
+  // This was the only prompt builder in the app without a per-article cap,
+  // and the Final Phase measured the consequence: input reaching 5,142
+  // tokens against a median of 871.
+  it("caps each article's snippet rather than sending it whole", async () => {
+    mockParse.mockResolvedValue({
+      parsed_output: { title: "T", shortSummary: "A complete sentence.", labels: ["Tag"] },
+      stop_reason: "end_turn",
+    });
+    const cluster = makeCluster();
+    cluster.articles[0].snippet = "x".repeat(50_000);
+    const { writeCard } = await import("@/lib/writeCard");
+
+    await writeCard(cluster, 4);
+
+    const sent = mockParse.mock.calls[0][0].messages[0].content as string;
+    expect(sent.length).toBeLessThan(5_000);
+    // ...but still generous enough to actually write from.
+    expect(sent).toContain("x".repeat(1_000));
+  });
+});
+
 describe("writeCard", () => {
   it("passes through title/shortSummary/labels/severity from a real Sonnet response", async () => {
     mockParse.mockResolvedValue({

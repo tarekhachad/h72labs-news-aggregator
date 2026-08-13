@@ -54,6 +54,25 @@ function makeCluster(): Cluster {
   };
 }
 
+/** Two outlets on the same story — the case writeCard keeps Sonnet for. */
+function makeMultiSourceCluster(): Cluster {
+  const base = makeCluster();
+  return {
+    ...base,
+    articles: [
+      ...base.articles,
+      {
+        title: "Another outlet's title",
+        snippet: "Another snippet",
+        url: "https://example.com/b",
+        source: "NYT",
+        topic: "Tech/AI",
+        publishedAt: "2026-07-31T13:00:00Z",
+      },
+    ],
+  };
+}
+
 function makeCardForExpand(): Pick<Card, "topic" | "shortSummary" | "sources"> {
   return {
     topic: "Tech/AI",
@@ -116,7 +135,10 @@ describe("Claude call sites report their token usage", () => {
     expect(calls).toEqual([{ stage: "rank", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS }]);
   });
 
-  it("writeCard records against the writeCard stage on Sonnet", async () => {
+  // Both writeCard paths are pinned, because the stage now spans two models
+  // and the summary prices them separately — a routing bug would misprice a
+  // whole stage rather than just changing quality.
+  it("writeCard records a single-source cluster against Haiku", async () => {
     mockParse.mockResolvedValue({
       parsed_output: {
         title: "A Headline",
@@ -131,8 +153,31 @@ describe("Claude call sites report their token usage", () => {
     const calls = await recordedDuring(() => writeCard(makeCluster(), 4));
 
     expect(calls).toEqual([
+      { stage: "writeCard", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS },
+    ]);
+    // Haiku has no adaptive thinking to disable, and no other Haiku call
+    // site in this app sends the parameter.
+    expect(mockParse.mock.calls[0][0].thinking).toBeUndefined();
+  });
+
+  it("writeCard records a multi-source cluster against Sonnet", async () => {
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        title: "A Headline",
+        shortSummary: "A complete sentence.",
+        labels: ["Tag"],
+      },
+      stop_reason: "end_turn",
+      usage: USAGE,
+    });
+    const { writeCard } = await import("@/lib/writeCard");
+
+    const calls = await recordedDuring(() => writeCard(makeMultiSourceCluster(), 4));
+
+    expect(calls).toEqual([
       { stage: "writeCard", model: "claude-sonnet-5", tokens: EXPECTED_TOKENS },
     ]);
+    expect(mockParse.mock.calls[0][0].thinking).toEqual({ type: "disabled" });
   });
 
   it("generateExpandedReport records against the expand stage on Sonnet", async () => {

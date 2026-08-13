@@ -16,6 +16,7 @@ import {
   getTodaysCardSummaries,
 } from "@/lib/digests";
 import type { Card, Source, Topic } from "@/types";
+import { applyCardCap, MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import type { UsageStage } from "@/lib/usage";
 
@@ -159,7 +160,17 @@ async function* runDigestPipeline(
         })
       )
     );
-    const notableClusters = triaged.filter((t) => t.notable);
+    // Capped BEFORE the writing event is yielded and before
+    // expectedCalls.writeCard is set: the client renders "Writing N cards…"
+    // straight off notableCount, and the cost summary compares calls made
+    // against that same number — capping after either would make one of
+    // them lie.
+    const { kept: notableClusters, cuts } = applyCardCap(triaged.filter((t) => t.notable));
+    for (const cut of cuts) {
+      console.log(
+        `[digest] ${cut.topic}: kept ${MAX_CARDS_PER_TOPIC} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
+      );
+    }
 
     yield { stage: "writing", notableCount: notableClusters.length };
     // One verbose cluster failing to write shouldn't take down the rest of
