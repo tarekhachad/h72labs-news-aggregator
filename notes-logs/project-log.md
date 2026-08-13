@@ -1,6 +1,51 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-08-13 (Final Phase, F.4.6 partial) — re-measured: cost −79%, but triage pass rate doubled. **SESSION ENDED MID-PHASE — read the handoff at the bottom of this entry first.**
+
+**Run conditions, deliberately matched to F.3's.** F.3's baseline was a first-run-of-the-day with a null cursor (full 48h window) and zero existing cards (dedup skipped). Today's real account no longer satisfies either — the F.3 run left a cursor a few hours old and 130 cards — so a re-run on it would have ingested almost nothing, come in "under budget," and proved nothing. Ran instead on a **fresh account with the same 9 topics**, which reproduces all three conditions. It worked: **787 clusters vs the baseline's 794**, with per-topic volumes within a few percent (European Football 175 vs 173, Tech/AI 129 vs 133, Morocco 119 vs 117, US Politics 120 vs 125, Geopolitics 110 vs 113, US Finance 74 vs 73, French Politics 46 vs 44, World Finance 12 vs 15, Morocco Politics 2 vs 1). `TRIAGE_REASONS=1` passed inline on the dev-server command rather than written into `.env.local`, so nothing needed cleaning up afterward. Full capture: `notes-logs/cost-test-log-f46`.
+
+**Results vs the band fixed in advance:**
+
+| metric | baseline (F.3) | this run | band | |
+|---|---|---|---|---|
+| clusters triaged | 794 | 787 | — | comparable |
+| triage calls | 794 | **43** | — | −95% |
+| total Claude calls | 930 | 108 | — | −88% |
+| triage pass rate | 16.4% | **35.7%** (281/787) | 12–21% | **FAIL** |
+| mean severity | 2.854 | 2.605 | ±0.5 | pass |
+| cost/digest at list | $1.944 | **$0.404** | ≤ ~$0.30 | **FAIL** (−79%) |
+| cost/digest billed | $1.66 | $0.367 | — | −78% |
+
+Per-stage at list: triage $0.231 (43 calls, in 98,800 / out 26,449) · writeCard Sonnet $0.110 (18 calls) · writeCard Haiku $0.058 (46 calls) · rank $0.005. 62 cards; `writeCard made 64 calls for 62 — 2 extra billed attempt(s)`. **Zero batch failures, zero retries, no FLOOR warnings** — the instrumentation and the split-retry ladder both behaved.
+
+**Batching itself is a success.** 794 → 43 calls; fixed prompt overhead fell from 91% of triage input to ~30% (2,298 tok/call for ~20 clusters, of which ~700 is fixed).
+
+**But the pass rate more than doubled — a real calibration regression.** 16.4% → 35.7%. The prompt explicitly warns against exactly this (*"anchor against that typical-day baseline rather than against other clusters you happen to see in the same batch"*), and at N=20 the instruction isn't holding: with 19 alternatives in view the model appears to grade relatively rather than against the topic's typical day, and a relative bar always passes some fraction of whatever it is shown.
+
+**The mean-severity pass is misleading and must not be read as reassurance.** The distribution moved underneath it — baseline 29 sev-2 / 91 sev-3 / 10 sev-4 (22%/70%/8%); now 4 sev-1 / 133 sev-2 / 114 sev-3 / 30 sev-4 (1%/47%/41%/11%). The 151 extra passes are overwhelmingly severity 2 — marginal stories the old prompt rejected. The mean stayed in band only because it averages a larger, bottom-heavy pool. An aggregate metric passed while the behaviour under it drifted; worth remembering when designing future acceptance bands.
+
+**What it costs is selection quality, not money.** The per-topic cap of 8 binds either way, so card count (62) and writeCard spend are roughly cap-determined, not pass-rate-determined. The damage is at the cap boundary: `European Football: kept 8 of 57 notable — dropped 49 at severity 3,3,3…,2,2,2`. With ~31 candidates tied at severity 3 competing for 8 slots, which 8 survive is input order, not merit. Same shape for Tech/AI (8 of 50), Morocco (8 of 44), US Politics (8 of 43), Geopolitics (8 of 42), US Finance (8 of 30). Triage's job is to make that choice meaningful, and right now it isn't.
+
+**On the cost miss.** ~$0.089 of the $0.404 is the calibration reasons, which production won't pay (triage output is 33.6 tok/verdict with reasons, ~11 without). Estimating them out gives **≈$0.315 at list / ≈$0.28 billed in production — still just over the $0.30 line.** That is an estimate, not a measurement. Triage remains the largest stage at $0.231 *because* reasons are on.
+
+### HANDOFF — what is unfinished, in order
+
+1. **F.4.6 is NOT complete.** Two steps of the plan were never run:
+   - **Expands were never done.** 2–3 card expansions are still the only pipeline stage never measured. Needs the dev server up (any flag state; reasons don't affect expand).
+   - **The Anthropic Console reconciliation was never done.** Compare the console's usage for 2026-08-13 against our $0.367 billed. This is the one check no test can perform — if the arithmetic disagrees with the real bill, the pricing table is wrong and every figure above is too. Note today's console total also includes F.3's $1.66 run, so subtract it.
+2. **Decide the prompt fix for the pass-rate regression.** The plan's rule is *out of band → fix the prompt, don't roll back*, and that still looks right: batching is working, the calibration instruction just isn't strong enough at N=20. Candidate levers, none yet tried: give an explicit base rate ("in a typical batch most clusters are not notable"), restate *"when genuinely torn, reject"* inside the batch-contract paragraph, or reduce `MAX_CLUSTERS_PER_BATCH`. A re-run now costs ~$0.40 rather than $1.94, so iterating is affordable. **Not to be decided unilaterally — it is Tarek's call.**
+3. **Then the phase-end doc pass** (already listed in `docs/(C) IMPLEMENTATION_PLAN_FINAL_PHASE.md`'s Docs section): correct `TECH_STACK.md` lines 48/50 and `ARCHITECTURE.md` line 45 (the *cost figures* — the architecture descriptions were already corrected during F.4.5), rewrite **V2.0's cap arithmetic, which still assumes a $0.20 digest and is ~10× off**, mark the Final Phase done in `ROADMAP.md`, then run `project-resume-sync`.
+4. **Uncommitted:** only `notes-logs/cost-test-log-f46` (untracked). No source changes pending. Dev server was stopped at session end.
+
+### HANDOFF — separate work item, planned and approved but NOT started
+
+**Bug: the topic nav order changes between navigations.** Root-caused this session. `getUserProfile` (`src/lib/profile.ts`) reads `user_topics`/`user_preferred_sources` with **no `ORDER BY`**, and Postgres guarantees no row order without one; every server render re-queries, so the nav reshuffles. Same defect class as the `published_at`/`id` tiebreaker already documented in `digests.ts` — that lesson never reached `profile.ts`.
+
+Not purely cosmetic: the order also feeds `buildPageOrder` → `pagesBetween` → page-flip distance *and* animation duration, and it reaches the digest pipeline through `ingestArticles`'s job order → the global first-wins URL dedup → which topic a syndicated article is filed under → within-topic cluster membership → which story loses a severity tie at the 8-card cap. (Stated precisely: `applyCardCap` groups by topic and breaks ties on *within-topic* input order, so topic order reaches it one indirection deeper than "topic order breaks cap ties.")
+
+**A full implementation plan is written and approved at `/Users/tarekhachad/.claude/plans/luminous-beaming-pelican.md`** — read it rather than re-deriving. Summary: invert the iteration in `getUserProfile` (filter the curated `TOPICS`/`SOURCES` list by DB membership instead of filtering DB rows against it), which collapses ordering + filtering + dedup into one correct-by-construction expression; no SQL change, no schema change, no call-site change; plus a new `src/lib/__tests__/profile.getUserProfile.test.ts` (the module has **no tests today**) with 9 cases. Work had not begun — no files were edited.
+
 ## 2026-08-13 (Final Phase, F.4.5) — triage batched, 794 calls → ~42; seven rounds, one functional defect
 
 **The change F.3 pointed at.** Triage was 65% of a digest's cost with 91% of each call's input being the same prompt bytes re-sent — ~770 tokens of fixed prompt and schema against ~80 tokens of content, once per cluster, 794 times. Prompt caching can't touch it (Haiku 4.5's minimum cacheable prefix is 4,096 tokens against a ~600-token prompt), so the only lever is call count. `triageCluster(cluster)` became `triageClusters(clusters)`: one call per ≤20 clusters of the same topic.

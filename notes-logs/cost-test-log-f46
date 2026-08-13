@@ -1,0 +1,977 @@
+
+> h72labs-news-aggregator@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.11 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.0.0.200:3000
+- Environments: .env.local
+✓ Ready in 329ms
+
+ GET /signup 200 in 380ms (next.js: 148ms, proxy.ts: 126ms, application-code: 106ms)
+ GET /signup 200 in 46ms (next.js: 5ms, proxy.ts: 5ms, application-code: 36ms)
+ GET /onboarding 200 in 115ms (next.js: 33ms, proxy.ts: 45ms, application-code: 36ms)
+ POST /signup 303 in 1071ms (next.js: 3ms, proxy.ts: 6ms, application-code: 1062ms)
+  └─ ƒ signUp({}) in 930ms src/app/auth/actions.ts
+ GET / 200 in 339ms (next.js: 30ms, proxy.ts: 5ms, application-code: 304ms)
+ POST /onboarding 303 in 1556ms (next.js: 5ms, proxy.ts: 11ms, application-code: 1540ms)
+  └─ ƒ saveProfile({}) in 1188ms src/app/onboarding/actions.ts
+(node:25425) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[ingest] failed Medias24/Morocco: Status code 403
+[usage] triage claude-haiku-4-5 in=1150 out=84 cache_r=0 cache_w=0 $0.001570
+[triage] Morocco Politics — PASS (severity 3) — Significant bilateral dispute with major EU partner; extradition suspension would have major implications.
+[triage] Morocco Politics — reject — Routine economic data; lacks political development or policy change angle.
+[usage] triage claude-haiku-4-5 in=3071 out=486 cache_r=0 cache_w=0 $0.005501
+[triage] French Politics — reject — Ferry tragedy is unrelated to French politics; Zambia election is African politics.
+[triage] French Politics — reject — Lagos vehicle infrastructure; not French politics.
+[triage] French Politics — reject — Solar eclipse observation; not French politics.
+[triage] French Politics — reject — Russia-Ukraine grain conflict; not French politics.
+[triage] French Politics — reject — Colombia earthquake rescue; not French politics.
+[triage] French Politics — reject — European drought agriculture; not French politics.
+[triage] French Politics — reject — Eurovision eligibility rules; not French politics.
+[triage] French Politics — reject — Gaza beekeepers rebuilding; not French politics.
+[triage] French Politics — reject — West Bank settler violence; not French politics.
+[triage] French Politics — reject — Russia-Japan island dispute; not French politics.
+[triage] French Politics — reject — Russia-Ukraine train attack; not French politics.
+[triage] French Politics — PASS (severity 3) — Mali pardons French official previously sentenced; direct French political development.
+[triage] French Politics — reject — Polish security operation; not French politics.
+[triage] French Politics — reject — Zambia election; not French politics.
+[triage] French Politics — reject — West Bank settler violence; not French politics.
+[usage] triage claude-haiku-4-5 in=3046 out=504 cache_r=0 cache_w=0 $0.005566
+[triage] French Politics — reject — Andrew Tate case irrelevant to French politics topic.
+[triage] French Politics — reject — Iran-US Strait dispute unrelated to French politics.
+[triage] French Politics — reject — Italian seniors viral story unrelated to French politics.
+[triage] French Politics — reject — Syrian reconstruction unrelated to French politics.
+[triage] French Politics — reject — Russian strikes on Ukraine unrelated to French politics.
+[triage] French Politics — reject — Romania nuclear plant shutdown unrelated to French politics.
+[triage] French Politics — PASS (severity 2) — France joins 30-nation condemnation of Iran executions.
+[triage] French Politics — reject — Russia-EU ship seizure threats unrelated to French politics.
+[triage] French Politics — reject — Morocco-Spain border migration unrelated to French politics.
+[triage] French Politics — reject — UK Farage election unrelated to French politics.
+[triage] French Politics — PASS (severity 2) — French ambassador disciplined for misconduct; internal governance matter.
+[triage] French Politics — reject — Spain solar eclipse unrelated to French politics.
+[triage] French Politics — PASS (severity 2) — French heatwave and drought affecting domestic conditions.
+[triage] French Politics — reject — Hungary's presidential election unrelated to French politics.
+[triage] French Politics — reject — DR Congo Ebola outbreak unrelated to French politics.
+[usage] triage claude-haiku-4-5 in=1444 out=426 cache_r=0 cache_w=0 $0.003574
+[triage] World Finance — reject — Geopolitical/war coverage, not finance topic development.
+[triage] World Finance — reject — Analysis piece on cyber security trends, not concrete finance development.
+[triage] World Finance — reject — Humorous lifestyle content, not finance-relevant news.
+[triage] World Finance — PASS (severity 4) — Major regulatory escalation: FBI probe into Guggenheim's Walter holdings.
+[triage] World Finance — PASS (severity 2) — Interesting trend in wealth management but primarily career/demographic shift.
+[triage] World Finance — reject — Policy opinion piece; lacks concrete enforcement action or development.
+[triage] World Finance — reject — Cyber policy strategy announcement, not a finance market development.
+[triage] World Finance — PASS (severity 3) — Significant security breach affecting major crypto custody solution.
+[triage] World Finance — PASS (severity 4) — Major forex development: Japan unwinding dangerous carry trade position.
+[triage] World Finance — PASS (severity 3) — Emerging credit crisis concern in China's debt restructuring system.
+[triage] World Finance — reject — Structural/aspirational piece about Singapore markets, not current development.
+[triage] World Finance — reject — Analysis of Fed policy headwinds, not concrete monetary action or decision.
+[usage] triage claude-haiku-4-5 in=2066 out=630 cache_r=0 cache_w=0 $0.005216
+[triage] Geopolitics — reject — Public health innovation, not geopolitics; lacks geo-strategic dimension.
+[triage] Geopolitics — reject — Astronomy event coverage; no geopolitical dimension or development.
+[triage] Geopolitics — PASS (severity 4) — Tanker spill amid Strait of Hormuz tensions; environmental-strategic concern.
+[triage] Geopolitics — reject — Local eclipse viewing anecdote; no geopolitical substance.
+[triage] Geopolitics — reject — Domestic political theater; neither Trump nor Putin actions affect geo-strategy.
+[triage] Geopolitics — PASS (severity 3) — Taliban crisis reflects major regional instability after withdrawal.
+[triage] Geopolitics — reject — Local disaster rescue; no geopolitical dimension.
+[triage] Geopolitics — reject — Speed record; no geopolitical relevance.
+[triage] Geopolitics — reject — Eclipse festival detail; no geopolitical content.
+[triage] Geopolitics — reject — Climate adaptation for tourism; lacks geopolitical stakes.
+[triage] Geopolitics — PASS (severity 3) — El Niño impacts crop failures across continents; affects food security.
+[triage] Geopolitics — reject — Eclipse viewing logistics; no geopolitical dimension.
+[triage] Geopolitics — reject — Routine eclipse visibility announcement; no geopolitical content.
+[triage] Geopolitics — reject — Science methodology explainer; no geopolitical dimension.
+[triage] Geopolitics — reject — Local eclipse event anecdote; no geopolitical substance.
+[triage] Geopolitics — reject — Animal behavior during eclipse; no geopolitical relevance.
+[triage] Geopolitics — reject — Eclipse safety guide; purely practical, no geopolitical content.
+[triage] Geopolitics — reject — Iceland eclipse weather anecdote; no geopolitical dimension.
+[usage] triage claude-haiku-4-5 in=3051 out=657 cache_r=0 cache_w=0 $0.006336
+[triage] Geopolitics — PASS (severity 4) — Significant escalation of Israeli-Palestinian tensions in West Bank with forced evacuations
+[triage] Geopolitics — PASS (severity 3) — Notable assessment from credible source on Ukraine war stalemate trajectory
+[triage] Geopolitics — reject — Routine dispute over operational conditions; no geopolitical development
+[triage] Geopolitics — reject — Minor local wildlife incident unrelated to geopolitical matters
+[triage] Geopolitics — reject — Entertainment event scheduling unrelated to geopolitical developments
+[triage] Geopolitics — reject — Domestic US criminal justice matter unrelated to geopolitics
+[triage] Geopolitics — reject — Civil lawsuit verdict unrelated to geopolitical matters
+[triage] Geopolitics — reject — Airline safety procedure unrelated to geopolitical developments
+[triage] Geopolitics — reject — Domestic sports discipline matter unrelated to geopolitics
+[triage] Geopolitics — reject — Celebrity personal news unrelated to geopolitical matters
+[triage] Geopolitics — reject — Entertainment celebrity health matter unrelated to geopolitics
+[triage] Geopolitics — reject — Entertainment celebrity incident unrelated to geopolitical matters
+[triage] Geopolitics — reject — Domestic US policy development unrelated to geopolitics
+[triage] Geopolitics — PASS (severity 2) — Whistleblower release significant for accountability on military operations
+[triage] Geopolitics — PASS (severity 2) — Diplomatic tension between US and Canada over ambassador conduct
+[triage] Geopolitics — reject — Routine White House staffing change unrelated to geopolitical developments
+[triage] Geopolitics — reject — Technology policy matter unrelated to geopolitical developments
+[triage] Geopolitics — reject — Natural disaster rescue unrelated to geopolitical matters
+[triage] Geopolitics — reject — Transportation accident unrelated to geopolitical developments
+[usage] triage claude-haiku-4-5 in=2088 out=604 cache_r=0 cache_w=0 $0.005108
+[triage] Geopolitics — reject — Eclipse astronomy/tourism, not geopolitics
+[triage] Geopolitics — reject — Public safety advisory, not geopolitical development
+[triage] Geopolitics — reject — Climate/weather impact, not geopolitical significance
+[triage] Geopolitics — reject — Basic eclipse science explanation, not geopolitical
+[triage] Geopolitics — PASS (severity 3) — Thailand gun control policy shift after school shooting
+[triage] Geopolitics — PASS (severity 4) — Maritime security crisis; mystery attackers threaten Ecuador fishing
+[triage] Geopolitics — PASS (severity 4) — Trump tariff threats force Canadian corporate relocation southward
+[triage] Geopolitics — PASS (severity 4) — US deportations to unconnected countries raises human rights concerns
+[triage] Geopolitics — reject — Incomplete cluster fragment without substantive content
+[triage] Geopolitics — reject — Environmental/cultural story, minimal geopolitical dimension
+[triage] Geopolitics — reject — Agricultural pest control research, not geopolitical
+[triage] Geopolitics — PASS (severity 3) — Mexico charges ex-governor in major 2014 disappearance case
+[triage] Geopolitics — reject — Corporate labor settlement, not geopolitical development
+[triage] Geopolitics — PASS (severity 3) — South Korean airport becomes busiest globally amid Middle East disruption
+[triage] Geopolitics — PASS (severity 3) — Major typhoon forces mass evacuations in Beijing
+[triage] Geopolitics — PASS (severity 3) — China's C919 jet makes first international flight attempt
+[triage] Geopolitics — PASS (severity 2) — Australian PM speaks with Trump; routine diplomatic communication
+[triage] Geopolitics — PASS (severity 2) — Australian political staffer accused of undercover infiltration tactics
+[usage] triage claude-haiku-4-5 in=2412 out=598 cache_r=0 cache_w=0 $0.005402
+[triage] Geopolitics — reject — Consumer finance analysis, not geopolitical development or crisis.
+[triage] Geopolitics — PASS (severity 3) — Aviation safety incidents suggest systemic issue requiring urgent investigation.
+[triage] Geopolitics — reject — Domestic political rhetoric; lacks international geopolitical stakes.
+[triage] Geopolitics — reject — Climate/weather reporting, not geopolitical development.
+[triage] Geopolitics — reject — Domestic policy implementation issue, not geopolitical.
+[triage] Geopolitics — PASS (severity 4) — Military escalation allegation in active regional conflict.
+[triage] Geopolitics — PASS (severity 2) — Diplomatic dispute aftermath; symbolic rather than strategic.
+[triage] Geopolitics — reject — Domestic electoral process coverage, routine political event.
+[triage] Geopolitics — reject — Local weather/disaster response, not geopolitical.
+[triage] Geopolitics — reject — Domestic education policy analysis, no geopolitical angle.
+[triage] Geopolitics — reject — Domestic asylum housing policy, routine administrative adjustment.
+[triage] Geopolitics — reject — Domestic arts institution dispute, not geopolitical.
+[triage] Geopolitics — reject — Crime story; lacks international or geopolitical dimension.
+[triage] Geopolitics — reject — Domestic surveillance policy debate, not geopolitical.
+[triage] Geopolitics — reject — Criminal case coverage, lacks geopolitical significance.
+[triage] Geopolitics — PASS (severity 2) — Ongoing conflict developments; incremental violence update.
+[triage] Geopolitics — reject — Routine bilateral diplomatic friction; minor bilateral issue.
+[triage] Geopolitics — reject — Domestic electoral analysis without cross-border implications.
+[usage] triage claude-haiku-4-5 in=1538 out=603 cache_r=0 cache_w=0 $0.004553
+[triage] US Finance — PASS (severity 3) — Major healthcare policy issue affecting millions of retirees.
+[triage] US Finance — reject — Minor fund holding update with no news development.
+[triage] US Finance — reject — Company guidance update; routine investment content.
+[triage] US Finance — reject — Single analyst downgrade; standard market commentary.
+[triage] US Finance — reject — Routine earnings call transcripts without notable developments.
+[triage] US Finance — reject — Analyst prediction roundup; routine forecasting commentary.
+[triage] US Finance — PASS (severity 4) — Major macroeconomic data affecting Fed policy expectations.
+[triage] US Finance — reject — Market reaction summary without substantive news.
+[triage] US Finance — PASS (severity 3) — Significant policy proposal with substantial retiree impact.
+[triage] US Finance — reject — Minor fund holding stance with no developments.
+[triage] US Finance — reject — Corporate lawsuit settlement; minor legal procedural matter.
+[triage] US Finance — reject — Daily sector performance summary without substance.
+[triage] US Finance — reject — Routine earnings call transcript without notable developments.
+[triage] US Finance — reject — Industry commentary without concrete corporate developments.
+[triage] US Finance — reject — Cryptocurrency price speculation; not US finance substantive news.
+[triage] US Finance — reject — Consumer trend story; lacks financial market impact.
+[triage] US Finance — reject — Stock ticker update list without meaningful developments.
+[triage] US Finance — PASS (severity 2) — Strong earnings beat in growing AI infrastructure sector.
+[triage] US Finance — reject — Investment recommendation piece without substantive news trigger.
+[usage] triage claude-haiku-4-5 in=2094 out=607 cache_r=0 cache_w=0 $0.005129
+[triage] Tech/AI — reject — Opinion piece about AI motivations; no real development
+[triage] Tech/AI — PASS (severity 3) — New health monitoring features on established product; meaningful capability addition
+[triage] Tech/AI — PASS (severity 2) — Product launch coverage; notable but routine announcement journalism
+[triage] Tech/AI — reject — Niche hardware release; routine consumer device launch
+[triage] Tech/AI — PASS (severity 4) — Significant security vulnerability in critical infrastructure; serious real-world risk
+[triage] Tech/AI — reject — Consumer furniture guide; outside tech/AI scope
+[triage] Tech/AI — reject — Product review for lawn mower; outside tech/AI scope
+[triage] Tech/AI — reject — Personnel anecdote; not a meaningful tech development
+[triage] Tech/AI — reject — Product buying guide; outside tech/AI scope
+[triage] Tech/AI — PASS (severity 3) — AI systems breaking news; demonstrates emerging journalistic application
+[triage] Tech/AI — PASS (severity 3) — Data privacy concern; significant personalization and predictive tracking insight
+[triage] Tech/AI — PASS (severity 4) — Major emerging privacy frontier; neurotechnology development poses novel risks
+[triage] Tech/AI — reject — Government accountability story; outside tech/AI scope
+[triage] Tech/AI — PASS (severity 3) — Real-world crime targeting AI infrastructure; significant industry vulnerability
+[triage] Tech/AI — reject — Analysis opinion piece; no concrete development reported
+[triage] Tech/AI — reject — Retail sale promotion; outside tech/AI scope
+[triage] Tech/AI — reject — Retail promotions; outside tech/AI scope
+[triage] Tech/AI — reject — Coupon listing; outside tech/AI scope
+[usage] triage claude-haiku-4-5 in=2252 out=591 cache_r=0 cache_w=0 $0.005207
+[triage] Tech/AI — reject — Health/climate topic, not AI/tech news
+[triage] Tech/AI — reject — Product roundup, not a meaningful tech development
+[triage] Tech/AI — reject — Consumer product review, not tech/AI news
+[triage] Tech/AI — PASS (severity 3) — AI application to medical diagnosis; meaningful healthcare use case
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Promotional content, not substantive tech news
+[triage] Tech/AI — reject — Astronomy/photography, not AI/tech policy or development
+[triage] Tech/AI — PASS (severity 4) — White House AI regulation framework expansion; significant policy development
+[triage] Tech/AI — reject — Product review with discount; not substantive tech news
+[triage] Tech/AI — reject — Entertainment culture debate, not tech/AI topic
+[usage] triage claude-haiku-4-5 in=1523 out=593 cache_r=0 cache_w=0 $0.004488
+[triage] US Finance — PASS (severity 3) — Major payment processor investment addresses significant fraud risk
+[triage] US Finance — reject — CEO transition analysis; routine corporate change without resolved development
+[triage] US Finance — reject — Analyst bullish thesis; opinion/analysis without new fundamental development
+[triage] US Finance — reject — Generic analyst sentiment poll; routine opinion survey
+[triage] US Finance — PASS (severity 3) — CoreWeave contract challenges GPU depreciation assumptions meaningfully
+[triage] US Finance — reject — Single analyst warning; opinion piece without material news
+[triage] US Finance — reject — Margin expansion analysis; routine operating leverage discussion
+[triage] US Finance — reject — Company pivot narrative; speculative analysis without resolved development
+[triage] US Finance — reject — Educational explainer on options strategies; no market-moving news
+[triage] US Finance — PASS (severity 2) — Analyst upgrade with forecast revision on valuation discount
+[triage] US Finance — reject — Single strategy trade execution; routine portfolio activity
+[triage] US Finance — reject — Educational explainer on options strategies; no market-moving news
+[triage] US Finance — reject — Generic market observation without specific development
+[triage] US Finance — PASS (severity 2) — Crypto price movement tied to upcoming inflation data release
+[triage] US Finance — PASS (severity 4) — Key inflation report with direct Fed policy implications
+[triage] US Finance — PASS (severity 3) — Commodity prices moving on inflation expectations and CPI timing
+[triage] US Finance — reject — Technical chart assessment; routine market analysis without catalyst
+[triage] US Finance — PASS (severity 3) — Strong earnings beat drives notable stock performance
+[usage] triage claude-haiku-4-5 in=1929 out=592 cache_r=0 cache_w=0 $0.004889
+[triage] Tech/AI — reject — Routine consumer tip with no new development.
+[triage] Tech/AI — PASS (severity 3) — Significant deal-making in AI training infrastructure for major platform.
+[triage] Tech/AI — PASS (severity 2) — Notable expansion of AI music tools, but incremental platform feature.
+[triage] Tech/AI — reject — Niche emulator release, not a tech/AI development.
+[triage] Tech/AI — PASS (severity 3) — Major milestone in electric aviation technology advancement.
+[triage] Tech/AI — reject — Product review, not a news development.
+[triage] Tech/AI — reject — How-to guide, not a technology news development.
+[triage] Tech/AI — PASS (severity 4) — Documented systemic government surveillance abuse with real-world impact.
+[triage] Tech/AI — reject — Routine commercial schedule delay, no tech advancement.
+[triage] Tech/AI — reject — Streaming content addition, not a tech development.
+[triage] Tech/AI — PASS (severity 2) — Meaningful charitable AI glasses deployment, but limited scale.
+[triage] Tech/AI — reject — Retro computing collectible auction, not current tech news.
+[triage] Tech/AI — reject — User settings guidance, not a significant AI policy development.
+[triage] Tech/AI — reject — Opinion analysis piece, not a substantive development.
+[triage] Tech/AI — PASS (severity 3) — Government tech spending investigation revealing weapons development.
+[triage] Tech/AI — reject — Minor platform policy update without broader significance.
+[triage] Tech/AI — reject — Product shopping recommendation, not tech news.
+[triage] Tech/AI — reject — Product sale announcement, not a technology development.
+[usage] triage claude-haiku-4-5 in=2078 out=537 cache_r=0 cache_w=0 $0.004763
+[triage] European Football — PASS (severity 3) — Major transfer: Arsenal breaks midfield record for Bruno Guimarães.
+[triage] European Football — reject — Opinion piece on young prospects; routine preview analysis.
+[triage] European Football — reject — Ranking update; routine monthly data refresh, no new development.
+[triage] European Football — PASS (severity 2) — Operational disruption affecting scheduled Europa League match.
+[triage] European Football — reject — Analysis of Real Madrid's midfield without concrete transfer news.
+[triage] European Football — reject — Retrospective analysis of transfer history; no current development.
+[triage] European Football — reject — Stadium ranking feature; routine off-topic content.
+[triage] European Football — PASS (severity 2) — Young defender completes MLS-to-Premier League transfer move.
+[triage] European Football — reject — Pre-season match analysis; routine friendly result without significance.
+[triage] European Football — reject — Post-match analysis of friendly; routine transfer market chatter.
+[triage] European Football — reject — Minor club policy announcement to content creators.
+[triage] European Football — PASS (severity 3) — Lukaku transfers to Fenerbahce; significant player movement confirmed.
+[triage] European Football — reject — Personal news about player; not a football development.
+[triage] European Football — reject — Speculative transfer pursuit of Norwegian defender.
+[triage] European Football — reject — Analysis of Barcelona striker search; no concrete resolution.
+[triage] European Football — reject — Player interview; promotional content without newsworthy substance.
+[triage] European Football — reject — Comment on past controversy; no new development or resolution.
+[triage] European Football — PASS (severity 3) — Analysis of competitive imbalance as Big Six spending reaches £1.2bn.
+[triage] European Football — reject — Commercial analysis unrelated to on-field football.
+[usage] triage claude-haiku-4-5 in=2268 out=656 cache_r=0 cache_w=0 $0.005548
+[triage] Geopolitics — reject — Wildlife conservation story, not geopolitical development.
+[triage] Geopolitics — reject — Domestic policy failure, not geopolitical significance.
+[triage] Geopolitics — reject — Technology adoption trend, not geopolitical development.
+[triage] Geopolitics — PASS (severity 3) — U.S. domestic political division over Iran tensions and military spending.
+[triage] Geopolitics — reject — Cultural/consumer trend story, not geopolitical development.
+[triage] Geopolitics — reject — Entertainment/celebrity news, not geopolitical development.
+[triage] Geopolitics — PASS (severity 2) — Ongoing humanitarian crisis in DRC, noteworthy for regional instability.
+[triage] Geopolitics — PASS (severity 3) — U.S. Arctic resource competition amid strategic tension over Greenland.
+[triage] Geopolitics — PASS (severity 1) — Regional disaster response, minor geopolitical significance.
+[triage] Geopolitics — reject — Routine weather reporting, not geopolitical development.
+[triage] Geopolitics — PASS (severity 2) — India's strategic infrastructure development and regional power positioning.
+[triage] Geopolitics — PASS (severity 3) — Death of former Chinese premier reflects shift in China's economic direction.
+[triage] Geopolitics — reject — Domestic accident report, not geopolitical development.
+[triage] Geopolitics — PASS (severity 4) — Major escalation of Iran-backed militia activity in Middle East conflict.
+[triage] Geopolitics — reject — Natural disaster with transportation disruption, not geopolitical development.
+[triage] Geopolitics — reject — Domestic criminal conviction, not geopolitical development.
+[triage] Geopolitics — PASS (severity 4) — Systematic human rights abuses under Taliban show permanent destabilization.
+[triage] Geopolitics — PASS (severity 2) — Energy transition in developing world amid geopolitical resource shifts.
+[triage] Geopolitics — reject — Climate/weather pattern, not geopolitical development.
+[usage] triage claude-haiku-4-5 in=1886 out=649 cache_r=0 cache_w=0 $0.005131
+[triage] Morocco — reject — Opinion/analysis on regional dynamics, not concrete development
+[triage] Morocco — PASS (severity 3) — Major airline expansion signals growing tourism/economic importance
+[triage] Morocco — reject — Minor cultural event extension, routine local coverage
+[triage] Morocco — reject — Analysis piece on social trends, not specific development
+[triage] Morocco — reject — Post-match opinion, no new concrete development
+[triage] Morocco — reject — Routine corporate earnings update, incremental
+[triage] Morocco — reject — Israeli-Palestinian conflict, not Morocco-focused
+[triage] Morocco — reject — Colombian earthquake, unrelated to Morocco
+[triage] Morocco — reject — Putin visit to disputed islands, unrelated to Morocco
+[triage] Morocco — reject — Minor weather event, trivial local interest
+[triage] Morocco — PASS (severity 3) — Morocco's women's football team eliminated from CAN tournament
+[triage] Morocco — PASS (severity 2) — Moroccan player Hakimi wins major European trophy with PSG
+[triage] Morocco — PASS (severity 4) — Strategic green hydrogen industry development, major economic initiative
+[triage] Morocco — reject — Security alert framing without substantive new incident
+[triage] Morocco — reject — Local infrastructure failure, routine administrative problem
+[triage] Morocco — PASS (severity 3) — Airport modernization for tourism target 2030 strategy
+[triage] Morocco — reject — Cultural event announcement, routine coverage
+[triage] Morocco — reject — Other countries' CAN result, not Morocco-focused
+[triage] Morocco — reject — Team lineup announcement, routine match preparation
+[triage] Morocco — PASS (severity 2) — Stock exchange digital modernization improves market accessibility
+[usage] triage claude-haiku-4-5 in=2076 out=508 cache_r=0 cache_w=0 $0.004616
+[triage] Tech/AI — reject — Routine promotional content unrelated to tech news.
+[triage] Tech/AI — PASS (severity 1) — Minor product release; user preference for browser doesn't signify importance.
+[triage] Tech/AI — PASS (severity 2) — Service degradation affecting users; timely with Assistant shutdown deadline.
+[triage] Tech/AI — reject — Product review; lacks broader tech development significance.
+[triage] Tech/AI — reject — Comparative smartwatch review; routine consumer electronics coverage.
+[triage] Tech/AI — reject — Settings tips; instructional content rather than news development.
+[triage] Tech/AI — PASS (severity 2) — Developer preferences show meaningful shift in AI coding tooling landscape.
+[triage] Tech/AI — PASS (severity 1) — Minor Android feature; incremental UX improvement.
+[triage] Tech/AI — reject — Roundup of existing products; no new development or announcement.
+[triage] Tech/AI — reject — Generic security software roundup; no substantive news.
+[triage] Tech/AI — PASS (severity 2) — Workplace AI disruption analysis; addresses significant labor market shift.
+[triage] Tech/AI — PASS (severity 3) — Major flagship phone launch with multiple carrier promotions announced.
+[triage] Tech/AI — PASS (severity 1) — Linux project restores older architecture support; niche but meaningful.
+[triage] Tech/AI — PASS (severity 2) — Security threat with practical user protection guidance; timely alert.
+[triage] Tech/AI — PASS (severity 2) — Google's new tracking device enters competitive market with innovation.
+[triage] Tech/AI — reject — Accessory recommendations; product roundup without substantive development.
+[triage] Tech/AI — PASS (severity 3) — Critical Windows zero-day patch; significant security and update news.
+[triage] Tech/AI — reject — Product comparison; routine upgrade decision content without broader significance.
+[usage] triage claude-haiku-4-5 in=3008 out=642 cache_r=0 cache_w=0 $0.006218
+[triage] European Football — reject — Opinion piece on coaching appointment; lacks new developments.
+[triage] European Football — PASS (severity 3) — France staff announcement shows unfulfilled gender diversity commitment.
+[triage] European Football — reject — Routine fixture relocation; procedural update without significance.
+[triage] European Football — reject — Vague report on administrative meeting; no concrete developments.
+[triage] European Football — reject — Generic player biography; no news or developments.
+[triage] European Football — PASS (severity 2) — Major Barcelona player transfer possibility emerges for Koundé.
+[triage] European Football — reject — Generic club/player biography; no news reported.
+[triage] European Football — PASS (severity 2) — Personal story: Xavi Simons meets his namesake in new role.
+[triage] European Football — reject — Routine mercato roundup; multiple minor items without developments.
+[triage] European Football — reject — Generic player biography; no news or developments.
+[triage] European Football — reject — Generic club biography; no news or developments.
+[triage] European Football — reject — Profile piece on staff member; routine introduction without news.
+[triage] European Football — reject — Opinion/commentary on fixture location; no substantive development.
+[triage] European Football — PASS (severity 3) — Friendly match marred by expulsion, walkout, procedural chaos.
+[triage] European Football — reject — Generic transfer ticker update; routine placeholder content.
+[triage] European Football — reject — Minor transfer; young player departure to MLS without significance.
+[triage] European Football — reject — Expected transfer completion; routine defender move.
+[triage] European Football — reject — Friendly match result; manager commentary without substance.
+[triage] European Football — reject — Routine pre-season match explanation; procedural content.
+[usage] triage claude-haiku-4-5 in=1892 out=632 cache_r=0 cache_w=0 $0.005052
+[triage] Tech/AI — reject — Military simulation; not primarily a tech/AI development story.
+[triage] Tech/AI — PASS (severity 2) — Real accountability gap in surveillance tech deployment.
+[triage] Tech/AI — PASS (severity 2) — Service failure highlights smart device reliability concerns.
+[triage] Tech/AI — reject — Routine incremental model release, no meaningful breakthrough.
+[triage] Tech/AI — reject — Product feature update; not a tech/AI development.
+[triage] Tech/AI — PASS (severity 3) — Major AI company valuation milestone signals sector momentum.
+[triage] Tech/AI — PASS (severity 2) — Meaningful space radiation tech validation with real implications.
+[triage] Tech/AI — PASS (severity 2) — Novel AI watermarking approach addresses scraping concerns.
+[triage] Tech/AI — reject — Medical case study; not a tech/AI story.
+[triage] Tech/AI — PASS (severity 2) — Creative anti-scraping technique with practical deployment potential.
+[triage] Tech/AI — PASS (severity 3) — Major supply-chain breach compromises AI developer infrastructure.
+[triage] Tech/AI — reject — Physics discovery unrelated to tech/AI topics.
+[triage] Tech/AI — PASS (severity 2) — Significant legal challenge to platform API monetization model.
+[triage] Tech/AI — reject — Drone redeployment for agricultural issue; not core tech news.
+[triage] Tech/AI — reject — Vehicle speed record; manufacturing story, not tech/AI development.
+[triage] Tech/AI — reject — Regulatory/legal matter outside tech/AI scope.
+[triage] Tech/AI — PASS (severity 2) — Infrastructure failure demonstrates operational risk in hosting sector.
+[triage] Tech/AI — reject — Opinion/lifestyle piece; not substantive tech news.
+[triage] Tech/AI — reject — Trivial design commentary; not newsworthy.
+[usage] triage claude-haiku-4-5 in=2293 out=624 cache_r=0 cache_w=0 $0.005413
+[triage] Morocco — PASS (severity 3) — Morocco's diplomatic shift on Western Sahara with Colombia is significant foreign policy development.
+[triage] Morocco — reject — General eclipse safety advice unrelated to Morocco-specific news.
+[triage] Morocco — reject — Sports scheduling/broadcast information lacks substantive news value.
+[triage] Morocco — reject — US military action unrelated to Morocco.
+[triage] Morocco — reject — European eclipse event not Morocco-specific.
+[triage] Morocco — reject — Trump aircraft change unrelated to Morocco.
+[triage] Morocco — reject — Porsche production decision unrelated to Morocco.
+[triage] Morocco — PASS (severity 3) — Major agricultural sector facing climate crisis with real economic implications.
+[triage] Morocco — PASS (severity 2) — Solid fiscal performance data, routine but confirms economic trends.
+[triage] Morocco — reject — Standard corporate earnings update without exceptional development.
+[triage] Morocco — PASS (severity 2) — Tourism recovery trend notable but incremental sector reporting.
+[triage] Morocco — PASS (severity 2) — Media sector governance issue tied to election timing.
+[triage] Morocco — reject — Brazil regulatory action unrelated to Morocco.
+[triage] Morocco — PASS (severity 2) — Capital market infrastructure modernization supports broader financial development.
+[triage] Morocco — reject — Routine border security operations without specific incident.
+[triage] Morocco — reject — Stock analyst valuation note lacks substantive news development.
+[triage] Morocco — reject — Cultural commentary/opinion piece without news development.
+[triage] Morocco — PASS (severity 3) — Women's football major tournament qualification pursuit represents significant sporting achievement.
+[triage] Morocco — reject — Port ticketing system update is administrative procedure, not substantive development.
+[usage] triage claude-haiku-4-5 in=2131 out=533 cache_r=0 cache_w=0 $0.004796
+[triage] Tech/AI — reject — Tool review and product testing; lacks broader significance.
+[triage] Tech/AI — PASS (severity 3) — Major industrial competition shift; US humanoid robot market entry.
+[triage] Tech/AI — reject — Executive departure; part of routine staffing churn.
+[triage] Tech/AI — PASS (severity 3) — Significant civil rights abuse case; systemic surveillance accountability.
+[triage] Tech/AI — PASS (severity 2) — Major funding round; consolidation strategy in AI-enabled services.
+[triage] Tech/AI — reject — Executive departure; incremental staffing change without strategic impact.
+[triage] Tech/AI — reject — Social media trends; entertainment story unrelated to tech.
+[triage] Tech/AI — reject — Vague policy rumors without official confirmation or substance.
+[triage] Tech/AI — reject — Product feature change; routine business decision.
+[triage] Tech/AI — PASS (severity 3) — Accountability moment; major surveillance firm acknowledges system failures.
+[triage] Tech/AI — reject — Platform regulatory compliance; minor jurisdictional enforcement action.
+[triage] Tech/AI — PASS (severity 2) — Emerging business model challenge; cost-control issues for AI buyers.
+[triage] Tech/AI — PASS (severity 2) — New security feature; Apple's active spyware threat response.
+[triage] Tech/AI — PASS (severity 2) — Cost optimization innovation; efficiency breakthrough for AI deployment.
+[triage] Tech/AI — PASS (severity 3) — Major valuation and funding milestone; market signal on AI investment.
+[triage] Tech/AI — PASS (severity 3) — Significant performance improvement; enterprise capability advancement for GPT-5.6.
+[triage] Tech/AI — PASS (severity 2) — Major enterprise partnership; accelerating AI adoption infrastructure.
+[triage] Tech/AI — PASS (severity 4) — Critical safety research; multi-agent AI coordination risks identified.
+[triage] Tech/AI — reject — Executive shuffle; duplicate of earlier departure news.
+[usage] triage claude-haiku-4-5 in=2584 out=589 cache_r=0 cache_w=0 $0.005529
+[triage] French Politics — PASS (severity 3) — PM outlines 2027 budget deficit target; substantive policy direction emerges.
+[triage] French Politics — reject — Youth wings campaign activity; routine mobilization coverage without new developments.
+[triage] French Politics — PASS (severity 2) — Economic impact assessment of heatwaves quantified; policy-relevant climate consequence.
+[triage] French Politics — reject — Local official's legal challenge; minor governance dispute without broader significance.
+[triage] French Politics — reject — Routine report proposing budget cuts; incremental policy analysis without decision.
+[triage] French Politics — PASS (severity 3) — Central bloc discusses single 2027 candidate strategy; significant tactical realignment proposal.
+[triage] French Politics — reject — Historical retrospective on rally venues; analysis rather than current development.
+[triage] French Politics — reject — Candidate campaign visit; routine campaign reporting without substantive news.
+[triage] French Politics — reject — Historical essay on protest spaces; background analysis without current event.
+[triage] French Politics — PASS (severity 2) — Hollande prepares television debate and book; former president re-enters campaign sphere.
+[triage] French Politics — PASS (severity 2) — Socialist primary process formally set; internal party selection mechanism confirmed.
+[triage] French Politics — reject — Candidate meets wildfire victims; standard campaign trail reporting.
+[triage] French Politics — reject — Minor government response to eclipse glasses controversy; trivial administrative matter.
+[triage] French Politics — reject — Historical profile of socialist meeting venue; background context without current news.
+[triage] French Politics — reject — Historical essay on far-right rally locations; retrospective analysis without development.
+[triage] French Politics — reject — Raul Castro Cuba event; entirely outside French politics topic scope.
+[usage] triage claude-haiku-4-5 in=2733 out=660 cache_r=0 cache_w=0 $0.006033
+[triage] European Football — reject — Anniversary nostalgia piece without current developments.
+[triage] European Football — reject — Scheduling information for future season, no real news.
+[triage] European Football — reject — Speculation about unresolved transfer rumors, no concrete development.
+[triage] European Football — PASS (severity 3) — Bayern actively working on Palhinha deal with resolution emerging.
+[triage] European Football — reject — Historical retrospective, no current developments or context.
+[triage] European Football — PASS (severity 3) — Mainz squad improvement and competitive positioning ahead of season.
+[triage] European Football — PASS (severity 3) — Frankfurt preseason performance strong but transfer gaps remain.
+[triage] European Football — reject — Routine post-match captain interview with minimal substance.
+[triage] European Football — PASS (severity 3) — Dortmund advancing on El Mala transfer, agreement nearing.
+[triage] European Football — PASS (severity 2) — HSV selling academy prospect Baldé for significant fee.
+[triage] European Football — PASS (severity 2) — HSV's recent acquisition Daka settling in positively.
+[triage] European Football — PASS (severity 3) — Bundeskartelamt upholds 50+1 rule; significant regulatory outcome.
+[triage] European Football — PASS (severity 2) — Stuttgart's Pejcinovic arrival creates competitive dynamics within squad.
+[triage] European Football — PASS (severity 3) — Hannover investor responds to 50+1 rule decision.
+[triage] European Football — reject — Cologne early-stage squad planning with no confirmed moves.
+[triage] European Football — reject — EFL Championship historical statistics, outside European football focus.
+[triage] European Football — reject — Chelsea-Man City transfer speculation without credible development.
+[triage] European Football — reject — Tottenham transfer speculation based on past failed pursuits.
+[triage] European Football — reject — General transfer market analysis without specific newsworthy development.
+[usage] triage claude-haiku-4-5 in=2543 out=676 cache_r=0 cache_w=0 $0.005923
+[triage] European Football — reject — Routine transfer speculation without confirmed development or resolution.
+[triage] European Football — reject — Opinion-driven feature piece; not a real news development.
+[triage] European Football — reject — Analysis of historical pattern; no current event or outcome.
+[triage] European Football — reject — Rankings and opinion piece; no actionable football development.
+[triage] European Football — reject — Kit release announcement; routine, incremental aesthetic update.
+[triage] European Football — reject — Jersey rankings; routine kit coverage without substantive development.
+[triage] European Football — reject — Minor transfer rumor lacking confirmation or concrete progression.
+[triage] European Football — reject — Preview and prediction piece; no real match result or news.
+[triage] European Football — PASS (severity 2) — Championship spending trends matter to competitive landscape narrative.
+[triage] European Football — PASS (severity 2) — Notable player return to Championship; meaningful human interest angle.
+[triage] European Football — reject — Opinion column on established player; analytical piece without development.
+[triage] European Football — PASS (severity 2) — Women's club saved from folding; significant institutional news.
+[triage] European Football — reject — Transfer tracker index; routine aggregation without specific developments.
+[triage] European Football — reject — Season preview and prediction; no concrete event or result.
+[triage] European Football — reject — Season preview with managerial speculation; analytical piece only.
+[triage] European Football — reject — Preview with transfer context; no decisive development or match.
+[triage] European Football — PASS (severity 3) — UEFA Super Cup final result; major official competition outcome.
+[triage] European Football — PASS (severity 3) — Serious safeguarding breach; institutional governance failure of significance.
+[triage] European Football — reject — Streaming rights deal; media business story, not sport development.
+[triage] European Football — PASS (severity 3) — Major transfer completed: Tottenham captain joins Atlético Madrid.
+[usage] triage claude-haiku-4-5 in=2537 out=666 cache_r=0 cache_w=0 $0.005867
+[triage] Morocco — reject — Routine religious holiday announcement with no development.
+[triage] Morocco — PASS (severity 2) — Significant economic impact from natural disaster affecting region.
+[triage] Morocco — reject — Routine treasury cash management operation, no material development.
+[triage] Morocco — PASS (severity 2) — Spain reinforces Melilla security amid migration pressures.
+[triage] Morocco — PASS (severity 3) — Major surge in land crossings to Spanish enclaves raises policy stakes.
+[triage] Morocco — PASS (severity 2) — Significant US-Morocco defense cooperation milestone with military cadets.
+[triage] Morocco — reject — Domestic student labor dispute announcement, routine activism reporting.
+[triage] Morocco — PASS (severity 2) — Police action against human smuggling networks affecting migration flows.
+[triage] Morocco — reject — Standard stadium infrastructure tender, no material development.
+[triage] Morocco — reject — Routine insurance premium adjustment with expected criticism.
+[triage] Morocco — PASS (severity 2) — UN counterterrorism platform deployment represents institutional development.
+[triage] Morocco — PASS (severity 2) — Green ammonia project advances with US firm selection.
+[triage] Morocco — PASS (severity 2) — Agricultural export milestone shows competitive market position gain.
+[triage] Morocco — PASS (severity 2) — Moroccan company expanding diagnostics expertise across Africa continent.
+[triage] Morocco — reject — Diplomatic courtesy message unrelated to Morocco substantive affairs.
+[triage] Morocco — reject — Tunisia trade data unrelated to Morocco topic focus.
+[triage] Morocco — reject — Libya economic reform committee unrelated to Morocco.
+[triage] Morocco — reject — Libya oil revenues unrelated to Morocco topic.
+[triage] Morocco — reject — Analysis piece on Spanish sentiment, not Morocco development.
+[triage] Morocco — PASS (severity 3) — UN leadership change at MINURSO affects Sahara mission administration.
+[usage] triage claude-haiku-4-5 in=1963 out=687 cache_r=0 cache_w=0 $0.005398
+[triage] Morocco — reject — Routine crime story; no systemic or political significance.
+[triage] Morocco — PASS (severity 3) — Spain affirms Morocco partnership amid migration tensions; meaningful diplomatic signal.
+[triage] Morocco — PASS (severity 3) — Campaign dynamics weeks before September elections; core political development.
+[triage] Morocco — reject — Arrest cluster lacks context or detail; insufficient information.
+[triage] Morocco — reject — Opinion/analysis on call center employment; not a development.
+[triage] Morocco — PASS (severity 2) — Government details migration precautions for Sebta/Melilla crossing attempts.
+[triage] Morocco — reject — Spanish politics coverage; not Morocco-focused development.
+[triage] Morocco — PASS (severity 2) — Morocco achieves market dominance in Norwegian berries; trade success.
+[triage] Morocco — reject — Tourism feature; travel guide, not news development.
+[triage] Morocco — reject — Bank product announcement; routine corporate news.
+[triage] Morocco — reject — Opinion/analysis on Sebta bureaucracy; not a development.
+[triage] Morocco — reject — Party schedule announcement; routine pre-election process.
+[triage] Morocco — reject — Opinion piece on international perception; analysis, not news.
+[triage] Morocco — reject — Internal sports federation dispute; minor organizational conflict.
+[triage] Morocco — PASS (severity 2) — Large drug trafficking attempt intercepted; law enforcement success.
+[triage] Morocco — reject — Opinion/analysis on geopolitics; analysis, not breaking development.
+[triage] Morocco — PASS (severity 2) — New US consul general appointment; diplomatic personnel change.
+[triage] Morocco — reject — Theme park redevelopment project; business development without major significance.
+[triage] Morocco — PASS (severity 2) — Pakistani general appointed to lead MINURSO; Western Sahara governance change.
+[triage] Morocco — reject — Ivory Coast football; unrelated to Morocco topic.
+[usage] triage claude-haiku-4-5 in=2424 out=699 cache_r=0 cache_w=0 $0.005919
+[triage] European Football — PASS (severity 2) — Transfer move imminent; player at ground confirms concrete development.
+[triage] European Football — reject — Pre-season friendly chaos; notable for oddness, not sporting substance.
+[triage] European Football — reject — Speculative analysis of season ahead; opinion rather than development.
+[triage] European Football — reject — Speculative analysis of season ahead; opinion rather than development.
+[triage] European Football — reject — Media personality hosting a show; entertainment news, not football.
+[triage] European Football — PASS (severity 3) — Major player returns after father's death; retirement hints significant.
+[triage] European Football — reject — Vague analysis of player attention; no concrete development reported.
+[triage] European Football — PASS (severity 2) — Match postponement concrete fact; unusual pitch issue warrants coverage.
+[triage] European Football — reject — Interview content; doesn't constitute independent news development.
+[triage] European Football — PASS (severity 4) — Major managerial appointment at elite club; significant storyline.
+[triage] European Football — PASS (severity 3) — Concrete transfer deadline; significant player, clear club pressure.
+[triage] European Football — reject — Podcast episode listing; scheduling content, not news.
+[triage] European Football — PASS (severity 2) — Transfer completion confirmed; modest-profile signing merits brief mention.
+[triage] European Football — reject — Interactive game; not sports news development.
+[triage] European Football — reject — Speculation on player's future; rumour-driven, unresolved.
+[triage] European Football — reject — Explains TV scheduling rule; procedural, not sporting development.
+[triage] European Football — reject — Retrospective career highlight reel; reaction content, not news.
+[triage] European Football — reject — Routine transfer summary; background reference, not singular development.
+[triage] European Football — PASS (severity 3) — Women's tournament semi-final with dramatic penalty shootout result.
+[triage] European Football — reject — Player tattoo explanation; personal detail without sporting news substance.
+[usage] triage claude-haiku-4-5 in=2944 out=647 cache_r=0 cache_w=0 $0.006179
+[triage] European Football — PASS (severity 3) — Major Serie A squad move on loan with significant purchase option.
+[triage] European Football — PASS (severity 2) — Completed Serie A midfield trades, solid development but not standout.
+[triage] European Football — PASS (severity 2) — Atalanta loan signing with option, notable but routine Serie A move.
+[triage] European Football — PASS (severity 3) — Key player injury setback for Serie A club mid-season.
+[triage] European Football — reject — Live tracker stub, no actual news development to evaluate.
+[triage] European Football — PASS (severity 4) — Major transfer: top striker leaves Juve for Turkey on free.
+[triage] European Football — reject — Ongoing contract dispute, no new material resolution reported.
+[triage] European Football — reject — Speculative transfer rumor, no confirmed development.
+[triage] European Football — PASS (severity 3) — England international completing €35m move to Inter Milan.
+[triage] European Football — reject — Disciplinary threat as transfer leverage, routine leverage tactic.
+[triage] European Football — reject — Early-stage discussion, no meaningful progress or development.
+[triage] European Football — reject — Analysis of France coaching staff and goalkeeper coaching roles.
+[triage] European Football — reject — Speculative transfer rumor without confirmed developments.
+[triage] European Football — reject — Coach management approach piece, not match or transfer development.
+[triage] European Football — reject — Referee personal interest story, not football development.
+[triage] European Football — PASS (severity 2) — Players returning from serious knee injuries for Monaco.
+[triage] European Football — reject — Generic player biography, no news or development.
+[triage] European Football — reject — Speculative injury-driven transfer scenario, no confirmed move.
+[triage] European Football — reject — FIFA governance commentary and biography, not football competition.
+[usage] triage claude-haiku-4-5 in=1989 out=635 cache_r=0 cache_w=0 $0.005164
+[triage] US Finance — PASS (severity 3) — Record profit margins driving market rally is significant earnings insight.
+[triage] US Finance — PASS (severity 2) — Notable investor warns of AI concentration risk in two companies.
+[triage] US Finance — reject — Geopolitical development, not US finance market news.
+[triage] US Finance — PASS (severity 2) — Semiconductor market shift with AI demand implications matters.
+[triage] US Finance — reject — Routine short-interest volatility without structural development.
+[triage] US Finance — reject — Regulatory inquiry is process story, not resolved development.
+[triage] US Finance — reject — International auto sales data outside core US finance.
+[triage] US Finance — PASS (severity 2) — New AI compute futures contract marks asset class evolution.
+[triage] US Finance — PASS (severity 2) — Major stock surge on acquisition rumors signals software sector interest.
+[triage] US Finance — reject — Generic personal finance advice column, not market development.
+[triage] US Finance — reject — Anecdotal story about insurance complaints lacks systemic significance.
+[triage] US Finance — PASS (severity 2) — Gen Z shift away from investing toward betting shows behavioral trend.
+[triage] US Finance — PASS (severity 3) — Anthropic valuation expectations signal major AI funding milestone.
+[triage] US Finance — PASS (severity 2) — Record auto lending and extended loan terms reflect consumer debt trends.
+[triage] US Finance — PASS (severity 2) — Sandisk guidance and margin outlook drive semiconductor sector interest.
+[triage] US Finance — reject — Travel spending observation lacks broader market or financial significance.
+[triage] US Finance — reject — Generic personal financial advice question, not market development.
+[triage] US Finance — reject — Personal family legal matter unrelated to US finance markets.
+[triage] US Finance — reject — Headline incomplete; cannot assess substance or significance.
+[usage] triage claude-haiku-4-5 in=2243 out=681 cache_r=0 cache_w=0 $0.005648
+[triage] US Politics — reject — Climate science, not US politics; belongs in weather/climate topic
+[triage] US Politics — PASS (severity 3) — Trump DOJ's gun policy stance shift signals major arms regulation direction
+[triage] US Politics — PASS (severity 3) — Wisconsin gubernatorial primary upset reshapes Democratic strategy and coalition
+[triage] US Politics — PASS (severity 2) — Pentagon leadership faces serious crew welfare questions on active carrier
+[triage] US Politics — PASS (severity 2) — Senate candidate personal misconduct allegations emerge weeks before election
+[triage] US Politics — reject — Business commentary on streaming trends; not political development
+[triage] US Politics — PASS (severity 2) — Senate race polling shows Democratic candidate maintaining substantial lead advantage
+[triage] US Politics — reject — Consumer product safety warning; not US politics
+[triage] US Politics — reject — Corporate privacy policy change; not US politics
+[triage] US Politics — reject — Opinion commentary from medical professional; not hard political development
+[triage] US Politics — reject — Generic business opinion; no specific political event or policy development
+[triage] US Politics — reject — Routine post-primary concession statement; lacks substantive new development
+[triage] US Politics — reject — Economic policy opinion piece; not a concrete political action or development
+[triage] US Politics — reject — Candidate denial statement; routine follow-up lacking new substantive information
+[triage] US Politics — reject — Opinion critique of administration; not a concrete policy announcement
+[triage] US Politics — reject — Media personality commentary; opinion rather than political development
+[triage] US Politics — reject — Routine Trump push on recurring legislative priority; incremental pressure
+[triage] US Politics — reject — Food recall; not US politics
+[triage] US Politics — PASS (severity 2) — Secret presidential movement reveals security protocol during cabinet travel
+[triage] US Politics — reject — Op-ed advocating for research policy; not a concrete political development
+[usage] triage claude-haiku-4-5 in=2119 out=645 cache_r=0 cache_w=0 $0.005344
+[triage] Geopolitics — reject — Domestic institutional dispute; lacks geopolitical substance or impact.
+[triage] Geopolitics — PASS (severity 3) — Industrial accident; significant but limited geopolitical relevance or implications.
+[triage] Geopolitics — reject — AI analysis opinion piece; not geopolitically substantive.
+[triage] Geopolitics — PASS (severity 3) — Armed group advances in active conflict zone; material regional development.
+[triage] Geopolitics — PASS (severity 2) — Earthquake damage; humanitarian crisis but limited geopolitical dimension.
+[triage] Geopolitics — reject — Domestic US court ruling; no meaningful geopolitical development.
+[triage] Geopolitics — reject — Cultural gesture; lacks geopolitical significance or strategic importance.
+[triage] Geopolitics — reject — Domestic policy criticism; analysis-driven rather than event-driven.
+[triage] Geopolitics — PASS (severity 3) — Major powers exercising influence near contested territory; clear regional tension.
+[triage] Geopolitics — PASS (severity 3) — US military morale crisis amid ongoing Middle East tensions; operational concern.
+[triage] Geopolitics — PASS (severity 3) — Analysis of major power economic vulnerability amid multiple conflicts.
+[triage] Geopolitics — reject — Natural disaster overview; lacks geopolitical substance or forward development.
+[triage] Geopolitics — PASS (severity 3) — Regional actor emerging as strategic player in critical shipping corridor.
+[triage] Geopolitics — PASS (severity 4) — Major power proxy expansion in active European war; significant escalation.
+[triage] Geopolitics — PASS (severity 2) — Authoritarian consolidation through war profiteering; notable but secondary development.
+[triage] Geopolitics — PASS (severity 3) — Opposition suppression in major power; signals authoritarian tightening amid conflict.
+[triage] Geopolitics — PASS (severity 2) — Regional peace sustainability assessment; notable for Balkans but modest urgency.
+[triage] Geopolitics — PASS (severity 4) — Strategic conflict destabilizing major oil producer; serious regional economic/political risk.
+[usage] triage claude-haiku-4-5 in=2534 out=670 cache_r=0 cache_w=0 $0.005884
+[triage] Tech/AI — reject — Routine factory progress update on established EV project.
+[triage] Tech/AI — PASS (severity 3) — X transparency on algorithmic ranking and shadowbanning is meaningful policy shift.
+[triage] Tech/AI — reject — Logo redesign is cosmetic; opinion piece adds no substance.
+[triage] Tech/AI — PASS (severity 3) — Microsoft consolidates Copilot products, kills underperforming AI features strategically.
+[triage] Tech/AI — reject — Speculative analysis of Nvidia's financial strategy, not concrete development.
+[triage] Tech/AI — reject — Product feature story with no real innovation or significance.
+[triage] Tech/AI — PASS (severity 2) — Apple paying publishers for news content represents meaningful AI feature expansion.
+[triage] Tech/AI — PASS (severity 4) — Major policy shift: US authorizes private cyberattacks, reshapes security landscape.
+[triage] Tech/AI — reject — Conference panel discussion with no substantive announcement or development.
+[triage] Tech/AI — reject — User complaints about watermarking lack depth or broader significance.
+[triage] Tech/AI — reject — CEO hire at startup is routine corporate move, not tech development.
+[triage] Tech/AI — PASS (severity 2) — Northrop's satellite maintenance robot demonstrates practical AI/robotics application.
+[triage] Tech/AI — reject — Mico character removal is minor UI change already covered in cluster 3.
+[triage] Tech/AI — reject — Gaming studio shutdown is business decision, not tech development.
+[triage] Tech/AI — reject — Product discount story lacks any meaningful tech news.
+[triage] Tech/AI — reject — Consumer product review lacks technical significance or development.
+[triage] Tech/AI — reject — Incremental robot vacuum feature update, routine product iteration.
+[triage] Tech/AI — reject — Game studio launch announcement without substantive detail or innovation.
+[triage] Tech/AI — reject — Naming contest announcement is lightweight, lacks tech significance.
+[usage] triage claude-haiku-4-5 in=2447 out=726 cache_r=0 cache_w=0 $0.006077
+[triage] US Politics — reject — Opinion commentary on political messaging; no substantive development.
+[triage] US Politics — PASS (severity 3) — Major DOJ enforcement action against state prison system; significant civil rights development.
+[triage] US Politics — reject — Vice President offering routine political advice; no concrete policy or event.
+[triage] US Politics — PASS (severity 2) — Court resolution of DEI investigation; notable but procedural rather than substantive ruling.
+[triage] US Politics — reject — Political commentary labeling; no substantive policy or political development.
+[triage] US Politics — PASS (severity 3) — Appeals court dismisses major deportation challenge; significant immigration law development.
+[triage] US Politics — PASS (severity 3) — Trump policy expanding private sector cyber offense authority; major national security shift.
+[triage] US Politics — reject — Senator expressing confidence in appointee; routine confirmation rhetoric, no development.
+[triage] US Politics — reject — Retired official's election-cycle prediction; speculation without substantive news.
+[triage] US Politics — reject — News host fact-checking presidential claim; commentary rather than development.
+[triage] US Politics — PASS (severity 2) — US ambassador's condemnation of Israeli actions; notable diplomatic statement on ally relations.
+[triage] US Politics — reject — Political banter about press secretary appointment; commentary without substance.
+[triage] US Politics — PASS (severity 2) — Congressional oversight of agency spending; legitimate appropriations scrutiny.
+[triage] US Politics — reject — Democratic strategist's assessment of Trump relevance; opinion analysis, not development.
+[triage] US Politics — reject — Candidate distancing from streamer; minor campaign messaging, routine politics.
+[triage] US Politics — reject — Governor declining to engage in political debate; non-response to terminology.
+[triage] US Politics — reject — Congressional criticism of Treasury decision; process complaint without major impact.
+[triage] US Politics — reject — Poll on youth sports enrollment disparities; social trend, not politics.
+[triage] US Politics — PASS (severity 2) — Multiple primary upsets against incumbents; significant election cycle trend.
+[triage] US Politics — reject — Agency clarifying barrier construction scope; routine CBP operational adjustment.
+[usage] triage claude-haiku-4-5 in=2394 out=705 cache_r=0 cache_w=0 $0.005919
+[triage] US Politics — PASS (severity 3) — Major policy shift on offensive cyber operations raises significant governance questions.
+[triage] US Politics — PASS (severity 3) — Trump's immigration actions bypass Congress; historically significant constitutional question.
+[triage] US Politics — PASS (severity 3) — Documented surveillance of left-leaning groups raises civil liberties and oversight concerns.
+[triage] US Politics — reject — Speculative analysis without concrete developments; lacks actionable news content.
+[triage] US Politics — reject — Procedural court changes; institutional detail without political substance.
+[triage] US Politics — reject — Political trend analysis; lacks specific news developments or outcomes.
+[triage] US Politics — PASS (severity 3) — Half-billion dollar aircraft purchase unused; significant accountability and waste question.
+[triage] US Politics — PASS (severity 2) — Justice Department retreats on federal firearms law enforcement; real policy change.
+[triage] US Politics — PASS (severity 2) — Progressive candidate loses Wisconsin primary; signals intra-party ideological tensions.
+[triage] US Politics — PASS (severity 2) — ICE agent guilty plea reflects accountability during immigration crackdown period.
+[triage] US Politics — PASS (severity 2) — Competitive Senate runoff in key state; electoral development worth tracking.
+[triage] US Politics — PASS (severity 2) — Justice Department escalates prosecution against civil rights organization; significant concern.
+[triage] US Politics — PASS (severity 3) — Trump blocks corporate transparency enforcement; major reversal of anti-corruption measure.
+[triage] US Politics — reject — Personnel logistics detail; lacks substantive policy or political significance.
+[triage] US Politics — reject — Event coverage without policy implications; insufficient substance.
+[triage] US Politics — reject — Policy proposal; lacks current medical or legislative development.
+[triage] US Politics — reject — Personal background and speculation; analysis without concrete political development.
+[triage] US Politics — PASS (severity 2) — Post-election analysis of progressive-moderate split within Democratic Party.
+[triage] US Politics — reject — Military deployment news; outside US domestic politics scope.
+[triage] US Politics — reject — Campaign trail anecdote; lacks substantive electoral or policy content.
+[usage] triage claude-haiku-4-5 in=2480 out=605 cache_r=0 cache_w=0 $0.005505
+[triage] US Politics — reject — Routine economic news; gas prices are ongoing story without new developments.
+[triage] US Politics — reject — Personal anecdote from celebrity; lacks political substance or impact.
+[triage] US Politics — reject — Corporate litigation; not central to US political developments or governance.
+[triage] US Politics — reject — Minor defensive statement after election loss; lacks broader political significance.
+[triage] US Politics — PASS (severity 3) — State-level abortion policy landmark; clear development on major political issue.
+[triage] US Politics — reject — Criminal indictment of private individual; not substantive US politics coverage.
+[triage] US Politics — PASS (severity 2) — Court ruling on surrogacy and abortion; notable policy-adjacent legal development.
+[triage] US Politics — reject — DOJ prosecution of nonprofit employee; routine legal proceeding without broad impact.
+[triage] US Politics — reject — Marriage fraud charges; routine DOJ enforcement with no policy significance.
+[triage] US Politics — reject — Regulatory rule upheld in appeals court; routine administrative law outcome.
+[triage] US Politics — PASS (severity 2) — Civil rights lawsuit against university; significant for campus policy and discrimination debate.
+[triage] US Politics — reject — Official clarifying status of defunct proposal; process story without new substance.
+[triage] US Politics — reject — Trivial public disagreement about diet; lacks policy or political substance.
+[triage] US Politics — reject — Betting market odds shift; speculative and insubstantial for serious briefing.
+[triage] US Politics — reject — Campaign stunt proposal; trivial publicity move lacking substance.
+[triage] US Politics — reject — Scheduled official remarks; routine administrative announcement without news.
+[triage] US Politics — reject — Routine FTC settlement announcement; standard regulatory enforcement action.
+[triage] US Politics — reject — Military personnel meeting on wellness; routine administrative matter without policy change.
+[triage] US Politics — PASS (severity 3) — Major White House expenditure without congressional approval; significant oversight and governance issue.
+[triage] US Politics — reject — Opinion prediction by media personality; speculation rather than actual political development.
+[usage] triage claude-haiku-4-5 in=2555 out=704 cache_r=0 cache_w=0 $0.006075
+[triage] Morocco — PASS (severity 2) — Military modernization is routine defense development; modest operational importance.
+[triage] Morocco — PASS (severity 3) — Senior official reiterates sovereignty claim; diplomatically charged, expected coverage.
+[triage] Morocco — reject — Regulatory update; financial compliance procedure without broader significance.
+[triage] Morocco — PASS (severity 2) — Economic expansion in green industries; notable but incremental corporate development.
+[triage] Morocco — PASS (severity 3) — Gap between ambition and regulation in strategic green hydrogen sector.
+[triage] Morocco — reject — Port management procedure for seasonal passenger operation; routine logistics.
+[triage] Morocco — reject — Neighboring country cooperation unrelated to Morocco; outside topic scope.
+[triage] Morocco — reject — Religious calendar date; routine observance announcement without news content.
+[triage] Morocco — reject — Astronomical event observation; neither political nor substantive development.
+[triage] Morocco — reject — Internal religious organizational dispute; minor cultural matter without impact.
+[triage] Morocco — reject — Border security measure; routine operational restriction without development.
+[triage] Morocco — PASS (severity 4) — Strategic maritime economic reorientation reshaping Morocco's geopolitical position significantly.
+[triage] Morocco — reject — Media personality profile; gossip-style journalism without substantive news value.
+[triage] Morocco — reject — Crime brief on criminal arrest; routine public safety reporting without broader significance.
+[triage] Morocco — PASS (severity 2) — Marine pollution framework modernization; environmental governance update with modest impact.
+[triage] Morocco — reject — Sports transfer rumor; entertainment content outside policy/governance scope.
+[triage] Morocco — reject — Duplicate of cluster 2; anti-money laundering compliance circular.
+[triage] Morocco — PASS (severity 2) — Infrastructure development milestone; electricity grid expansion near completion.
+[triage] Morocco — PASS (severity 2) — Border security operation response; expected given migration pressure seasonal context.
+[triage] Morocco — PASS (severity 4) — Major diplomatic realignment in Latin America; significant geopolitical strategic shift.
+[usage] triage claude-haiku-4-5 in=2249 out=668 cache_r=0 cache_w=0 $0.005589
+[triage] Morocco — PASS (severity 3) — Constitutional court rejection of lawyer law reform creates major legal uncertainty.
+[triage] Morocco — reject — Minor incident involving official's family, routine legal process story.
+[triage] Morocco — reject — Routine archaeology announcement with no substantive development.
+[triage] Morocco — reject — Incremental political candidacy announcement lacking real development.
+[triage] Morocco — reject — Duplicate of cluster 0; redundant coverage.
+[triage] Morocco — reject — Vague headline; insufficient substance to judge notability.
+[triage] Morocco — PASS (severity 2) — Morocco's FIFA support shows regional football federation positioning.
+[triage] Morocco — reject — Travel logistics observation, not meaningful policy or news development.
+[triage] Morocco — reject — Minor festival entertainment announcement lacking broader significance.
+[triage] Morocco — reject — International FIFA politics; tangential to Morocco-specific developments.
+[triage] Morocco — reject — Cinema business decision, routine commercial update.
+[triage] Morocco — reject — Ivory Coast story; not Morocco-related.
+[triage] Morocco — reject — Algeria-focused content; not Morocco-related.
+[triage] Morocco — reject — Generic road safety reminder, not meaningful news development.
+[triage] Morocco — reject — Algeria migration focus; not Morocco-specific.
+[triage] Morocco — PASS (severity 3) — World Cup 2030 infrastructure investment shows major tournament preparation.
+[triage] Morocco — PASS (severity 4) — Potential suspension of Morocco-Spain extradition cooperation is major diplomatic shift.
+[triage] Morocco — PASS (severity 2) — Solar eclipse event; culturally notable but not policy development.
+[triage] Morocco — reject — Routine weather forecasts, standard meteorological updates.
+[triage] Morocco — reject — Opinion piece on social media regulation; analysis not development.
+[usage] triage claude-haiku-4-5 in=2133 out=656 cache_r=0 cache_w=0 $0.005413
+[triage] US Politics — PASS (severity 3) — Congress facing real shutdown deadline with unresolved appropriations before recess
+[triage] US Politics — reject — Food safety issue outside US politics topic scope
+[triage] US Politics — reject — Policy analysis without concrete legislative development or voting
+[triage] US Politics — reject — Economic analysis piece, not a political development or action
+[triage] US Politics — PASS (severity 2) — Significant patient protection law under industry lobbying pressure
+[triage] US Politics — reject — Military incident unrelated to US politics developments
+[triage] US Politics — reject — Healthcare policy commentary without concrete legislative action
+[triage] US Politics — reject — Opinion piece on Iran policy without news development
+[triage] US Politics — PASS (severity 2) — Senate race analysis showing competitive GOP seats vulnerable midterms
+[triage] US Politics — reject — Financial behavior survey without political implications or action
+[triage] US Politics — PASS (severity 2) — Texas state Senate race poll shows close contest near election
+[triage] US Politics — reject — Routine FAA personnel policy announcement without major development
+[triage] US Politics — reject — NASA personnel announcement unrelated to US politics
+[triage] US Politics — PASS (severity 3) — Congressman sued for alleged serious crime; major personal/legal crisis
+[triage] US Politics — reject — Criminal case legal argument without significant new development
+[triage] US Politics — PASS (severity 2) — DOJ-DC conflict over National Guard deployment reflects governance dispute
+[triage] US Politics — PASS (severity 2) — ICE officer incident raises federal enforcement conduct concerns
+[triage] US Politics — reject — Opinion framing of Trump foreign policy without news development
+[triage] US Politics — reject — Weather forecast unrelated to US politics
+[triage] US Politics — reject — Local NYC politics comment without substantive policy development
+[usage] triage claude-haiku-4-5 in=3046 out=707 cache_r=0 cache_w=0 $0.006581
+[triage] European Football — PASS (severity 3) — Major ownership change at established Premier League club signals significant upheaval.
+[triage] European Football — PASS (severity 2) — Active transfer pursuit for top defender; notable but not yet concrete.
+[triage] European Football — reject — Player profile piece; lacks concrete development or news.
+[triage] European Football — reject — Process story about administrative coordination; no actual development.
+[triage] European Football — PASS (severity 2) — New manager outlining transfer strategy; substantive but routine pre-season commentary.
+[triage] European Football — PASS (severity 3) — Major forward transfer between two elite clubs; significant completed deal.
+[triage] European Football — PASS (severity 3) — Repeated rejection of substantial bids signals ongoing saga; noteworthy impasse.
+[triage] European Football — reject — Sponsorship policy explainer; procedural change without fresh development.
+[triage] European Football — reject — Routine pre-season squad commentary; no concrete development.
+[triage] European Football — PASS (severity 4) — Competitive debut for teenage talent with strong performance in major fixture.
+[triage] European Football — PASS (severity 3) — Cup final result and tactical analysis of significant competitive match.
+[triage] European Football — reject — VAR technical incident; already covered in match reporting.
+[triage] European Football — reject — Boardroom context piece during transition; lacks substantive development.
+[triage] European Football — PASS (severity 2) — Third-place World Cup squad in high demand; notable transfer trend story.
+[triage] European Football — PASS (severity 2) — Transfer market activity from two young Arsenal players; active but not exceptional.
+[triage] European Football — reject — Apology statement; minor personal comment without broader significance.
+[triage] European Football — reject — Announcement of upcoming season stories; preview content without current news.
+[triage] European Football — reject — Minor move between mid-tier clubs; routine player transfer.
+[triage] European Football — reject — Institutional political maneuvering; tangential to competitive football.
+[triage] European Football — reject — Duplicate coverage of match already reported; no new information.
+[usage] triage claude-haiku-4-5 in=2578 out=690 cache_r=0 cache_w=0 $0.006028
+[triage] European Football — PASS (severity 4) — Major managerial appointment: Xavi to Netherlands through 2030 World Cup.
+[triage] European Football — reject — Routine season preview; no new developments or concrete information.
+[triage] European Football — reject — Opinion analysis piece about Uefa/Fifa politics, not substantive football news.
+[triage] European Football — reject — Opinion column about Postecoglou appointment; no new reporting or developments.
+[triage] European Football — reject — Minor human-interest feature about backup goalkeeper; insufficient news substance.
+[triage] European Football — reject — Routine season preview with no concrete developments or reporting.
+[triage] European Football — reject — Podcast preview announcement; no substantive news or developments to cover.
+[triage] European Football — reject — Opinion analysis; lacks concrete developments in Saudi football.
+[triage] European Football — reject — Trend piece about Australian transfers; incremental player movement reporting.
+[triage] European Football — reject — Vague, incomplete signup appeal; lacks concrete football news or developments.
+[triage] European Football — PASS (severity 3) — Galatasaray bid for Martinelli; substantive transfer news with financial details.
+[triage] European Football — reject — Trivia Q&A; not substantive football development or news.
+[triage] European Football — PASS (severity 2) — Lucumi transfer progressing toward completion; concrete deal development.
+[triage] European Football — reject — Minor personal connection story; insufficient news substance.
+[triage] European Football — reject — Routine injury update for friendly match; minor squad news.
+[triage] European Football — PASS (severity 2) — Nkunku transfer market movement and Leao contract speculation.
+[triage] European Football — reject — Speculative transfer rumor without concrete development or offer.
+[triage] European Football — reject — Unconfirmed transfer rumor; lacks substantive development or concrete reporting.
+[triage] European Football — reject — Speculative report about loan negotiations; no confirmed developments.
+[usage] triage claude-haiku-4-5 in=2045 out=673 cache_r=0 cache_w=0 $0.005410
+[triage] European Football — PASS (severity 3) — Malawi's underdog run to WAFCON final is a genuine tournament highlight.
+[triage] European Football — reject — Pundit speculation about transfer targets lacks substance or news.
+[triage] European Football — reject — Generic podcast teaser provides no concrete information.
+[triage] European Football — reject — Live transfer rumour feed without specific developments.
+[triage] European Football — PASS (severity 3) — Rangers' Europa League exit marks significant managerial crisis point.
+[triage] European Football — reject — Poll question lacks reporting on actual transfer news.
+[triage] European Football — reject — Unsubstantiated transfer rumour from newspaper roundup.
+[triage] European Football — PASS (severity 2) — Confirmed midfielder transfer exit with reported fee agreed.
+[triage] European Football — reject — Manager's generic statement about transfer activity intentions.
+[triage] European Football — reject — Betting predictions lack substance for sports briefing.
+[triage] European Football — reject — Minor youth player profile piece insufficient for briefing.
+[triage] European Football — PASS (severity 2) — Scottish clubs' European progress and Hearts' draw with Benfica newsworthy.
+[triage] European Football — reject — Manager chasing reunion lacks confirmed development.
+[triage] European Football — reject — Generic season preview lacks substantive news development.
+[triage] European Football — reject — Opinion piece on referee conduct and VAR, not news.
+[triage] European Football — PASS (severity 2) — Somali referee's UEFA Super Cup assignment is noteworthy human interest story.
+[triage] European Football — PASS (severity 2) — Manchester City midfielder transfer to Saudi Arabia confirmed with fee.
+[triage] European Football — reject — France coaching appointment lacks broader significance.
+[triage] European Football — reject — MLS transfer outside European football topic scope.
+[triage] European Football — reject — Opinion column on Real Madrid transfer strategy without news.
+[usage] triage claude-haiku-4-5 in=2645 out=690 cache_r=0 cache_w=0 $0.006095
+[triage] US Politics — PASS (severity 3) — Major regulatory reversal affecting business compliance; significant policy shift.
+[triage] US Politics — reject — Routine campaign positioning; minor and speculative.
+[triage] US Politics — reject — Standard endorsement within party; procedural and expected.
+[triage] US Politics — reject — Tangential to politics; primarily a personal story.
+[triage] US Politics — reject — Opinion analysis; lacks concrete development or news.
+[triage] US Politics — reject — Analysis of one primary loss; routine intra-party dynamics.
+[triage] US Politics — PASS (severity 3) — Trump envoy Israel visit on Gaza; substantive diplomatic development.
+[triage] US Politics — PASS (severity 2) — Actual legislative maneuvering with real consequences and reactions.
+[triage] US Politics — PASS (severity 3) — Multiple Democratic primary upsets signal major intra-party realignment.
+[triage] US Politics — reject — Media gossip about Trump's priorities; opinion, not news.
+[triage] US Politics — reject — Tech industry story; off-topic for US politics brief.
+[triage] US Politics — reject — Polling analysis; off-topic for US politics brief.
+[triage] US Politics — PASS (severity 3) — Major ICE policy expansion; significant civil liberties development.
+[triage] US Politics — reject — Economic analysis; off-topic for US politics brief.
+[triage] US Politics — reject — Energy markets; off-topic for US politics brief.
+[triage] US Politics — reject — Healthcare/pharma AI development; off-topic for US politics brief.
+[triage] US Politics — reject — Tech company policy; off-topic for US politics brief.
+[triage] US Politics — PASS (severity 2) — Gubernatorial successor formally chosen; consequential state-level development.
+[triage] US Politics — PASS (severity 4) — Federal court blocks Trump voting restrictions nationwide; major legal check.
+[triage] US Politics — PASS (severity 2) — Significant campaign spending surge signals competitive Senate race shift.
+[usage] triage claude-haiku-4-5 in=2319 out=614 cache_r=0 cache_w=0 $0.005389
+[triage] US Finance — reject — Routine currency movement update without major policy resolution.
+[triage] US Finance — PASS (severity 2) — Tax implementation advances; procedural development with real fiscal implications.
+[triage] US Finance — PASS (severity 3) — Key inflation signal affecting Fed expectations and major asset class.
+[triage] US Finance — reject — Opinion/analysis piece on measurement methodology, no new data.
+[triage] US Finance — reject — Routine earnings report for private company; incomplete story.
+[triage] US Finance — reject — Consumer trend piece unrelated to finance markets or policy.
+[triage] US Finance — PASS (severity 2) — Emerging market rally reflects broader AI trade momentum shift.
+[triage] US Finance — PASS (severity 4) — Record bond yields signal major debt/deficit concerns; significant market development.
+[triage] US Finance — PASS (severity 3) — S&P 500 record reflects inflation cooldown and Fed expectations shift.
+[triage] US Finance — reject — Sports valuation analysis unrelated to US finance markets.
+[triage] US Finance — PASS (severity 2) — Notable activist exit signals shifting investment thesis on auto sector.
+[triage] US Finance — reject — International energy deal; peripheral to US finance focus.
+[triage] US Finance — PASS (severity 2) — Major food producer restructuring reflects real input cost pressure.
+[triage] US Finance — reject — Local policy process story; no market or systemic impact yet.
+[triage] US Finance — PASS (severity 2) — AI displacement risk in software sector warrants investor attention.
+[triage] US Finance — reject — Commentary on market strategy; analysis rather than news development.
+[triage] US Finance — PASS (severity 2) — Significant energy M&A deal with major financial commitment.
+[triage] US Finance — PASS (severity 3) — Latest inflation data directly shapes Fed policy outlook going forward.
+[digest] European Football: kept 8 of 57 notable — dropped 49 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] French Politics: kept 8 of 9 notable — dropped 1 at severity 2
+[digest] Geopolitics: kept 8 of 42 notable — dropped 34 at severity 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1
+[digest] Morocco: kept 8 of 44 notable — dropped 36 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] Tech/AI: kept 8 of 50 notable — dropped 42 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1
+[digest] US Finance: kept 8 of 30 notable — dropped 22 at severity 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] US Politics: kept 8 of 43 notable — dropped 35 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[usage] writeCard claude-sonnet-5 in=1229 out=225 cache_r=0 cache_w=0 $0.004708
+[usage] writeCard claude-sonnet-5 in=1123 out=210 cache_r=0 cache_w=0 $0.004346
+[usage] writeCard claude-sonnet-5 in=924 out=178 cache_r=0 cache_w=0 $0.003628
+[usage] writeCard claude-sonnet-5 in=871 out=201 cache_r=0 cache_w=0 $0.003752
+[usage] writeCard claude-sonnet-5 in=1163 out=226 cache_r=0 cache_w=0 $0.004586
+[usage] writeCard claude-sonnet-5 in=939 out=196 cache_r=0 cache_w=0 $0.003838
+[usage] writeCard claude-sonnet-5 in=926 out=215 cache_r=0 cache_w=0 $0.004002
+[usage] writeCard claude-haiku-4-5 in=651 out=104 cache_r=0 cache_w=0 $0.001171
+[usage] writeCard claude-haiku-4-5 in=741 out=112 cache_r=0 cache_w=0 $0.001301
+[usage] writeCard claude-haiku-4-5 in=649 out=95 cache_r=0 cache_w=0 $0.001124
+[usage] writeCard claude-sonnet-5 in=954 out=187 cache_r=0 cache_w=0 $0.003778
+[usage] writeCard claude-haiku-4-5 in=737 out=122 cache_r=0 cache_w=0 $0.001347
+[usage] writeCard claude-haiku-4-5 in=705 out=107 cache_r=0 cache_w=0 $0.001240
+[usage] writeCard claude-haiku-4-5 in=653 out=100 cache_r=0 cache_w=0 $0.001153
+[usage] writeCard claude-haiku-4-5 in=899 out=155 cache_r=0 cache_w=0 $0.001674
+[usage] writeCard claude-haiku-4-5 in=667 out=112 cache_r=0 cache_w=0 $0.001227
+[usage] writeCard claude-haiku-4-5 in=703 out=106 cache_r=0 cache_w=0 $0.001233
+[usage] writeCard claude-haiku-4-5 in=644 out=95 cache_r=0 cache_w=0 $0.001119
+[usage] writeCard claude-sonnet-5 in=932 out=225 cache_r=0 cache_w=0 $0.004114
+[usage] writeCard claude-haiku-4-5 in=776 out=105 cache_r=0 cache_w=0 $0.001301
+[usage] writeCard claude-haiku-4-5 in=616 out=101 cache_r=0 cache_w=0 $0.001121
+[usage] writeCard claude-haiku-4-5 in=648 out=102 cache_r=0 cache_w=0 $0.001158
+[usage] writeCard claude-sonnet-5 in=1098 out=213 cache_r=0 cache_w=0 $0.004326
+[usage] writeCard claude-haiku-4-5 in=666 out=124 cache_r=0 cache_w=0 $0.001286
+[usage] writeCard claude-haiku-4-5 in=690 out=117 cache_r=0 cache_w=0 $0.001275
+[usage] writeCard claude-haiku-4-5 in=644 out=100 cache_r=0 cache_w=0 $0.001144
+[usage] writeCard claude-sonnet-5 in=925 out=216 cache_r=0 cache_w=0 $0.004010
+[usage] writeCard claude-haiku-4-5 in=645 out=121 cache_r=0 cache_w=0 $0.001250
+[usage] writeCard claude-haiku-4-5 in=669 out=107 cache_r=0 cache_w=0 $0.001204
+[usage] writeCard claude-haiku-4-5 in=750 out=133 cache_r=0 cache_w=0 $0.001415
+[usage] writeCard claude-haiku-4-5 in=657 out=111 cache_r=0 cache_w=0 $0.001212
+[usage] writeCard claude-haiku-4-5 in=630 out=115 cache_r=0 cache_w=0 $0.001205
+[usage] writeCard claude-haiku-4-5 in=696 out=120 cache_r=0 cache_w=0 $0.001296
+[usage] writeCard claude-haiku-4-5 in=688 out=122 cache_r=0 cache_w=0 $0.001298
+[usage] writeCard claude-haiku-4-5 in=696 out=122 cache_r=0 cache_w=0 $0.001306
+[usage] writeCard claude-haiku-4-5 in=665 out=114 cache_r=0 cache_w=0 $0.001235
+[usage] writeCard claude-haiku-4-5 in=660 out=99 cache_r=0 cache_w=0 $0.001155
+[usage] writeCard claude-haiku-4-5 in=659 out=126 cache_r=0 cache_w=0 $0.001289
+[usage] writeCard claude-haiku-4-5 in=730 out=98 cache_r=0 cache_w=0 $0.001220
+[usage] writeCard claude-haiku-4-5 in=663 out=116 cache_r=0 cache_w=0 $0.001243
+[usage] writeCard claude-haiku-4-5 in=634 out=112 cache_r=0 cache_w=0 $0.001194
+[usage] writeCard claude-haiku-4-5 in=633 out=128 cache_r=0 cache_w=0 $0.001273
+[usage] writeCard claude-haiku-4-5 in=667 out=133 cache_r=0 cache_w=0 $0.001332
+[usage] writeCard claude-haiku-4-5 in=624 out=119 cache_r=0 cache_w=0 $0.001219
+[usage] writeCard claude-haiku-4-5 in=631 out=148 cache_r=0 cache_w=0 $0.001371
+[usage] writeCard claude-sonnet-5 in=1026 out=118 cache_r=0 cache_w=0 $0.003232
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "France, alongside more than 30 countries including the UK and Canada, signed a joint statement condemning Iran's execution of anti-government protesters, accusing Tehran of wielding the death penalty …"
+[usage] writeCard claude-haiku-4-5 in=644 out=125 cache_r=0 cache_w=0 $0.001269
+[usage] writeCard claude-haiku-4-5 in=669 out=106 cache_r=0 cache_w=0 $0.001199
+[usage] writeCard claude-sonnet-5 in=1424 out=243 cache_r=0 cache_w=0 $0.005278
+[usage] writeCard claude-sonnet-5 in=1205 out=231 cache_r=0 cache_w=0 $0.004720
+[usage] writeCard claude-haiku-4-5 in=648 out=126 cache_r=0 cache_w=0 $0.001278
+[usage] writeCard claude-sonnet-5 in=1103 out=257 cache_r=0 cache_w=0 $0.004776
+[usage] writeCard claude-sonnet-5 in=989 out=107 cache_r=0 cache_w=0 $0.003048
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "Premier League referee Anthony Taylor is retiring after 20 years, saying relentless criticism and a "
+[usage] writeCard claude-haiku-4-5 in=644 out=108 cache_r=0 cache_w=0 $0.001184
+[usage] writeCard claude-haiku-4-5 in=749 out=98 cache_r=0 cache_w=0 $0.001239
+[usage] writeCard claude-haiku-4-5 in=656 out=99 cache_r=0 cache_w=0 $0.001151
+[usage] writeCard claude-haiku-4-5 in=650 out=111 cache_r=0 cache_w=0 $0.001205
+[usage] writeCard claude-haiku-4-5 in=659 out=107 cache_r=0 cache_w=0 $0.001194
+[usage] writeCard claude-haiku-4-5 in=722 out=127 cache_r=0 cache_w=0 $0.001357
+[usage] writeCard claude-haiku-4-5 in=770 out=120 cache_r=0 cache_w=0 $0.001370
+[usage] writeCard claude-haiku-4-5 in=671 out=129 cache_r=0 cache_w=0 $0.001316
+[usage] writeCard claude-haiku-4-5 in=762 out=121 cache_r=0 cache_w=0 $0.001367
+[usage] writeCard claude-sonnet-5 in=1026 out=177 cache_r=0 cache_w=0 $0.003822
+[usage] writeCard claude-sonnet-5 in=989 out=140 cache_r=0 cache_w=0 $0.003378
+[digest] writeCard failed: Error: writeCard produced an incomplete output even after retry (stop_reason: end_turn): "Premier League referee Anthony Taylor has stepped away from officiating after 20 years, saying he will not be involved at the start of the new season. He told the BBC that persistent criticism from former referees turned pundits, alongside VAR scrutiny, has fostered a "
+    at generateWithRetryOnAmbiguousTruncation (src/lib/claudeText.ts:71:11)
+    at async writeCard (src/lib/writeCard.ts:137:49)
+    at async runDigestPipeline (src/app/api/digest/route.ts:191:21)
+    at async Object.pull (src/app/api/digest/route.ts:326:33)
+  69 |   const retry = await generate();
+  70 |   if (retry.text.trim().length === 0 || !looksComplete(retry.text)) {
+> 71 |     throw new Error(
+     |           ^
+  72 |       `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopR...
+  73 |     );
+  74 |   }
+[usage] rank claude-haiku-4-5 in=4828 out=62 cache_r=0 cache_w=0 $0.005138
+[usage] digest complete — 108 calls
+[usage]   stage       calls  model                input  output  cache_r  cache_w       billed      at list
+[usage]   triage         43  claude-haiku-4-5     98800   26449        0        0    $0.231045    $0.231045
+[usage]   writeCard      18  claude-sonnet-5      18846    3565        0        0    $0.073342    $0.110013
+[usage]   writeCard      46  claude-haiku-4-5     31330    5278        0        0    $0.057720    $0.057720
+[usage]   rank            1  claude-haiku-4-5      4828      62        0        0    $0.005138    $0.005138
+[usage]   TOTAL         108                      153804   35354        0        0    $0.367245    $0.403916
+[usage] writeCard made 64 calls for 62 — 2 extra billed attempt(s) (truncation retry and/or a failed item).
+[usage] claude-sonnet-5 introductory pricing was in effect for this run and ends 2026-08-31 — "at list" is what this same run costs from the day after. Rates last verified 2026-08-13.
+ POST /api/digest 200 in 54s (next.js: 248ms, proxy.ts: 12ms, application-code: 53s)
+ GET /topic/european-football 200 in 1630ms (next.js: 522ms, proxy.ts: 37ms, application-code: 1072ms)
+ GET /topic/tech-ai 200 in 704ms (next.js: 22ms, proxy.ts: 8ms, application-code: 673ms)
+ GET /topic/us-politics 200 in 638ms (next.js: 11ms, proxy.ts: 9ms, application-code: 618ms)
+ GET /topic/morocco-politics 200 in 894ms (next.js: 10ms, proxy.ts: 8ms, application-code: 875ms)
+ GET /topic/french-politics 200 in 690ms (next.js: 9ms, proxy.ts: 10ms, application-code: 671ms)
+ GET /topic/geopolitics 200 in 641ms (next.js: 12ms, proxy.ts: 8ms, application-code: 621ms)
+ GET / 200 in 610ms (next.js: 5ms, proxy.ts: 8ms, application-code: 597ms)
+ GET /topic/european-football 200 in 489ms (next.js: 6ms, proxy.ts: 6ms, application-code: 477ms)
+ GET / 200 in 498ms (next.js: 4ms, proxy.ts: 9ms, application-code: 485ms)
+ GET /topic/tech-ai 200 in 638ms (next.js: 10ms, proxy.ts: 12ms, application-code: 616ms)
+ GET / 200 in 478ms (next.js: 4ms, proxy.ts: 6ms, application-code: 468ms)
+ GET /topic/european-football 200 in 723ms (next.js: 7ms, proxy.ts: 8ms, application-code: 708ms)
+ GET / 200 in 595ms (next.js: 3ms, proxy.ts: 3ms, application-code: 590ms)
+ GET /topic/tech-ai 200 in 413ms (next.js: 10ms, proxy.ts: 9ms, application-code: 394ms)
+ GET / 200 in 428ms (next.js: 1900µs, proxy.ts: 5ms, application-code: 421ms)
+ GET /topic/european-football 200 in 420ms (next.js: 7ms, proxy.ts: 8ms, application-code: 405ms)
+ GET / 200 in 479ms (next.js: 5ms, proxy.ts: 15ms, application-code: 459ms)
+ GET /topic/european-football 200 in 324ms (next.js: 8ms, proxy.ts: 7ms, application-code: 309ms)
+ GET / 200 in 435ms (next.js: 3ms, proxy.ts: 7ms, application-code: 424ms)
+ GET /topic/european-football 200 in 388ms (next.js: 10ms, proxy.ts: 8ms, application-code: 371ms)
+ GET / 200 in 512ms (next.js: 4ms, proxy.ts: 7ms, application-code: 501ms)
+ GET /topic/french-politics 200 in 378ms (next.js: 10ms, proxy.ts: 7ms, application-code: 362ms)
+ GET / 200 in 399ms (next.js: 3ms, proxy.ts: 9ms, application-code: 387ms)
+ GET /topic/morocco 200 in 395ms (next.js: 8ms, proxy.ts: 6ms, application-code: 381ms)
+ GET / 200 in 444ms (next.js: 4ms, proxy.ts: 6ms, application-code: 434ms)
+ GET /topic/tech-ai 200 in 361ms (next.js: 5ms, proxy.ts: 4ms, application-code: 351ms)
+ GET / 200 in 473ms (next.js: 3ms, proxy.ts: 5ms, application-code: 464ms)
+ GET /topic/european-football 200 in 654ms (next.js: 10ms, proxy.ts: 10ms, application-code: 634ms)
+ GET / 200 in 1131ms (next.js: 11ms, proxy.ts: 344ms, application-code: 776ms)
+[?25h
