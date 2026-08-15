@@ -873,3 +873,561 @@ describe("F.4.5 round 2: split-retry ladder edge cases", () => {
     }
   });
 });
+
+// The per-verdict log line is the only per-cluster record a triage run
+// leaves behind, and F.4.6's cost measurement runs with TRIAGE_REASONS=0 —
+// so without the story's title in it, a capture says a verdict was reached
+// but never about what, and calibration can't be audited without paying for
+// per-verdict reasons. These pin the title's presence, its shape, and (most
+// importantly) that it can never throw on the un-guarded path where it runs.
+describe("triage log line", () => {
+  function captureLines(fn: () => Promise<unknown>) {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    return fn().then((result) => {
+      spy.mockRestore();
+      return { lines: lines.filter((l) => l.startsWith("[triage]")), result };
+    });
+  }
+
+  it("names the story each verdict was about", async () => {
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "Anthropic ships a new model")])
+    );
+
+    expect(lines).toEqual([
+      '[triage] Tech/AI — PASS (severity 1) — "Anthropic ships a new model"',
+    ]);
+  });
+
+  it("names the story on a reject too", async () => {
+    mockParse.mockResolvedValue(verdictsFor(1, false));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Morocco", "A routine ministry reshuffle")])
+    );
+
+    expect(lines).toEqual([
+      '[triage] Morocco — reject — "A routine ministry reshuffle"',
+    ]);
+  });
+
+  it("truncates a long title rather than flooding the capture", async () => {
+    const long = "x".repeat(200);
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", long)])
+    );
+
+    expect(lines[0]).toBe(`[triage] Tech/AI — PASS (severity 1) — "${"x".repeat(80)}…"`);
+  });
+
+  it("truncates at exactly one character over the limit, and not at the limit", async () => {
+    // Pins the > boundary itself. The 200-char case above is unaffected by
+    // an off-by-one, so without this a > -> >= slip goes unnoticed.
+    const { triageClusters } = await import("@/lib/triage");
+
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const atLimit = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "y".repeat(80))])
+    );
+    expect(atLimit.lines[0]).toBe(`[triage] Tech/AI — PASS (severity 1) — "${"y".repeat(80)}"`);
+
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const overLimit = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "y".repeat(81))])
+    );
+    expect(overLimit.lines[0]).toBe(`[triage] Tech/AI — PASS (severity 1) — "${"y".repeat(80)}…"`);
+  });
+
+  it("truncates by code point, so a non-BMP character can't be cut in half", async () => {
+    // Real feeds carry emoji and non-BMP characters. Slicing by UTF-16 code
+    // unit at a boundary that lands mid-pair emits a lone surrogate.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+    // 79 ASCII + an emoji = 80 code points but 81 code units, so a
+    // code-unit slice at 80 would split the pair.
+    const straddling = `${"z".repeat(79)}🚀`;
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", straddling)])
+    );
+
+    expect(lines[0]).toBe(`[triage] Tech/AI — PASS (severity 1) — "${straddling}"`);
+    expect(lines[0]).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  it("keeps the title a single unambiguous field when it contains dashes, quotes or newlines", async () => {
+    // The line is what an audit of a reasons-off capture parses. A headline
+    // carrying its own " — " or a stray newline would otherwise split into
+    // segments indistinguishable from the verdict/title/reason boundaries.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([
+        makeCluster("US Finance", 'Fed hikes rates — third\nthis year, says "the chair"'),
+      ])
+    );
+
+    expect(lines[0]).toBe(
+      `[triage] US Finance — PASS (severity 1) — "Fed hikes rates — third this year, says 'the chair'"`
+    );
+    expect(lines[0].split("\n")).toHaveLength(1);
+  });
+
+  it("survives a title that throws when read, without losing the batch's other verdicts", async () => {
+    // The expensive case. A getter that succeeds while the prompt is built
+    // (so the call is made and BILLED) but throws on this later read would,
+    // if unguarded, escape judgeBatch and discard every verdict in that
+    // already-paid-for response — not just this cluster's.
+    let reads = 0;
+    const poisoned = makeCluster("Tech/AI", "placeholder");
+    Object.defineProperty(poisoned.articles[0], "title", {
+      get() {
+        reads += 1;
+        if (reads > 1) throw new Error("title read blew up");
+        return "Readable exactly once";
+      },
+    });
+
+    mockParse.mockResolvedValue(verdictsFor(2));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines, result } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A healthy story"), poisoned])
+    );
+
+    // Both verdicts survive, and only one API call was needed — no retry.
+    expect(result).toEqual([
+      { notable: true, severity: 1 },
+      { notable: true, severity: 2 },
+    ]);
+    expect(mockParse).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([
+      '[triage] Tech/AI — PASS (severity 1) — "A healthy story"',
+      "[triage] Tech/AI — PASS (severity 2)",
+    ]);
+  });
+
+  it("flattens the reason too, so one verdict can never look like two records", async () => {
+    // The reason is unconstrained model output — z.string() with no .max(),
+    // and the 12-word cap is only a prompt instruction. An embedded newline
+    // would split one verdict across what reads as two [triage] lines, in
+    // exactly the reasons-on capture used to investigate calibration.
+    process.env.TRIAGE_REASONS = "1";
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [
+          {
+            index: 0,
+            notable: true,
+            severity: 3,
+            reason: 'major ruling,\nnot  "routine" ',
+          },
+        ],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("US Politics", "Court rules on tariffs")])
+    );
+
+    expect(lines).toEqual([
+      `[triage] US Politics — PASS (severity 3) — "Court rules on tariffs" — major ruling, not 'routine'`,
+    ]);
+    expect(lines[0].split("\n")).toHaveLength(1);
+  });
+
+  it("caps an overlong reason, the field most likely to overrun", async () => {
+    // The 12-word limit is a prompt instruction, not a schema constraint —
+    // z.string() carries no .max() on purpose, since a length violation
+    // would fail validation and kill a batch of already-paid-for verdicts.
+    // So the log line is where the bound has to live.
+    process.env.TRIAGE_REASONS = "1";
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: "w".repeat(500) }],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A story")])
+    );
+
+    expect(lines[0]).toBe(
+      `[triage] Tech/AI — PASS (severity 3) — "A story" — ${"w".repeat(160)}…`
+    );
+  });
+
+  it("caps the reason at exactly one code point over the limit, and not at the limit", async () => {
+    process.env.TRIAGE_REASONS = "1";
+    const { triageClusters } = await import("@/lib/triage");
+
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: "w".repeat(160) }],
+      },
+    });
+    const atLimit = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A story")])
+    );
+    expect(atLimit.lines[0]).toBe(
+      `[triage] Tech/AI — PASS (severity 3) — "A story" — ${"w".repeat(160)}`
+    );
+
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: "w".repeat(161) }],
+      },
+    });
+    const overLimit = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A story")])
+    );
+    expect(overLimit.lines[0]).toBe(
+      `[triage] Tech/AI — PASS (severity 3) — "A story" — ${"w".repeat(160)}…`
+    );
+  });
+
+  it("caps the reason by code point too, so a non-BMP character can't be cut in half", async () => {
+    process.env.TRIAGE_REASONS = "1";
+    // 159 ASCII + an emoji = 160 code points but 161 code units.
+    const straddling = `${"v".repeat(159)}🚀`;
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: straddling }],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A story")])
+    );
+
+    expect(lines[0]).toBe(`[triage] Tech/AI — PASS (severity 3) — "A story" — ${straddling}`);
+    expect(lines[0]).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
+  it("omits a whitespace-only title rather than logging empty quotes", async () => {
+    // The title-side mirror of the reason test below. Both fields share
+    // flattenForLog today, so this is only distinguishable if the two
+    // helpers are ever forked — which is exactly when a silent regression
+    // here would otherwise go uncaught.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "  \n\t ")])
+    );
+
+    expect(lines).toEqual(["[triage] Tech/AI — PASS (severity 1)"]);
+  });
+
+  it("omits a whitespace-only reason rather than leaving a dangling separator", async () => {
+    process.env.TRIAGE_REASONS = "1";
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: "   \n  " }],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("Tech/AI", "A story")])
+    );
+
+    expect(lines[0]).toBe(`[triage] Tech/AI — PASS (severity 3) — "A story"`);
+  });
+
+  it("survives a reason that throws when read, without losing the batch's other verdicts", async () => {
+    // loggedReason shares loggedHeadline's failure surface exactly — same
+    // unguarded line, same already-billed response — but nothing pinned its
+    // guard: deleting loggedReason's try/catch outright left every other
+    // test in this file green.
+    process.env.TRIAGE_REASONS = "1";
+    const poisoned = { index: 1, notable: true, severity: 2 };
+    Object.defineProperty(poisoned, "reason", {
+      enumerable: true,
+      get() {
+        throw new Error("reason read blew up");
+      },
+    });
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [{ index: 0, notable: true, severity: 3, reason: "fine" }, poisoned],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines, result } = await captureLines(() =>
+      triageClusters([
+        makeCluster("Tech/AI", "A healthy story"),
+        makeCluster("Tech/AI", "The poisoned one"),
+      ])
+    );
+
+    expect(result).toEqual([
+      { notable: true, severity: 3 },
+      { notable: true, severity: 2 },
+    ]);
+    expect(mockParse).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([
+      '[triage] Tech/AI — PASS (severity 3) — "A healthy story" — fine',
+      '[triage] Tech/AI — PASS (severity 2) — "The poisoned one"',
+    ]);
+  });
+
+  it("survives a throw from the reason TRANSFORM, not just the reason read", async () => {
+    // loggedReason's counterpart to the title-transform test below. Its
+    // guard has the same scope hazard: narrowed to wrap only the property
+    // read, a throw from flattenForLog's internals escapes judgeBatch and
+    // re-sends an already-billed batch — and it would do so during
+    // TRIAGE_REASONS=1 specifically, the paid calibration run this field
+    // exists for. The existing throwing-getter test can't catch that.
+    process.env.TRIAGE_REASONS = "1";
+    const poisoned = "reason that explodes on transform";
+    const original = String.prototype.replace;
+    const spy = vi
+      .spyOn(String.prototype, "replace")
+      .mockImplementation(function (this: string, ...args: unknown[]) {
+        if (String(this) === poisoned) throw new Error("replace blew up");
+        return (original as (...a: unknown[]) => string).apply(this, args);
+      } as typeof String.prototype.replace);
+
+    try {
+      mockParse.mockResolvedValue({
+        parsed_output: {
+          verdicts: [
+            { index: 0, notable: true, severity: 3, reason: "fine" },
+            { index: 1, notable: true, severity: 2, reason: poisoned },
+          ],
+        },
+      });
+      const { triageClusters } = await import("@/lib/triage");
+
+      const { lines, result } = await captureLines(() =>
+        triageClusters([
+          makeCluster("Tech/AI", "A healthy story"),
+          makeCluster("Tech/AI", "The other story"),
+        ])
+      );
+
+      expect(result).toEqual([
+        { notable: true, severity: 3 },
+        { notable: true, severity: 2 },
+      ]);
+      expect(mockParse).toHaveBeenCalledTimes(1);
+      expect(lines).toEqual([
+        '[triage] Tech/AI — PASS (severity 3) — "A healthy story" — fine',
+        '[triage] Tech/AI — PASS (severity 2) — "The other story"',
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("survives a throw from the title TRANSFORM, not just the title read", async () => {
+    // Pins the guard's SCOPE rather than its existence. Every other test
+    // here throws from the property getter, which a catch wrapped around
+    // only the read would also survive — so without this, narrowing the
+    // guard back to just the read leaves the whole suite green while
+    // reopening the defect: a throw in replace/trim/slice escapes
+    // judgeBatch and discards an entire already-billed response's verdicts.
+    //
+    // Tampering is scoped to this one title string so the SDK and zod,
+    // which also call replace while the request is built, are unaffected.
+    const poisoned = "Title that explodes on transform";
+    const original = String.prototype.replace;
+    const spy = vi
+      .spyOn(String.prototype, "replace")
+      .mockImplementation(function (this: string, ...args: unknown[]) {
+        if (String(this) === poisoned) throw new Error("replace blew up");
+        return (original as (...a: unknown[]) => string).apply(this, args);
+      } as typeof String.prototype.replace);
+
+    try {
+      mockParse.mockResolvedValue(verdictsFor(2));
+      const { triageClusters } = await import("@/lib/triage");
+
+      const { lines, result } = await captureLines(() =>
+        triageClusters([
+          makeCluster("Tech/AI", "A healthy story"),
+          makeCluster("Tech/AI", poisoned),
+        ])
+      );
+
+      expect(result).toEqual([
+        { notable: true, severity: 1 },
+        { notable: true, severity: 2 },
+      ]);
+      expect(mockParse).toHaveBeenCalledTimes(1);
+      expect(lines).toEqual([
+        '[triage] Tech/AI — PASS (severity 1) — "A healthy story"',
+        "[triage] Tech/AI — PASS (severity 2)",
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("omits a non-string title rather than stringifying it", async () => {
+    // Keeps the log line's template literal from invoking a foreign
+    // toString. A number is the case that actually reaches loggedHeadline:
+    // a title whose toString THROWS never gets that far, because
+    // clusterContext interpolates every title while building the prompt, so
+    // that batch fails closed before the call is made — see the next test.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+    const cluster = makeCluster("Tech/AI", "placeholder");
+    (cluster.articles[0] as { title: unknown }).title = 42;
+
+    const { lines, result } = await captureLines(() => triageClusters([cluster]));
+
+    expect(lines).toEqual(["[triage] Tech/AI — PASS (severity 1)"]);
+    expect(result).toEqual([{ notable: true, severity: 1 }]);
+  });
+
+  it("fails a title that throws while the prompt is built closed, before spending anything", async () => {
+    // Documents where that hazard actually lands: clusterContext throws
+    // before recordCall, so nothing is billed, the split-retry ladder runs
+    // and gives up, and triageClusters still honours its never-rejects
+    // contract by returning one fail-closed outcome per cluster.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+    const cluster = makeCluster("Tech/AI", "placeholder");
+    (cluster.articles[0] as { title: unknown }).title = {
+      toString() {
+        throw new Error("toString blew up");
+      },
+    };
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const outcomes = await triageClusters([cluster]);
+    vi.mocked(console.error).mockRestore();
+
+    expect(outcomes).toEqual([{ notable: false, severity: 1 }]);
+    expect(mockParse).not.toHaveBeenCalled();
+  });
+
+  it("logs without a title, and without throwing, for a cluster with no articles", async () => {
+    // The load-bearing case. This runs OUTSIDE the guarded console.log, so a
+    // throw here would escape judgeBatch into the split-retry ladder and
+    // re-send a whole batch of already-billed verdicts. Articles is typed
+    // Article[] with no non-empty guarantee, so this has to be total.
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+    const empty: Cluster = { topic: "Tech/AI", articles: [] };
+
+    const { lines, result } = await captureLines(() => triageClusters([empty]));
+
+    expect(lines).toEqual(["[triage] Tech/AI — PASS (severity 1)"]);
+    expect(result).toEqual([{ notable: true, severity: 1 }]);
+  });
+
+  it("keeps the title distinguishable from the reason when BOTH contain em dashes", async () => {
+    // The genuinely ambiguous case: a dash in each field is what makes the
+    // quoting load-bearing, since only the quotes tell a reader where the
+    // title ends and the reason begins.
+    process.env.TRIAGE_REASONS = "1";
+    mockParse.mockResolvedValue({
+      parsed_output: {
+        verdicts: [
+          { index: 0, notable: true, severity: 3, reason: "landmark — not procedural" },
+        ],
+      },
+    });
+    const { triageClusters } = await import("@/lib/triage");
+
+    const { lines } = await captureLines(() =>
+      triageClusters([makeCluster("US Politics", "Court rules — tariffs struck down")])
+    );
+
+    expect(lines).toEqual([
+      '[triage] US Politics — PASS (severity 3) — "Court rules — tariffs struck down" — landmark — not procedural',
+    ]);
+    // The quoted span is what disambiguates; a naive dash split cannot.
+    expect(lines[0].match(/"([^"]*)"/)?.[1]).toBe("Court rules — tariffs struck down");
+  });
+});
+
+// No unit test can validate whether the prompt CALIBRATES well — that only
+// comes back from a paid run against real news. What these pin is that the
+// clauses the calibration depends on are still present, so a later edit
+// can't quietly drop one and leave the failure to be discovered by a $0.35
+// measurement.
+describe("triage system prompt", () => {
+  async function systemPromptSent(): Promise<string> {
+    mockParse.mockResolvedValue(verdictsFor(1));
+    const { triageClusters } = await import("@/lib/triage");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await triageClusters([makeCluster("Tech/AI", "A story")]);
+    vi.mocked(console.log).mockRestore();
+    return mockParse.mock.calls[0][0].system as string;
+  }
+
+  it("anchors notability to the topic's own typical day", async () => {
+    // Matches the anchoring paragraph's own distinctive wording, not the
+    // bare phrase "typical day" — that appears in the severity rubric, in
+    // the batch paragraph and in the severity clause too, so a substring
+    // check on it would survive deleting this paragraph outright.
+    expect(await systemPromptSent()).toContain(
+      "anchor against that typical-day baseline rather than against other clusters"
+    );
+  });
+
+  it("keeps the reject-when-torn tiebreaker in both places it has to appear", async () => {
+    // Case-insensitively, because the original clause opens a sentence
+    // ("When genuinely torn, reject") while the batch restatement below is
+    // mid-sentence. Matching case-sensitively here would silently only
+    // cover the restatement and duplicate the next test.
+    const matches = (await systemPromptSent()).match(/when genuinely torn, reject/gi) ?? [];
+    expect(matches).toHaveLength(2);
+  });
+
+  it("restates the tiebreaker inside the batch instructions", async () => {
+    // The tiebreaker was written when the model saw one cluster per call.
+    // Batching moved the judgement into a list context, and the batch
+    // paragraph is what has to carry every rule that must survive that
+    // context — so the tiebreaker has to appear there, after the paragraph
+    // that introduces the batch, not only in its original single-cluster
+    // home far above.
+    const prompt = await systemPromptSent();
+    const batchParagraphStart = prompt.indexOf("You are given several numbered clusters");
+    expect(batchParagraphStart).toBeGreaterThan(-1);
+    // Deliberately case-sensitive and lowercase: this is the mid-sentence
+    // restatement specifically, not the original sentence-opening clause,
+    // which lives far above the batch paragraph.
+    expect(prompt.indexOf("when genuinely torn, reject", batchParagraphStart)).toBeGreaterThan(
+      batchParagraphStart
+    );
+  });
+
+  it("extends the anti-relative-grading rule to severity, not just pass/reject", async () => {
+    // The measured regression moved the severity DISTRIBUTION as well as
+    // the pass count, and severity is what the per-topic card cap selects
+    // on — so an instruction that only fixes "how many you pass" leaves the
+    // half that decides which stories actually survive uncorrected.
+    const prompt = await systemPromptSent();
+    expect(prompt).toContain("The same applies to severity");
+    expect(prompt).toContain("never against the other clusters in front of you");
+  });
+
+  it("tells the model most clusters in a batch are not notable", async () => {
+    // The base-rate anchor. Without it the model grades the batch against
+    // itself and passes some fraction of whatever it is shown, which is what
+    // doubled the pass rate when triage was batched.
+    const prompt = await systemPromptSent();
+    expect(prompt).toContain("Most clusters in a batch are routine");
+    expect(prompt).toContain("must not depend on how many you were handed");
+  });
+});

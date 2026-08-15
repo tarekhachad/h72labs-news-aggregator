@@ -100,7 +100,9 @@ If the cluster is notable, also grade how significant it is relative to this top
 1 = the least significant thing that still genuinely clears the notability bar above.
 If you reject the cluster, severity doesn't matter — return 1.
 
-You are given several numbered clusters at once. Return exactly one verdict per cluster, each carrying the number it was given. Never merge two clusters into one verdict, never skip a cluster because it resembles another, and never invent a number you weren't given. The numbering exists only to match verdicts back to clusters — it carries no ranking or ordering meaning, and judging each cluster independently against its topic's typical day still applies exactly as described above.`;
+You are given several numbered clusters at once. Return exactly one verdict per cluster, each carrying the number it was given. Never merge two clusters into one verdict, never skip a cluster because it resembles another, and never invent a number you weren't given. The numbering exists only to match verdicts back to clusters — it carries no ranking or ordering meaning, and judging each cluster independently against its topic's typical day still applies exactly as described above.
+
+Seeing many clusters together makes it tempting to rank them against each other and pass the best of whatever you happen to have been shown. Don't. Most clusters in a batch are routine and should be rejected — a typical batch contains only a few genuinely notable items, and some batches contain none at all, which is a fine and expected answer. How many you pass must not depend on how many you were handed. The same applies to severity: grade each cluster against that topic's typical day, never against the other clusters in front of you — the strongest item in a quiet batch is not thereby a 4, and a genuinely major development is still a 4 in a batch full of them. And the tiebreaker above holds inside a batch exactly as it does for a single cluster: when genuinely torn, reject.`;
 
 const REASON_INSTRUCTION = `\n\nFor each verdict also give a reason of at most 12 words.`;
 
@@ -184,6 +186,111 @@ export function triageBatchCount(clusters: Cluster[]): number {
   return planTriageBatches(clusters).length;
 }
 
+const LOGGED_TITLE_MAX = 80;
+// Roughly double a 12-word reason. The cap matters more here than on the
+// title: the title comes from a feed, while `reason` is model output whose
+// only length limit is a prompt instruction (see loggedReason).
+const LOGGED_REASON_MAX = 160;
+
+/**
+ * Flattens a free-text field into one bounded log segment: whitespace runs
+ * collapsed (newlines included), double quotes turned into single ones, and
+ * clipped to `maxPoints`.
+ *
+ * Both fields the log line interpolates need all three, for the same
+ * reasons — one printed line per verdict is the entire structure a capture
+ * is read by, so an embedded newline in either field silently turns one
+ * verdict into what looks like two records, and an unbounded field floods
+ * the capture it exists to make readable.
+ */
+function flattenForLog(value: string, maxPoints: number): string {
+  const flattened = value.replace(/\s+/g, " ").replace(/"/g, "'").trim();
+  // By code point, not code unit: slicing mid-surrogate-pair would emit a
+  // lone surrogate, and real feeds carry emoji and non-BMP characters.
+  const points = Array.from(flattened);
+  return points.length > maxPoints
+    ? `${points.slice(0, maxPoints).join("")}…`
+    : flattened;
+}
+
+/**
+ * The model's reason for a verdict, when TRIAGE_REASONS=1 requested one.
+ *
+ * Total for the same reason loggedHeadline is — it runs on the same
+ * unguarded line, where a throw would escape judgeBatch and re-send a whole
+ * batch of already-billed verdicts. `reason` is `z.string()` with no `.max()`
+ * (deliberately: a length violation would fail validation and kill a batch of
+ * paid verdicts over a diagnostic field), so its length and contents are
+ * whatever the model emitted, and the 12-word cap is a prompt instruction
+ * models routinely overrun.
+ */
+function loggedReason(verdict: object): string {
+  try {
+    // `object` rather than `{ reason?: string }`, which does NOT compile
+    // here: a type whose properties are all optional is a "weak type," and
+    // TypeScript rejects assigning something sharing none of them (TS2559).
+    // The verdict union's reasons-off arm has no `reason` key, so it shares
+    // nothing. `in` then narrows `object` to expose the property.
+    if (!("reason" in verdict) || typeof verdict.reason !== "string") return "";
+    const flattened = flattenForLog(verdict.reason, LOGGED_REASON_MAX);
+    return flattened === "" ? "" : ` — ${flattened}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The lead article's title, for the per-verdict log line. Console-only, so
+ * it costs no tokens.
+ *
+ * Worth its own function because it's what makes a reasons-off capture
+ * auditable at all: topic + verdict + severity says a story was judged but
+ * never which one, so calibration can't be checked without paying for
+ * per-verdict reasons. With this, a run at TRIAGE_REASONS=0 still yields a
+ * full topic/title/verdict/severity table for every cluster.
+ *
+ * Never throws, and it has to not: this is called where `line` is built,
+ * deliberately OUTSIDE the guarded console.log below, so anything escaping
+ * here would propagate out of judgeBatch into the split-retry ladder and
+ * re-send a whole batch of already-billed verdicts. The failure that makes
+ * this worth being paranoid about is a `title` getter that succeeds while
+ * clusterContext builds the prompt (so the call IS made and billed) and
+ * throws on this later read: the whole response's verdicts are discarded,
+ * not just this cluster's.
+ *
+ * Hence the whole body sits in one try/catch rather than just the property
+ * read — the transform calls that follow it (`String.prototype.replace` and
+ * `.trim`, `Array.from`, `Array.prototype.slice`/`.join`, all via
+ * flattenForLog) can throw just as the read can if anything has tampered
+ * with those prototypes.
+ * This is a deliberate exception to the narrow-guard rule the caller
+ * follows: there, a guard around the index lookup would disguise a real
+ * mapping bug as a lost log line; here, the function's entire contract is
+ * "return a string, or nothing" and there is no in-band failure worth
+ * surfacing.
+ *
+ * Note the `cluster?.` chain is defence only — planTriageBatches reads
+ * cluster.topic unguarded, so a null cluster crashes long before this.
+ *
+ * The segment is quoted and flattened so it survives as one field for a
+ * quote-aware (CSV-style) reader. That is NOT the same as making a naive
+ * split(" — ") safe: an em dash inside a headline is left alone, so a
+ * delimiter split still fragments it. What is guaranteed, for this segment
+ * and for loggedReason's, is no embedded newline and no inner double quote.
+ */
+function loggedHeadline(cluster: Cluster): string {
+  try {
+    const raw: unknown = cluster?.articles?.[0]?.title;
+    if (typeof raw !== "string") return "";
+
+    const flattened = flattenForLog(raw, LOGGED_TITLE_MAX);
+    if (flattened === "") return "";
+    return ` — "${flattened}"`;
+  } catch {
+    return "";
+  }
+}
+
 function clusterContext(cluster: Cluster): string {
   return cluster.articles
     .map((a) => `- ${a.title}\n  ${a.snippet.slice(0, 200)}`)
@@ -257,9 +364,15 @@ async function judgeBatch(
     // lookup would swallow a genuine TypeError too, quietly turning "the
     // index mapping is broken" into "a log line went missing." The
     // range check above is what guarantees this lookup resolves.
+    //
+    // That's also why loggedHeadline — and loggedReason, called on the same
+    // line — are total rather than relying on this guard: sitting here,
+    // anything either threw would escape into the retry ladder and re-send a
+    // batch of already-billed verdicts. Both close their own failure modes
+    // internally instead (see their docstrings), so their safety doesn't
+    // depend on the range check above holding.
     const cluster = clusters[indices[verdict.index]];
-    const reason = "reason" in verdict ? ` — ${verdict.reason}` : "";
-    const line = `[triage] ${cluster.topic} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${reason}`;
+    const line = `[triage] ${cluster.topic} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`;
 
     // Guarded: this runs after the call has resolved and been billed, so an
     // unguarded throw here would be indistinguishable from the API call
