@@ -29,7 +29,11 @@ Append-only. Newest entries at the top. Each entry: date + what was done/decided
 
 **The honest limit on every number here:** F.3, F.4.6 and F.4.7 are all first-run-of-a-new-account measurements — null cursor, 48h lookback, dedup skipped. A returning daily user ingests roughly half as much and costs materially less; that figure has never been measured, and it is the one a per-user cap actually consumes. Sizing V2.0 off $0.399 overestimates by close to 2×. Safe direction, wrong number — the same *class* of error as the original 10×, which was also a figure measured under conditions that didn't match real use. Measuring one returning-account run costs ~$0.15–0.20 and should happen before any cap is set tight enough to bite.
 
-**v1 is closed.** Next is the Roadmap V2 planning session, opening on V2.0's now-correctly-sized spend-cap decision.
+**Committed and pushed** — `181e755` (curated-order preference reads), `ba9befb` (triage calibration + per-verdict titles), `db35026` (the phase close-out: measurement, docs, deferred-list changes). Those went up alongside the five Final Phase commits that had been sitting unpushed since 08-13, so `origin/master` is current for the first time since the phase began.
+
+**v1 is closed.** Next is the Roadmap V2 planning session, opening on V2.0's now-correctly-sized spend-cap decision. Its first action should be measuring a **returning-account** digest (~$0.15–0.20): every figure this phase produced is a cold start, and the recurring number is the one a per-user cap consumes.
+
+**Not in this repo, and worth knowing:** the project's resume-library entry at `Job Applications/Master Resources/projects/(C) personalized-news-aggregator.md` was synced as part of this close-out — the false $0.17 figure and a stale test count were removed from resume-facing lines. The vault is not under version control, so that file has no history behind it, unlike everything else recorded here.
 
 ## 2026-08-14 (Final Phase, F.4.7) — one plan for closing v1; the two unpaid code steps shipped, both converged clean
 
