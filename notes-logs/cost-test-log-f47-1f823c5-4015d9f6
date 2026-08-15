@@ -1,0 +1,926 @@
+# F.4.7 paid re-measurement capture
+# base commit:  1f823c5 (working tree DIRTY — diff hash 4015d9f6)
+# flags:        TRIAGE_REASONS=0  (measured, not modelled — reasons cost ~$0.089 production never pays)
+# started UTC:  2026-08-15 00:40:00
+# baseline:     F.4.6 = 787 clusters, 43 triage calls, 108 total, $0.403916 at list / $0.367245 billed
+# acceptance:   sev>=3 count 85-135 (primary) | pass rate 12-21% (secondary) | cost <= ~$0.35 at list
+# NOTE: bills on UTC 2026-08-15 — reconcile THAT date against the Anthropic Console.
+# ---------------------------------------------------------------
+
+> h72labs-news-aggregator@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.11 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.0.0.200:3000
+- Environments: .env.local
+✓ Ready in 376ms
+
+ GET / 200 in 2.9s (next.js: 183ms, proxy.ts: 1753ms, application-code: 1013ms)
+ GET /login 200 in 58ms (next.js: 34ms, proxy.ts: 5ms, application-code: 20ms)
+ POST / 303 in 172ms (next.js: 4ms, proxy.ts: 8ms, application-code: 160ms)
+  └─ ƒ signOutAction() in 74ms src/app/auth/actions.ts
+ GET /signup 200 in 74ms (next.js: 36ms, proxy.ts: 6ms, application-code: 32ms)
+ GET /onboarding 200 in 69ms (next.js: 33ms, proxy.ts: 7ms, application-code: 29ms)
+ POST /signup 303 in 515ms (next.js: 6ms, proxy.ts: 6ms, application-code: 504ms)
+  └─ ƒ signUp({}) in 418ms src/app/auth/actions.ts
+ GET / 200 in 245ms (next.js: 4ms, proxy.ts: 6ms, application-code: 235ms)
+ POST /onboarding 303 in 1054ms (next.js: 6ms, proxy.ts: 11ms, application-code: 1038ms)
+  └─ ƒ saveProfile({}) in 777ms src/app/onboarding/actions.ts
+ GET /profile 200 in 480ms (next.js: 57ms, proxy.ts: 22ms, application-code: 402ms)
+ GET / 200 in 412ms (next.js: 4ms, proxy.ts: 10ms, application-code: 397ms)
+(node:75853) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[ingest] failed Medias24/Morocco: Status code 403
+[usage] triage claude-haiku-4-5 in=2845 out=332 cache_r=0 cache_w=0 $0.004505
+[triage] US Politics — reject — "Ocasio-Cortez: ‘Pretty funny’ some people are freaking out about decision to fre…"
+[triage] US Politics — reject — "How not to fix the War Powers Resolution"
+[triage] US Politics — reject — "Soldiers killed in Fort Hood chopper crash identified"
+[triage] US Politics — PASS (severity 2) — "Pirro announces charges in WWII vandalism case"
+[triage] US Politics — reject — "How many people actually have cyclosporiasis? Why it’s so hard to track"
+[triage] US Politics — reject — "FDA assigns highest-risk Class I status for recall of nearly 1.6 million cartons…"
+[triage] US Politics — reject — "The Mecca agreement’s message to Washington"
+[triage] US Politics — PASS (severity 2) — "Vance urges DOJ investigation into hospitals over billing for transgender care"
+[triage] US Politics — reject — "Trump on WWII memorial vandalism: ‘We are on their trail’"
+[triage] US Politics — reject — "Bessent teases severe economic action against Iran"
+[triage] US Politics — reject — "Muslims in public office are not a threat to America. The attacks on them are."
+[triage] US Politics — PASS (severity 3) — "Court backs Trump on rescinding de minimis tariff exemption"
+[triage] US Politics — reject — "America is finally turning the corner on overdose deaths. Washington is about to…"
+[triage] US Politics — reject — "2 tankers attacked while sailing through Strait of Hormuz"
+[triage] US Politics — PASS (severity 3) — "Trump asks Supreme Court to allow White House ballroom construction"
+[triage] US Politics — reject — "Where the last 8 p.m. sunset of 2026 has already happened, and which cities are …"
+[triage] US Politics — PASS (severity 2) — "Mark Kelly on aircraft carrier catapult order: ‘Donald Trump knows nothing about…"
+[triage] US Politics — reject — "The Democratic Party needs a ‘Sister Souljah moment’ to counter social democrats"
+[triage] US Politics — reject — "Trump ally Nigel Farage beats Count Binface in special UK election"
+[usage] triage claude-haiku-4-5 in=2141 out=349 cache_r=0 cache_w=0 $0.003886
+[triage] Morocco — PASS (severity 2) — "Revue du web. Le fils du ministre Ryad Mezzour poursuivi en justice pour avoir i…"
+[triage] Morocco — reject — "Salim Cravata fait danser le public de M’diq lors du Festival des plages de Maro…"
+[triage] Morocco — reject — "Mineur, il comparaîtra le 23 septembre: poursuivi pour outrage à policiers, le f…"
+[triage] Morocco — reject — "Plage de Bouznika: 300 villas et cabanons sommés d’évacuer avant le 15 septembre"
+[triage] Morocco — reject — "Algérie: humilié par le boycott massif des législatives, le régime se cache derr…"
+[triage] Morocco — reject — "Maroc-Algérie: l’essentiel de la conf’ de Jorge Vilda"
+[triage] Morocco — reject — "Alerte météo. Averses orageuses et temps chaud de vendredi à samedi dans plusieu…"
+[triage] Morocco — reject — "«Bardi», le nouveau film de Tala Hadid, en première mondiale au New York Festiva…"
+[triage] Morocco — reject — "Trafic de migrants depuis l’Algérie: cinq passeurs interpellés au large de l’Esp…"
+[triage] Morocco — PASS (severity 3) — "Pourquoi le stade Hassan II pourrait bien accueillir la finale du Mondial 2030"
+[triage] Morocco — reject — "Bayern Munich: Saibari se confie sur Kompany, son poste et son nouveau défi"
+[triage] Morocco — reject — "Le Raja renforce son attaque avec le Brésilien Felipinho"
+[triage] Morocco — PASS (severity 3) — "CAN féminine: Maroc-Algérie, un derby maghrébin pour la médaille de bronze"
+[triage] Morocco — reject — "Surf: Ramzi Boukhiam sur le podium du Tahiti Pro 2026"
+[triage] Morocco — reject — "Réseau d’assainissement: la SRM Marrakech-Safi lance des travaux de 36 MDH dans …"
+[triage] Morocco — reject — "Le couscous, meilleur plat du monde?"
+[triage] Morocco — reject — "Finalement, Nayef Aguerd ne retournera pas à la Real Sociedad"
+[triage] Morocco — reject — "Parution. «Paris-Téhéran, le grand dévoilement»: autopsie d’un aveuglement franç…"
+[triage] Morocco — reject — "Demande à la poussière"
+[triage] Morocco — reject — "Voyager de Mauritanie au Maroc. Avions pleins, véhicules quasi vides: les explic…"
+[usage] triage claude-haiku-4-5 in=2493 out=349 cache_r=0 cache_w=0 $0.004238
+[triage] Geopolitics — reject — "After Notre-Dame Fire, France Restored the Cathedral — but Not These Windows"
+[triage] Geopolitics — reject — "Palestinian Rappers Shabjdeed and Saint Levant in Spat Over Authenticity"
+[triage] Geopolitics — PASS (severity 3) — "As Army Fails to Protect Palestinians, Israeli Leaders Sympathize With Settlers"
+[triage] Geopolitics — reject — "When a Rare Wolf Got Too Close, Denmark Faced a Conservation Dilemma"
+[triage] Geopolitics — reject — "As Europe Gets Hotter, Its Transportation Systems Struggle to Cope"
+[triage] Geopolitics — reject — "After 2 Plasma Donor Deaths, Company Pauses Clinics in Canada"
+[triage] Geopolitics — reject — "Electric Thrills"
+[triage] Geopolitics — reject — "Early-Onset El Niño"
+[triage] Geopolitics — reject — "Train Derails Near Town of Lewes in East Sussex, U.K."
+[triage] Geopolitics — reject — "Topos Azteca, a Mexican Volunteer Rescue Group, Helps With Rescue Efforts After …"
+[triage] Geopolitics — reject — "Brazil’s Disease-Fighting Mosquitoes"
+[triage] Geopolitics — PASS (severity 3) — "How a Long-Shot U.S. Oil Drilling Project Is Shaking Up Greenland"
+[triage] Geopolitics — reject — "Former Catholic Bishop Is Convicted of Sexual Abuse, Australian News Outlets Say"
+[triage] Geopolitics — PASS (severity 4) — "Putin Visits Islands Seized From Japan in World War II, Angering Tokyo"
+[triage] Geopolitics — reject — "How China Remembers Zhu Rongji, the Premier Who Spoke His Mind"
+[triage] Geopolitics — reject — "A Patient’s Final Breath in a Congolese Ebola Ward"
+[triage] Geopolitics — reject — "Coming next summer: the ‘eclipse of the century.’"
+[triage] Geopolitics — reject — "The Man on a Mission to Build India’s Most Livable City"
+[triage] Geopolitics — reject — "‘An English Summer Is Not the Same Anymore’"
+[triage] Geopolitics — PASS (severity 3) — "Arabian Sea Bird and Turtle Habitat Threatened by Oil From Grounded Tanker"
+[usage] triage claude-haiku-4-5 in=2466 out=349 cache_r=0 cache_w=0 $0.004211
+[triage] European Football — reject — "How much do you know about the Football League? Find out with our quiz"
+[triage] European Football — PASS (severity 3) — "High-flying Sirius chase shock Allsvenskan title despite losing ‘best player in …"
+[triage] European Football — reject — "We have been staring at Phil Foden for close to a decade – how well do we actual…"
+[triage] European Football — reject — "Our EFL preview and a Super Cup review as PSG prevail: Football Weekly | Footbal…"
+[triage] European Football — reject — "Football transfer rumours: Arsenal offered Osimhen in exchange deal? Newcastle t…"
+[triage] European Football — reject — "Coppa Italia: Fiorentina hit 4 on Mastantuono debut, Varela impressive for Monza"
+[triage] European Football — PASS (severity 3) — "Official: Lazio get Frattesi on loan from Inter with option to buy for €15m"
+[triage] European Football — reject — "Report Gabriel Martinelli targeted by Napoli and Roma after Arsenal snub"
+[triage] European Football — reject — "Giuntoli: ‘Atalanta’s best signing was Sarri, nothing to envy Lang’"
+[triage] European Football — reject — "Coppa Italia: Parma perfect Lontani debut, Cagliari beat Arezzo"
+[triage] European Football — PASS (severity 3) — "Official: Immobile announces retirement at age 36 after legendary career"
+[triage] European Football — reject — "Official: Sassuolo secure Obrador from Benfica, loan out Alvarez"
+[triage] European Football — PASS (severity 2) — "Report Leao and Milan in fresh Galatasaray talks after €50m price dropped"
+[triage] European Football — reject — "Cryptic Maignan post makes Milan fans angry: ‘Give Modric the armband’"
+[triage] European Football — reject — "Official: Milan loan Athekame to Olympique Lyonnais"
+[triage] European Football — reject — "LIVE Done Deals Tracker: Latest Serie A transfer agreements"
+[triage] European Football — reject — "Inter request Reggiani from Borussia Dortmund and sold Motta"
+[triage] European Football — reject — "Kolasinac targeted by Schalke 04 after Atalanta friendly visit"
+[triage] European Football — reject — "Badiashile and Napoli making final decisions before Chelsea exit"
+[triage] European Football — reject — "Official: Parma purchase Romero from Tigre for €7m plus bonus"
+[usage] triage claude-haiku-4-5 in=3027 out=332 cache_r=0 cache_w=0 $0.004687
+[triage] European Football — PASS (severity 3) — "Le Bayern Munich fait rentrer 250 millions d'euros d'argent frais sans vendre un…"
+[triage] European Football — reject — "Arbitrage : l'IA choisira les actions les plus polémiques de Liga pour donner ra…"
+[triage] European Football — reject — "'Da möchte ich voll dabei sein': Tohumcu verlässt die TSG Richtung Salzburg"
+[triage] European Football — reject — "Die Sommer-Neuzugänge der Bundesligisten im Überblick"
+[triage] European Football — PASS (severity 2) — "Zuletzt aussortiert in Brügge: Reis unterschreibt in Bremen"
+[triage] European Football — reject — "Das Streitthema 50+1 - und warum es zwei Ausnahmen gibt"
+[triage] European Football — reject — "Gerichtsurteil: Köln darf Trainingszentrum am Geißbockheim ausbauen"
+[triage] European Football — PASS (severity 2) — "Das passierte während der El-Mala-News vor Ort - und so geht es weiter"
+[triage] European Football — reject — "Arsenal an Quansah interessiert? - Eintracht wird wohl Sturmduo los - Milan stre…"
+[triage] European Football — reject — "So planen Borussia und Partner Ista die gemeinsame Zukunft"
+[triage] European Football — reject — "Saibaris emotionale Erinnerungen: 'Meine Eltern haben große Opfer gebracht'"
+[triage] European Football — reject — "Saibaris Lieblingsposition - und wann die Bayern überzeugt waren"
+[triage] European Football — reject — "Wagner über El Mala: 'Freue mich, dass er bei uns bleibt'"
+[triage] European Football — reject — "Dortmund zieht sich aus El-Mala-Poker zurück: Die richtige Entscheidung?"
+[triage] European Football — PASS (severity 2) — "Villa-Wechsel geplatzt: Joao Palhinha bleibt vorerst bei Bayern"
+[triage] European Football — reject — "El-Mala-Wechsel zum BVB geplatzt"
+[triage] European Football — reject — "FC Bayern will Kooperation mit Ulm 'auf nächste Ebene bringen'"
+[triage] European Football — reject — "BVB verleiht Kabar in die Eredivisie"
+[triage] European Football — PASS (severity 2) — "Breel Embolo set to join Atlanta United - One of the biggest deals in MLS histor…"
+[usage] triage claude-haiku-4-5 in=2446 out=258 cache_r=0 cache_w=0 $0.003736
+[triage] Tech/AI — reject — "The Best Movies to Stream This Month (August 2026)"
+[triage] Tech/AI — PASS (severity 2) — "The Next Big Influencer Is This 4-Foot-Tall Robot From China"
+[triage] Tech/AI — PASS (severity 2) — "Tech Visionary Says the Big AI Labs Don’t Get What People Want"
+[triage] Tech/AI — reject — "Best Wireless Chargers (2026): My Picks After Testing 100+"
+[triage] Tech/AI — reject — "The 4 Best Planners of 2026: Roterunner, Hobonichi, Cloth & Paper"
+[triage] Tech/AI — reject — "FTC Strikes Deals to Ignore Unlawful Credit Discrimination"
+[triage] Tech/AI — PASS (severity 2) — "These ‘Masturbation Consultants’ Were Hired to Pleasure Themselves With AI"
+[triage] Tech/AI — reject — "Best Pixel 10 Cases and Accessories (2026): Mous, dbrand, Bellroy"
+[triage] Tech/AI — reject — "I Wore an Electrical Muscle Stimulation Body Suit to Zap Myself Into Fitness"
+[triage] Tech/AI — PASS (severity 2) — "People Are ‘Marrying’ Chatbots. These Lawmakers Want to Stop Them"
+[triage] Tech/AI — reject — "Best Computer Monitors (2026): The Home Office Upgrade You Need"
+[triage] Tech/AI — reject — "5 Weird Tricks for Having a Brain"
+[triage] Tech/AI — PASS (severity 3) — "Her Brain Was Broken. It Was Fixed With Sound—Not a Scalpel"
+[triage] Tech/AI — reject — "This Art Project Slows Down Citi Bikes to Make NYC’s Rent Crisis Feel Real"
+[triage] Tech/AI — PASS (severity 2) — "Dell XPS 13 Review: Move Over, Neo"
+[triage] Tech/AI — PASS (severity 3) — "The Real Reason Data Center Gas Power Plants Are So Dirty"
+[triage] Tech/AI — reject — "Layla Sleep Coupon: Save Up to $600 in August 2026"
+[triage] Tech/AI — reject — "Office Depot Coupons: Save With Promo Codes in August 2026"
+[triage] Tech/AI — reject — "HelloFresh Promo Codes: 55% Off for August 2026"
+[usage] triage claude-haiku-4-5 in=3148 out=247 cache_r=0 cache_w=0 $0.004383
+[triage] French Politics — reject — "Teenage British cyclist Finlay ⁠Tarling dies in Tour of Portugal accident"
+[triage] French Politics — reject — "Kenya: Mysterious illness kills more than a dozen elephants"
+[triage] French Politics — reject — "Race to free trapped quake survivor offers hope in Colombia"
+[triage] French Politics — reject — "‘We never leave’: Palestinians besieged in West Bank fear Israeli settlers will …"
+[triage] French Politics — reject — "Europe: Raging wildfires scorch large swaths of the continent"
+[triage] French Politics — PASS (severity 3) — "France wildfire forces 520 to evacuate"
+[triage] French Politics — reject — "Birthrate drop in North Africa"
+[triage] French Politics — reject — "World Bank to fund 645-metre bridge linking Bangui and Zongo"
+[triage] French Politics — reject — "Mount Etna continues to erupt in Italy"
+[triage] French Politics — reject — "Chadian President Déby pardons jailed main rival and 8 opposition leaders"
+[triage] French Politics — reject — "Zambia suspends vote count nationwide amid reports of violence, ballot theft"
+[triage] French Politics — reject — "Japan: Record rains kill eight, strand thousands at Narita airport"
+[triage] French Politics — reject — "Ferry sinking kills 46 in rural Zimbabwe"
+[triage] French Politics — reject — "Europe swelters under fifth heatwave of summer"
+[usage] triage claude-haiku-4-5 in=2304 out=349 cache_r=0 cache_w=0 $0.004049
+[triage] European Football — PASS (severity 3) — "All done deals in August 2026"
+[triage] European Football — reject — "Europa League exit leaves Rangers counting the financial cost"
+[triage] European Football — PASS (severity 2) — "Rangers leave PSV surprised as they pull out of Driouech deal"
+[triage] European Football — reject — "Listen: Reaction as Kilmarnock come back twice to beat Ayr"
+[triage] European Football — PASS (severity 3) — "Jimenez salvages dramatic point for Wolves on Molineux return"
+[triage] European Football — reject — "Jimenez the hero as controversial late pen spares Wolves' blushes"
+[triage] European Football — reject — "VOTE: Should late Wolves penalty have been awarded?"
+[triage] European Football — reject — "Transfer Centre LIVE! Fernandez, Rodri, Romero latest"
+[triage] European Football — PASS (severity 3) — "Romero announces Spurs exit ahead of Atletico transfer"
+[triage] European Football — reject — "Chelsea latest: Fernandez saga over? Rodri future key to City's Enzo chase"
+[triage] European Football — reject — "Liverpool latest: Could the Bezos-backed consortium take full control?"
+[triage] European Football — reject — "Tottenham latest: Spurs already eyeing Spence replacements"
+[triage] European Football — reject — "Is Fernandez worth two Rodris? Transfer valuations explained"
+[triage] European Football — reject — "Arsenal latest: Martinelli rejects chance to join Galatasaray"
+[triage] European Football — reject — "Championship play-off changes, new managers & star players - the EFL is BACK!"
+[triage] European Football — reject — "Championship predictions & best bets: Wolves to fall flat on opening night"
+[triage] European Football — reject — "EFL latest: Every game on opening weekend LIVE on Sky!"
+[triage] European Football — PASS (severity 2) — "Bowen: As long as West Ham get back to the PL, I don't care how we do it"
+[triage] European Football — reject — "Transfer rumors, news: Tottenham continue interest for Liverpool's Gakpo"
+[triage] European Football — PASS (severity 4) — "Source: Barça to return with new bid for Rodri"
+[usage] triage claude-haiku-4-5 in=2360 out=332 cache_r=0 cache_w=0 $0.004020
+[triage] Tech/AI — reject — "Columbia Promo Codes: 15% Off | August 2026"
+[triage] Tech/AI — reject — "Pura Promo Codes: $20 Off August 2026"
+[triage] Tech/AI — reject — "Babbel Promo Code: Up to 65% Off in August 2026"
+[triage] Tech/AI — reject — "Acer Promo Codes: 40% Off"
+[triage] Tech/AI — PASS (severity 4) — "The Safety Reckoning Inside OpenAI"
+[triage] Tech/AI — reject — "The Painful Truth of Exactly How ICE’s New Shock Gloves Work"
+[triage] Tech/AI — reject — "Why This Prediction Market Banned Teens"
+[triage] Tech/AI — reject — "The Best Samsung Galaxy S26 Cases (2026): S26, S26+, and S26 Ultra"
+[triage] Tech/AI — reject — "The Google Pixelsnap Charger With Stand Is 50 Percent Off Right Now"
+[triage] Tech/AI — reject — "In a Heat Wave, Schizophrenia Is So Much Deadlier Than Any Other Medical Conditi…"
+[triage] Tech/AI — reject — "5 Best Android Tablets in 2026: Samsung, TCL, Amazon, and More"
+[triage] Tech/AI — reject — "The 10 Best Cooling Mattresses for Hot Sleepers (2026)"
+[triage] Tech/AI — PASS (severity 3) — "CBP Workers Allegedly Used Government Databases to Spy on Exes, Crushes, and Col…"
+[triage] Tech/AI — PASS (severity 3) — "There’s a Fatty Liver Epidemic. AI Could Help Get Ahead of It"
+[triage] Tech/AI — reject — "Naturepedic Promo Codes: Get 20% Off Plus Free Pillows"
+[triage] Tech/AI — reject — "Bose Promo Code: 40% Off for August 2026"
+[triage] Tech/AI — reject — "Herman Miller Promo Codes: 40% Off August 2026"
+[triage] Tech/AI — reject — "Factor Promo Code: 50% Off Off Meal Prep"
+[triage] Tech/AI — reject — "HostGator Coupon Codes: 76% Off Hosting in August 2026"
+[usage] triage claude-haiku-4-5 in=2708 out=349 cache_r=0 cache_w=0 $0.004453
+[triage] Morocco — reject — "Son of Morocco industry minister to face Tetouan court in September"
+[triage] Morocco — PASS (severity 3) — "Morocco, Algeria meet again with WAFCON bronze at stake"
+[triage] Morocco — reject — "UNICEF warns against returning unaccompanied migrant children from Ceuta without…"
+[triage] Morocco — reject — "Cadi Ayyad University Ranks 1st in Morocco, Maghreb in 2026 Webometrics Universi…"
+[triage] Morocco — reject — "Algeria, top source of illegal migrants in Spain, IOM says"
+[triage] Morocco — PASS (severity 2) — "Why Major International Hotel Chains Are Betting on Morocco"
+[triage] Morocco — reject — "Tunisia’s Saïed cedes ground to Algiers as protests erupt, Sansal argues"
+[triage] Morocco — reject — "Morocco Marks 47th Anniversary of Oued Ed-Dahab’s Recovery"
+[triage] Morocco — PASS (severity 3) — "Anti-Morocco Spanish parties take aim at 2030 World Cup"
+[triage] Morocco — reject — "UN to Set Up in Morocco Training Simulation Platform for Counter-Terrorism Inves…"
+[triage] Morocco — PASS (severity 2) — "US KBR Firm Selected for Moroccan green ammonia pre-FEED study"
+[triage] Morocco — reject — "Agadir Astronomer Documents Morocco’s August 12 Solar Eclipse"
+[triage] Morocco — reject — "Morocco Becomes Norway’s Top Supplier of Fresh Raspberries and Blackberries"
+[triage] Morocco — PASS (severity 2) — "Gigalab Looks to Export Morocco’s Diagnostic Expertise Across Africa"
+[triage] Morocco — reject — "Colombia Earthquake: Morocco King Offers Deepest Sympathy & Heartfelt Condolence…"
+[triage] Morocco — reject — "Tunisia’s trade deficit widens to $5.1bn as imports outpace exports"
+[triage] Morocco — reject — "Libya’s High Council of State forms Committee to drive economic reforms"
+[triage] Morocco — reject — "Libya’s Oil Export Revenues Hit $15.2bn in First Half of 2026"
+[triage] Morocco — reject — "Galatasaray: Ezzalzouli ciblé en cas d’échec du dossier Martinelli"
+[triage] Morocco — reject — "Tifelt: le militant associatif Karim Taj déplore les disparités territoriales"
+[usage] triage claude-haiku-4-5 in=1516 out=152 cache_r=0 cache_w=0 $0.002276
+[triage] World Finance — reject — "Jane Street suffers $15bn hit after meltdown at Situational Awareness"
+[triage] World Finance — reject — "Jane Street has paid up large to avoid its numbers leaking out"
+[triage] World Finance — reject — "The exodus from Israel"
+[triage] World Finance — reject — "Daniel Kinahan, Ireland’s most wanted man, faces his day in court"
+[triage] World Finance — reject — "Unhappy voters are suffering from ‘Baumol’s disease’"
+[triage] World Finance — PASS (severity 3) — "Investors pile back into US stocks as bullishness returns to Wall Street"
+[triage] World Finance — reject — "Americans sour on Trump’s economy as affordability strains intensify"
+[triage] World Finance — PASS (severity 2) — "Nvidia discloses $21bn stake in SpaceX"
+[triage] World Finance — PASS (severity 3) — "When Japan buys yen, it unwinds a dangerous trade"
+[triage] World Finance — PASS (severity 3) — "Is China’s debt-bomb squad about to blow up?"
+[triage] World Finance — reject — "Can Singapore ever build a proper stock market?"
+[usage] triage claude-haiku-4-5 in=2681 out=349 cache_r=0 cache_w=0 $0.004426
+[triage] Geopolitics — reject — "Madonna will not be playing Glastonbury in 2027, Emily Eavis says"
+[triage] Geopolitics — PASS (severity 2) — "Trump dismisses concerns about USS Abraham Lincoln, saying its record-breaking 2…"
+[triage] Geopolitics — PASS (severity 3) — "‘Devastating’: bulldozers plough through Big Bend national park as Trump’s borde…"
+[triage] Geopolitics — PASS (severity 2) — "US Forest Service chief reportedly pressed staff for more support for wildfire n…"
+[triage] Geopolitics — PASS (severity 3) — "Lula holds slim lead over Flavio Bolsonaro ahead of Brazil election"
+[triage] Geopolitics — PASS (severity 2) — "Families angered by slow search for loved ones after Colombia quake"
+[triage] Geopolitics — PASS (severity 2) — "Lebanon’s PM urges timetable for Israeli withdrawal as Hezbollah slams deal"
+[triage] Geopolitics — PASS (severity 3) — "Houthi attack on port kills four eroding truce with Yemen’s government"
+[triage] Geopolitics — reject — "Israeli soldiers accused of supporting ‘terrorist’ settlers in Qusra"
+[triage] Geopolitics — reject — "Trump dismisses mental health concerns on USS Lincoln aircraft carrier"
+[triage] Geopolitics — PASS (severity 2) — "New aerial video reveals huge scale of oil spill off Oman"
+[triage] Geopolitics — reject — "Art offers young Gaza survivors solace and escape from war’s devastation"
+[triage] Geopolitics — reject — "CEO pay skyrockets in 2025 amid growing income inequality in the US"
+[triage] Geopolitics — reject — "Liverpool to sell minority stake to consortium including Jeff Bezos"
+[triage] Geopolitics — reject — "Analysis: Israel’s government can’t disown West Bank settler violence"
+[triage] Geopolitics — PASS (severity 2) — "What’s next for far-right Reform UK after Farage’s by-election win?"
+[triage] Geopolitics — PASS (severity 2) — "Taliban pressured by insurgents after 5 years in power"
+[triage] Geopolitics — reject — "Can a giant Madonna help slow secularization in Poland?"
+[triage] Geopolitics — PASS (severity 2) — "When the earth moves: 6 major earthquakes of 2026"
+[triage] Geopolitics — PASS (severity 3) — "Eritrea, a rising power along a global shipping artery"
+[usage] triage claude-haiku-4-5 in=2721 out=191 cache_r=0 cache_w=0 $0.003676
+[triage] French Politics — PASS (severity 4) — "Interdiction des réseaux sociaux aux moins de 15 ans : le Conseil constitutionne…"
+[triage] French Politics — reject — "Donald Trump porte comme prévu l’affaire de sa salle de bal devant la Cour suprê…"
+[triage] French Politics — PASS (severity 4) — "Loi d’urgence agricole : le Conseil constitutionnel valide la quasi-totalité du …"
+[triage] French Politics — reject — "Des organisations étudiantes font part de leurs inquiétudes après un rapport pro…"
+[triage] French Politics — reject — "Olivier Faure fustige Emmanuel Macron, pris en photo par « Paris Match » en trai…"
+[triage] French Politics — PASS (severity 3) — "L’été sous tension de Sébastien Lecornu, entre incendies et préparation du budge…"
+[triage] French Politics — reject — "« En France, le développement anarchique des data centers relève davantage du Fa…"
+[triage] French Politics — reject — "« On essaie de bousculer les habitudes » : pour la présidentielle 2027, les form…"
+[triage] French Politics — reject — "Meetings géants, météo désastreuse, divisions... La place du Trocadéro, splendeu…"
+[triage] French Politics — reject — "Présidentielle 2027 : à la Grande-Motte, Gabriel Attal à la rencontre des « trav…"
+[triage] French Politics — reject — "Du Front populaire à Mélenchon, comment la place de la République est devenue l’…"
+[triage] French Politics — reject — "« Un lieu de passage obligé » : la Maison de la Mutualité, paradis perdu des soc…"
+[triage] French Politics — reject — "À la Palmeraie de l’Aquaboulevard, les destins croisés de la droite nationaliste"
+[triage] French Politics — reject — "DR Congo Ebola outbreak spreads to sixth province"
+[usage] triage claude-haiku-4-5 in=1631 out=281 cache_r=0 cache_w=0 $0.003036
+[triage] US Finance — reject — "Resort destination mall and hotel seek Chapter 11 bankruptcy"
+[triage] US Finance — reject — "Tapestry, Inc. Q4 2026 Earnings Call Summary"
+[triage] US Finance — reject — "Brookfield Corporation Q2 2026 Earnings Call Summary"
+[triage] US Finance — reject — "Arcos Dorados Holdings Inc. Q2 2026 Earnings Call Summary"
+[triage] US Finance — PASS (severity 3) — "Super Micro Climbs 7% on Record Backlog, Dell and Hewlett Packard Enterprise Gai…"
+[triage] US Finance — reject — "Terrestrial Energy’s Lifetime Revenue Up 29%, Advancing in Texas A&M, DOE Fuel P…"
+[triage] US Finance — reject — "Aveanna Healthcare Holdings Inc. Q2 2026 Earnings Call Summary"
+[triage] US Finance — reject — "Aemetis (AMTX) Q2 2026 Earnings Call Transcript"
+[triage] US Finance — PASS (severity 2) — "Quantinuum’s Cloud Deal With Oracle Sends Clear Message on Hybrid AI"
+[triage] US Finance — reject — "Corn Fading Back Lower on Thursday"
+[triage] US Finance — reject — "Rising Fleet Costs? Data Has Answers"
+[triage] US Finance — PASS (severity 3) — "Anthropic IPO Value Could Beat SpaceX's Record: Report"
+[triage] US Finance — reject — "KVH Industries (KVHI) Q2 2026 Earnings Call Transcript"
+[triage] US Finance — PASS (severity 3) — "UWM lost $603 million on rate bets — now Oaktree is extracting 10% a year for a …"
+[triage] US Finance — reject — "Married Puts: The FOMO-Proof Way to Play OVV, ONON, and FCX’s Unusually Active O…"
+[triage] US Finance — PASS (severity 3) — "US producer prices unchanged in July, further dimming rate hike odds"
+[usage] triage claude-haiku-4-5 in=2308 out=256 cache_r=0 cache_w=0 $0.003588
+[triage] Morocco — reject — "Casque, vitesse, préparation du véhicule: ce que l’été impose aux usagers de la …"
+[triage] Morocco — reject — "Éclipse solaire à Laâyoune: en images, voici comment les habitants ont vécu ce r…"
+[triage] Morocco — reject — "Addiction, manipulation et autorité parentale absente: pourquoi le Maroc doit in…"
+[triage] Morocco — reject — "Où va le couple algéro-tunisien: vassalisation, subordination ou formation d’un …"
+[triage] Morocco — PASS (severity 2) — "Emirates va doubler sa capacité de vols vers Casablanca en février 2027"
+[triage] Morocco — reject — "Le paradoxe marocain: croissance, aspirations et désir d’émigration chez les jeu…"
+[triage] Morocco — reject — "CAN féminine: «Nous avons manqué d’efficacité», estime Jorge Vilda"
+[triage] Morocco — reject — "Alliances Darna: un chiffre d’affaires en hausse de 28% au deuxième trimestre 20…"
+[triage] Morocco — reject — "Poutine en visite pour la première fois aux îles Kouriles, disputées avec le Jap…"
+[triage] Morocco — PASS (severity 3) — "Pneumatiques: Guizhou Tyre engage près de 300 millions de dollars au Maroc"
+[triage] Morocco — reject — "Le dirham s’apprécie légèrement face à l’euro et au dollar"
+[triage] Morocco — reject — "Trump impose des droits de douane sur les drones pour soutenir l’industrie améri…"
+[triage] Morocco — reject — "Maroc: le besoin de liquidité bancaire s’atténue à 125,7 MMDH en juillet"
+[triage] Morocco — reject — "Porsche va arrêter la production de son fleuron électrique Taycan"
+[triage] Morocco — PASS (severity 2) — "Maroc: la filière avocat face au mur climatique"
+[triage] Morocco — reject — "Maroc: les recettes ordinaires de l’Etat augmentent de 8,3% à fin juillet"
+[triage] Morocco — reject — "Ciments du Maroc: le chiffre d’affaires consolidé atteint 2,7 MMDH à fin juin"
+[triage] Morocco — PASS (severity 2) — "Marrakech: hausse de 10% des nuitées dans les établissements touristiques"
+[triage] Morocco — reject — "La FMM appelle au report des élections du Conseil national de la presse"
+[usage] triage claude-haiku-4-5 in=2234 out=243 cache_r=0 cache_w=0 $0.003449
+[triage] US Politics — PASS (severity 3) — "Here are 12 Senate, House incumbents who’ve lost their primaries"
+[triage] US Politics — reject — "Amid pushback, CBP says it is placing ‘limited’ barriers, not 30-foot wall, in n…"
+[triage] US Politics — reject — "‘Super’ El Niño may be strongest since 1950. When will it peak, hit the US?"
+[triage] US Politics — PASS (severity 2) — "Gun law in limbo as Justice Department holds off appeal"
+[triage] US Politics — PASS (severity 3) — "5 things to know about David Crowley"
+[triage] US Politics — reject — "USS Abraham Lincoln: Senate Democrats press Hegseth for answers on reports of at…"
+[triage] US Politics — PASS (severity 2) — "Maine Democrat Jackson acknowledges punching man in 1988; he and partner dismiss…"
+[triage] US Politics — reject — "Consumers want to watch movies at home — no lawsuit will change that"
+[triage] US Politics — PASS (severity 2) — "Poll shows Democrat Cooper with 11-point lead over GOP Senate rival"
+[triage] US Politics — reject — "Warning over playset issued after toddler’s death: ‘Stop using immediately’"
+[triage] US Politics — reject — "Dick Cheney’s cardiologist: Trump ‘has not looked well’"
+[triage] US Politics — reject — "The SEC investigation no founder sees coming"
+[triage] US Politics — reject — "Democrat criticizes Trump’s Air Force One switch as ‘despicable incident of disr…"
+[triage] US Politics — reject — "The nation’s cartoonists on the week in politics"
+[triage] US Politics — reject — "Bernie Sanders has a response for progressives upset over Hong’s loss in Wiscons…"
+[triage] US Politics — reject — "Crowley zeroes in on ‘MAGA extremism’ to rebuild a fractured Wisconsin coalition"
+[triage] US Politics — reject — "Platner announced as speaker for activist-led event in Maine"
+[triage] US Politics — reject — "Americans' wanderlust hits new heights"
+[usage] triage claude-haiku-4-5 in=2310 out=247 cache_r=0 cache_w=0 $0.003545
+[triage] French Politics — reject — "Ukraine war: Grain attacks raise food price fears"
+[triage] French Politics — reject — "Fake accounts and false rumours drive new Ceuta crossing campaign"
+[triage] French Politics — PASS (severity 4) — "Law on assisted dying wins constitutional approval in France"
+[triage] French Politics — PASS (severity 2) — "French firefighters threaten to strike over lack of resources"
+[triage] French Politics — reject — "Renewed fighting in Tigray raises risk of a wider regional war"
+[triage] French Politics — reject — "Europe faces rocket shortage by 2030 as satellite demand surges"
+[triage] French Politics — reject — "Controversial Covid-19 study retracted over links to vaccine misinformation"
+[triage] French Politics — PASS (severity 3) — "Mali junta pardons French agent jailed for 'undermining state security'"
+[triage] French Politics — reject — "UN urges faster action as world falls behind on nature protection"
+[triage] French Politics — reject — "Romania shuts down nuclear plant due to low level of drought-hit Danube"
+[triage] French Politics — reject — "France and 30 other countries condemn Iran's executions of protestors"
+[triage] French Politics — reject — "Morocco steps up border security over fears of new mass crossing into Ceuta"
+[triage] French Politics — reject — "Sister act ushers underdogs Malawi into WAFCON final against Cameroon"
+[triage] French Politics — reject — "Millions gather to watch as solar eclipse plunges swathe of Spain into darkness"
+[usage] triage claude-haiku-4-5 in=2029 out=281 cache_r=0 cache_w=0 $0.003434
+[triage] US Finance — PASS (severity 3) — "Berkshire Hathaway boosts Alphabet to a top three holding, ups Delta and housing…"
+[triage] US Finance — PASS (severity 2) — "Goldman’s latest cash cow is all about funding the AI infrastructure boom"
+[triage] US Finance — PASS (severity 2) — "Regulators and banks step up scrutiny of prediction markets"
+[triage] US Finance — reject — "These charts show why stocks keep rallying. Profit margins are the highest on re…"
+[triage] US Finance — PASS (severity 2) — "'Big Short' investor Steve Eisman sees an Achilles' heel in the AI boom"
+[triage] US Finance — reject — "Iran looks to ramp up economic alliance with BRICS nations as war with U.S. drag…"
+[triage] US Finance — reject — "This Chinese firm has topped Micron and Kioxia in shipments of crucial NAND memo…"
+[triage] US Finance — reject — "EVs dominate China’s car market: 5 takeaways from the country's latest auto sale…"
+[triage] US Finance — reject — "16 beaten-down AI stocks that are beloved by BofA analysts"
+[triage] US Finance — reject — "Parents putting money in ‘Trump accounts’ could get a $2,500 tax break. Here’s h…"
+[triage] US Finance — reject — "A plan to save Social Security involves high earners paying more in taxes — with…"
+[triage] US Finance — reject — "Congress changed the rules around charitable giving. You’ll now save more money …"
+[triage] US Finance — reject — "‘The market is obviously on fire’: Should I take $1,000 from my brokerage accoun…"
+[triage] US Finance — PASS (severity 2) — "Sandisk’s stock has rebounded nearly 35% this week. This is the latest catalyst."
+[triage] US Finance — reject — "I have a 9-to-5 job and started dating a bartender. Can I have a future with som…"
+[triage] US Finance — reject — "Think interest rates are high now? These charts offers a different perspective."
+[usage] triage claude-haiku-4-5 in=1846 out=281 cache_r=0 cache_w=0 $0.003251
+[triage] US Finance — PASS (severity 2) — "Cisco Drops 9% and Holds the Dow Back While the Nasdaq Climbs. Common Denominato…"
+[triage] US Finance — reject — "What to Know as JPMorgan Ups Its Price Target on Microsoft Stock"
+[triage] US Finance — reject — "What Trump's Latest Truth Social Lawsuit Means for DJT Stock"
+[triage] US Finance — PASS (severity 2) — "Riot Platforms Sells 4,300 Bitcoin To Fund Operations"
+[triage] US Finance — reject — "Is It Time to 'Buy the Dip' on eBay Stock?"
+[triage] US Finance — reject — "Peter Thiel-backed company stock surges despite $280 million loss"
+[triage] US Finance — PASS (severity 2) — "Car insurance premiums are climbing again in more than half the U.S."
+[triage] US Finance — reject — "Archer Aviation Stock Has Surged 45% in the Past Month. Should You Buy Into the …"
+[triage] US Finance — PASS (severity 2) — "Mortgage rates see first drop in six weeks: Mortgage and refinance interest rate…"
+[triage] US Finance — reject — "Bitcoin and ethereum prices today, Thursday, August 13, 2026: BTC price trends t…"
+[triage] US Finance — PASS (severity 2) — "Silver prices today, Thursday, August 13, 2026: Silver prices up over 70% YOY wi…"
+[triage] US Finance — reject — "Best CD rates today, Thursday, August 13, 2026: Lock in up to 4.30% APY with a 1…"
+[triage] US Finance — reject — "Dana (DAN) Q2 2026 Earnings Call Transcript"
+[triage] US Finance — reject — "Singapore Stocks’ Record Run Gets ‘Goldilocks’ Boost From Growth"
+[triage] US Finance — PASS (severity 3) — "Bally’s Warns of Going Concern Doubt as It Seeks Fresh Liquidity"
+[triage] US Finance — reject — "Wall Street Week | Rerouting Global Trade, Private Equity Tested, Realizing Cuba…"
+[usage] triage claude-haiku-4-5 in=2671 out=269 cache_r=0 cache_w=0 $0.004016
+[triage] European Football — reject — "Miami coach stresses that Messi needs privacy"
+[triage] European Football — reject — "Giuliani backs Infantino, calls critics 'jealous'"
+[triage] European Football — reject — "👕 New Man Utd kit inspired by iconic local club"
+[triage] European Football — reject — "Predicting where Premier League betting odds are wrong for this season"
+[triage] European Football — reject — "Time limits, VAR, mistaken identity: Which World Cup rules has Premier League ad…"
+[triage] European Football — PASS (severity 3) — "LaLiga is back! But why aren't Barcelona, Real Madrid and Atlético playing?"
+[triage] European Football — reject — "Clásico kit clash: Barcelona, Real Madrid release new 2026-27 third jerseys"
+[triage] European Football — PASS (severity 3) — "'This was my World Cup': How Somali referee barred from U.S. made it to UEFA Sup…"
+[triage] European Football — reject — "Does the Community Shield preview the Premier League? History provides the answe…"
+[triage] European Football — PASS (severity 4) — "Europe’s top clubs threatened Club World Cup boycott before Fifa plan collapsed"
+[triage] European Football — reject — "Football Daily | Rangers and the paradox of a painful exit that boosts their tro…"
+[triage] European Football — reject — "Premier League 2026-27 preview No 10: Fulham"
+[triage] European Football — reject — "How will the three promoted teams fare in the Premier League?"
+[triage] European Football — reject — "Men’s transfer window summer 2026: all deals from Europe’s top five leagues"
+[triage] European Football — reject — "Premier League 2026-27 preview No 9: Everton"
+[triage] European Football — reject — "Premier League 2026-27 preview No 8: Crystal Palace"
+[triage] European Football — reject — "‘It was horrendous’: Durham captain relieved WSL2 club survived after fears of f…"
+[triage] European Football — PASS (severity 2) — "Celta Vigo’s La Liga opener postponed due to fungal outbreak on pitch"
+[triage] European Football — reject — "Lincoln trust in double act as second-tier return starts at Middlesbrough"
+[triage] European Football — PASS (severity 3) — "Continental clash: where world football stands on Fifa and Infantino – explained"
+[usage] triage claude-haiku-4-5 in=2062 out=298 cache_r=0 cache_w=0 $0.003552
+[triage] Morocco Politics — PASS (severity 2) — "Morocco digitizes proxy voting for citizens abroad ahead of 2026 elections: What…"
+[triage] Morocco Politics — reject — "EU says ready for new Morocco fisheries talks when Rabat is ready"
+[triage] Morocco Politics — reject — "Students escalate fight against paid university hours with sit-in and nationwide…"
+[triage] Morocco Politics — PASS (severity 3) — "Ouahbi: Morocco considers suspending its extradition agreement with Spain"
+[triage] Morocco Politics — reject — "Le dispositif d’alerte renforcé à Fnideq, le retour des migrants de Sebta se pou…"
+[triage] Morocco Politics — reject — "Sahara marocain et bataille du sens: comment s’est fabriqué le récit du conflit?"
+[triage] Morocco Politics — reject — "Atteintes aux droits de l’Homme à Sebta: le CNDH saisit le Défenseur du peuple e…"
+[triage] Morocco Politics — reject — "Commerce, dette, minerais, défense... les pays africains qui redessinent la riva…"
+[triage] Morocco Politics — reject — "Mali: condamné à 20 ans de prison, un agent français gracié après une médiation …"
+[triage] Morocco Politics — reject — "Fnideq sous haute surveillance, accès aux abords de Bab Sebta interdit aux non-v…"
+[triage] Morocco Politics — reject — "Immigration illégale: un cordon sécuritaire autour de Sebta"
+[triage] Morocco Politics — reject — "Le Sahara et la diplomatie marocaine en Amérique latine: le grand réalignement g…"
+[triage] Morocco Politics — reject — "Saisine rejetée par la Cour constitutionnelle: pour leur projet de loi, les avoc…"
+[triage] Morocco Politics — reject — "Législatives 2026: Mohamed El Rharass, ex-secrétaire d’État, une candidature de …"
+[triage] Morocco Politics — reject — "La Cour constitutionnelle et la réforme de la loi sur la profession d’avocat"
+[triage] Morocco Politics — reject — "Loin des caméras, les chiffres de l’OIM: comment l’exode silencieux des Algérien…"
+[triage] Morocco Politics — PASS (severity 3) — "Extraditions entre le Maroc et l’Espagne, pourquoi Rabat envisage de suspendre u…"
+[usage] triage claude-haiku-4-5 in=2681 out=349 cache_r=0 cache_w=0 $0.004426
+[triage] Geopolitics — PASS (severity 3) — "Afghan women tell the BBC their lives are unrecognisable after five years of Tal…"
+[triage] Geopolitics — reject — "Instagram accounts fuelling Ceuta crisis with paid advice for help to cross"
+[triage] Geopolitics — reject — "Builders unearth €9m gold stash sealed in walls of Belgian property"
+[triage] Geopolitics — reject — "Dozens injured and thousands evacuated in Croatia wildfire"
+[triage] Geopolitics — reject — "Stolen Matisse artworks recovered by police in Brazil"
+[triage] Geopolitics — reject — "UK diplomats no longer get hardship bonus for being posted to Buenos Aires"
+[triage] Geopolitics — reject — "Conditions on US aircraft carrier at sea for more than 250 days raise alarms"
+[triage] Geopolitics — reject — "Engine parts smashed Ryanair window that man's head was sucked out of, report sa…"
+[triage] Geopolitics — reject — "Person fined after using foghorn to wake sleeping polar bear"
+[triage] Geopolitics — reject — "Air India to test all pilots for banned substances"
+[triage] Geopolitics — reject — "Teens who fled Venezuela after deadly quakes caught in another disaster in Colom…"
+[triage] Geopolitics — reject — "Indian solar mission's new findings throw light on enduring Sun mysteries"
+[triage] Geopolitics — PASS (severity 3) — "Putin can no longer claim victory in Ukraine, Nobel Peace Prize winner tells BBC"
+[triage] Geopolitics — reject — "Moment €9m worth of art stolen from Italy museum"
+[triage] Geopolitics — reject — "BBC Verify speaks to woman who filmed ICE agent pointing gun at her"
+[triage] Geopolitics — PASS (severity 4) — "Russia Campaigned to Derail Moldova’s Pro-Western Government"
+[triage] Geopolitics — reject — "Jason Arday, Cambridge Professor Accused of Plagiarism, Is Found Dead"
+[triage] Geopolitics — PASS (severity 3) — "Will Sudan’s El Obeid Become the Next El Fasher? What to Know."
+[triage] Geopolitics — reject — "Britain’s Farage Takes a Page From Trump’s Playbook Amid Investigations"
+[triage] Geopolitics — PASS (severity 3) — "With Trump’s Hamas Deal in Peril, Kushner Set to Visit Israel for Gaza Talks"
+[usage] triage claude-haiku-4-5 in=2141 out=281 cache_r=0 cache_w=0 $0.003546
+[triage] US Finance — reject — "Antitrust Lawyer on NFL Streaming Cost Concerns"
+[triage] US Finance — reject — "Better Home & Finance Founder on Fight for Company"
+[triage] US Finance — PASS (severity 3) — "Stocks Halt Rally After Signs of Consumer Slowdown | The Close 8/14/2026"
+[triage] US Finance — reject — "Aston Martin CEO on new luxury model, the Valen"
+[triage] US Finance — PASS (severity 3) — "Former Boston Fed Pres.: Investment spend a catalyst"
+[triage] US Finance — reject — "Hollywood Box Offices Are Back"
+[triage] US Finance — reject — "FBI Epstein Emails Show Sarah Ferguson Reached Patel"
+[triage] US Finance — reject — "Volatile Week for Equity Markets | Closing Bell"
+[triage] US Finance — PASS (severity 2) — "Berkshire Pads Delta, Alphabet Stakes as Abel Taps Cash Pile"
+[triage] US Finance — reject — "Election Angst Fuels Bruising Week in Brazil Markets"
+[triage] US Finance — PASS (severity 2) — "EM Currencies Cap Best Streak Since 2024, Stocks Rebound on AI"
+[triage] US Finance — PASS (severity 2) — "US Stocks End Off Record Highs to Mark Third Week of Gains"
+[triage] US Finance — reject — "Understanding Hyperscalers | Masters in Business with Ankur Crawford"
+[triage] US Finance — reject — "Avoid Being Shaken Out Of The Market: Wilson"
+[triage] US Finance — reject — "Freshmen Pay Thousands For Sorority Rush Coaches"
+[triage] US Finance — PASS (severity 2) — "Gold Nears $4,400 as Traders Weigh Fed Interest-Rate Path"
+[usage] triage claude-haiku-4-5 in=2270 out=332 cache_r=0 cache_w=0 $0.003930
+[triage] European Football — reject — "EFL Championship all-time top 20 goalscorers with Jordan Rhodes 2nd & Troy Deene…"
+[triage] European Football — reject — "Who were the most important players at every Premier League club last season?"
+[triage] European Football — PASS (severity 3) — "PSG agree Mika Godts transfer from Ajax: what can he bring to UCL winners?"
+[triage] European Football — PASS (severity 3) — "Transfer news LIVE: Arsenal hold Victor Osimhen talks as Jules Kounde to leave B…"
+[triage] European Football — reject — "Why Premier League dominates U21 talent market as LaLiga struggles"
+[triage] European Football — PASS (severity 2) — "Will Chelsea sell? The transfer records Enzo Fernández would break with a move t…"
+[triage] European Football — reject — "Can Savinho revive reputation with Tottenham Hotspur move after poor numbers at …"
+[triage] European Football — reject — "Premier League to fund live facial recognition for London's Met Police force on …"
+[triage] European Football — reject — "Barcelona's Frenkie de Jong is 'angry and irritated'. Are tensions rising again?"
+[triage] European Football — reject — "Can Arsenal go again? They have the ambition and the desire, but do they have th…"
+[triage] European Football — reject — "La Liga is back: Will Jose Mourinho's Real Madrid return be a success? Can Barce…"
+[triage] European Football — reject — "Rebuilding Sheffield Wednesday: How one of English football's most historic club…"
+[triage] European Football — reject — "Premier League strength test: How ready is your club for the new season with a w…"
+[triage] European Football — reject — "Premier League predictions: Take on The Athletic's experts as our weekly game re…"
+[triage] European Football — reject — "Europa League tie delayed after fog cancels all Faroe Islands flights"
+[triage] European Football — reject — "How Malaga vs. Fulham friendly ended in chaos with Arbeloa sent off and uncontes…"
+[triage] European Football — reject — "Real Madrid's midfield headache: Missing out on Rodri, signing Bernardo - and wh…"
+[triage] European Football — reject — "From Bruno Guimaraes to Neymar (three times): Football's most expensive transfer…"
+[triage] European Football — reject — "Ranking all 72 stadiums in the Football League: From homely grounds to imposing …"
+[usage] triage claude-haiku-4-5 in=2484 out=315 cache_r=0 cache_w=0 $0.004059
+[triage] US Politics — reject — "Don’t let socialists sabotage a Democratic comeback"
+[triage] US Politics — reject — "US-Japan moves to bolster the Yen set a precedent for currency interventions"
+[triage] US Politics — reject — "The war in Cuba has already begun"
+[triage] US Politics — reject — "Why nutty candidates are underperforming their polling so badly"
+[triage] US Politics — PASS (severity 2) — "Daylight saving time battle pits Senate GOP against Trump"
+[triage] US Politics — PASS (severity 2) — "Trump faces near-impossible task of replacing Karoline Leavitt"
+[triage] US Politics — PASS (severity 3) — "Judge drops Nevada ‘fake electors’ case from 2020 presidential election"
+[triage] US Politics — reject — "Interior investigating vandalism at WWII Memorial"
+[triage] US Politics — PASS (severity 2) — "White House accuses more than 40 countries of helping China avoid US tariffs"
+[triage] US Politics — PASS (severity 3) — "Schwartz faces Trump’s vaccine test"
+[triage] US Politics — PASS (severity 2) — "Third detainee dies after medical emergency at New Jersey ICE facility"
+[triage] US Politics — reject — "Senate Democrats call for GAO audit of White House ballroom project"
+[triage] US Politics — PASS (severity 2) — "Biden-era effort to boost power lines cut by Trump administration"
+[triage] US Politics — reject — "Top Commerce Committee Democrat presses airlines over AI ‘surveillance pricing’"
+[triage] US Politics — reject — "Warren presses RFK Jr. on Trump ties to lettuce distributor"
+[triage] US Politics — reject — "New aircraft carrier going to Middle East amid questions over conditions on USS …"
+[triage] US Politics — reject — "Republican Senate candidate: Voters say ‘it’s embarrassing’ to be from Minnesota"
+[triage] US Politics — reject — "Stephen Miller on ‘woke 1’: ‘It never stopped’"
+[usage] triage claude-haiku-4-5 in=2514 out=315 cache_r=0 cache_w=0 $0.004089
+[triage] US Politics — PASS (severity 3) — "DOJ alleges California prisons failed to protect female prisoners from sexual ab…"
+[triage] US Politics — PASS (severity 2) — "Vance to GOP: Don’t blame young people for being sympathetic to socialism"
+[triage] US Politics — reject — "Judge grants EEOC request to dismiss enforcement action against Nike in DEI poli…"
+[triage] US Politics — reject — "Jennings: Ocasio-Cortez ‘heir to the Sanders socialist movement’"
+[triage] US Politics — PASS (severity 3) — "Appeals court rules key Alien Enemies Act lawsuit moot"
+[triage] US Politics — PASS (severity 3) — "Kennedy Center board OKs new way of adding Trump’s name to building"
+[triage] US Politics — reject — "Retired general predicts Iran will get more aggressive ‘as we get closer to the …"
+[triage] US Politics — reject — "Baier pushes back on Trump’s Strait of Hormuz claim: ‘Traffic has slowed … to a …"
+[triage] US Politics — PASS (severity 2) — "US ambassador condemns ‘Israeli terrorists’ for siege of Palestinian American ho…"
+[triage] US Politics — reject — "Democrats ‘afraid’ of Jennings as White House press secretary, Sellers says"
+[triage] US Politics — reject — "Board votes to close Kennedy Center during renovations"
+[triage] US Politics — reject — "Democratic appropriators push DHS on purchase of a dozen planes, including ‘luxu…"
+[triage] US Politics — reject — "Carville: Trump ‘becoming less relevant in people’s minds’"
+[triage] US Politics — PASS (severity 3) — "DOJ’s antisemitism lawsuit against Harvard dismissed"
+[triage] US Politics — reject — "Crowley says he won’t campaign with Hasan Piker"
+[triage] US Politics — reject — "Wes Moore: ‘I don’t know what Woke 1.0 is’"
+[triage] US Politics — reject — "Grassley, Whitehouse blast Treasury decision on FinCEN"
+[triage] US Politics — reject — "Higher-income families more likely to enroll kids in organized sports: Poll"
+[usage] triage claude-haiku-4-5 in=2268 out=349 cache_r=0 cache_w=0 $0.004013
+[triage] Morocco — reject — "Washington menace l’Iran d’un isolement «jamais vu», loin des promesses d’accord…"
+[triage] Morocco — reject — "Maisons assiégées en Cisjordanie: Israël envoie des troupes sur fond de critique…"
+[triage] Morocco — reject — "Séisme en Colombie: l’espoir de trouver des survivants faiblit, la détresse rest…"
+[triage] Morocco — reject — "Aïd Al Mawlid Annabaoui sera célébré le mardi 25 août"
+[triage] Morocco — reject — "Revue du web. Les Marocains ont pu observer mercredi une éclipse partielle du So…"
+[triage] Morocco — reject — "Confrérie Boutchichia: la désignation du nouveau guide crée des remous"
+[triage] Morocco — PASS (severity 3) — "Tanger Med, Nador, Dakhla: comment le Maroc redessine sa carte économique et géo…"
+[triage] Morocco — reject — "Mohammed Ouzzine, redresseur de torts et sauveur autoproclamé de la presse… jusq…"
+[triage] Morocco — reject — "Rabat: un cambrioleur multirécidiviste déféré après une série de vols dans des r…"
+[triage] Morocco — PASS (severity 2) — "Le Plan d’urgence national contre la pollution marine fait sa mue"
+[triage] Morocco — reject — "Mercato: Samir El Mourabet aurait trouvé un accord avec Leipzig"
+[triage] Morocco — PASS (severity 2) — "Blanchiment des capitaux: l’Office des Changes renforce la régulation des holdin…"
+[triage] Morocco — reject — "Site médiéval de Belyounech: une nouvelle campagne de fouilles archéologiques pr…"
+[triage] Morocco — reject — "L’œil de Gueddar. Sebta: mobilisation générale"
+[triage] Morocco — PASS (severity 2) — "FIFA: Fouzi Lekjaa et cinq dirigeants du football arabe affichent leur soutien à…"
+[triage] Morocco — reject — "Festival des plages: Ramy Lapache, premier artiste à animer la scène d’Al Hoceim…"
+[triage] Morocco — reject — "Le sort d’Infantino doit être scellé par les urnes, insiste Patrice Motsepe"
+[triage] Morocco — reject — "Cinéma IMAX du Morocco Mall: pourquoi Cinerji et d’autres exploitants ont renonc…"
+[triage] Morocco — reject — "Côte d’Ivoire. Hausse des carburants, déroute des automobilistes"
+[triage] Morocco — reject — "L’Aïnouche du jour. En Algérie, l’éclipse (la vraie) se fait toujours attendre"
+[usage] triage claude-haiku-4-5 in=2437 out=349 cache_r=0 cache_w=0 $0.004182
+[triage] European Football — PASS (severity 3) — "What's going wrong for Rangers and McInnes?"
+[triage] European Football — reject — "The key stats as Chelsea look to go from 10th to the title again"
+[triage] European Football — reject — "What's going on with Southampton boss Eckert's FA probe?"
+[triage] European Football — reject — "Who am I? Guess Premier League star No 25"
+[triage] European Football — reject — "Man City must act like champions as WSL rivals grow stronger"
+[triage] European Football — reject — "'It's like Eastenders' - West Ham's boardroom battle on eve of Championship seas…"
+[triage] European Football — reject — "How Maresca's Man City are shaping up compared with Guardiola"
+[triage] European Football — PASS (severity 2) — "Man City's Reijnders set for £52m Saudi move"
+[triage] European Football — reject — "Will you beat our mega football nicknames quiz?"
+[triage] European Football — reject — "New Zealand break with OFC to withdraw Infantino support"
+[triage] European Football — reject — "Liverpool's Lundgaard joins Eintracht Frankfurt"
+[triage] European Football — reject — "Handling hate and seeking stability - Fofana's Chelsea journey"
+[triage] European Football — reject — "'Dad rang and I was like: What's happening?' - England U20s boss on Uefa threat"
+[triage] European Football — reject — "Rashford, Mainoo & transfers - Carrick calls for more signings"
+[triage] European Football — reject — "How Premier League shirts will change with gambling sponsor ban"
+[triage] European Football — PASS (severity 2) — "The level-headed Swede orchestrating magic with Motherwell"
+[triage] European Football — PASS (severity 2) — "Nigeria to miss Women's World Cup after South Africa and Ghana win play-offs"
+[triage] European Football — reject — "Tielemans apologises to Villa fans for Man Utd remarks"
+[triage] European Football — reject — "When do the major European leagues start and what are the big stories?"
+[triage] European Football — reject — "Can Sunderland defy the Premier League doubters again?"
+[usage] triage claude-haiku-4-5 in=2670 out=332 cache_r=0 cache_w=0 $0.004330
+[triage] US Politics — reject — "South Florida Venue Cancels Rally With a Pro-Palestinian Congresswoman"
+[triage] US Politics — reject — "President Trump Takes Credit for Steep Crime Rate Declines"
+[triage] US Politics — reject — "Navy and USS Lincoln’s Problems Are Tied to Attacks on U.S. Base Early in War"
+[triage] US Politics — reject — "Can Senator Ed Markey’s Progressive Politics Help Him Overcome the Age Issue?"
+[triage] US Politics — PASS (severity 2) — "Trump Dismisses Reports About Dire Conditions Aboard U.S.S. Abraham Lincoln"
+[triage] US Politics — reject — "John Carro, Jurist Who Had Early Brush With Lee Harvey Oswald, Dies at 98"
+[triage] US Politics — reject — "The 5 Congress Members Whose Families Trade the Most Stocks"
+[triage] US Politics — PASS (severity 2) — "Stock Trading in Congress Becomes an Attack Line in Midterm Campaigns"
+[triage] US Politics — reject — "Alaska Democrat Mary Peltola Pushes Back Against Endorsement From Kamala Harris"
+[triage] US Politics — reject — "DOJ Charges Kentucky Woman in World War II Memorial Vandalism Case"
+[triage] US Politics — reject — "She Sewed the Blue Angels’ Suits for 40 Years. Then a Big Company Got the Job."
+[triage] US Politics — reject — "Outrage at UnitedHealth and Other Insurers Persists After Brian Thompson Killing"
+[triage] US Politics — reject — "The Taliban Kicked the U.S. Out of Afghanistan. Now They Want It Back."
+[triage] US Politics — PASS (severity 2) — "Mining Claims Staked on Land Cut From Bears Ears and Grand Staircase Monuments"
+[triage] US Politics — PASS (severity 2) — "Russell Fry Backs Darline Graham in South Carolina Senate Runoff Amid Trump Pres…"
+[triage] US Politics — reject — "Trump Administration Asks Supreme Court to Greenlight White House Ballroom"
+[triage] US Politics — reject — "David Hearn’s Lawyers Ask Court to Bar Future Reflecting Pool Charges"
+[triage] US Politics — PASS (severity 3) — "Kevin Rideout, American Missionary Kidnapped in Niger, Is Released"
+[triage] US Politics — reject — "Can Polls Measure the True Strength of the Left?"
+[usage] triage claude-haiku-4-5 in=2440 out=349 cache_r=0 cache_w=0 $0.004185
+[triage] Tech/AI — PASS (severity 2) — "Google Turns On Gemini A.I. for Students Using Its Classroom App"
+[triage] Tech/AI — reject — "Amazon and Alphabet’s Profits Reveal Circular Nature of A.I. Boom"
+[triage] Tech/AI — reject — "I Tested a Popular A.I. Slop Detector. It Felt Empowering."
+[triage] Tech/AI — reject — "Zuckerberg’s Anti-Doom Fantasy + Finally an A.I. Detector That Works + A.I. Math"
+[triage] Tech/AI — reject — "Chatbots Are Pushing Us Toward a Post-Human Internet"
+[triage] Tech/AI — reject — "Judge Affirms Settlement Allowing HPE’s Deal for Juniper"
+[triage] Tech/AI — PASS (severity 2) — "Another OpenAI Executive, Denise Dresser, Departs the A.I. Start-Up"
+[triage] Tech/AI — PASS (severity 2) — "3 Ex-Georgia Deputies Used Flock Cameras to Stalk People, Sheriff Says"
+[triage] Tech/AI — reject — "Thrive Holdings, A.I.-Focused Buyer of Service Firms, Raises $2 Billion"
+[triage] Tech/AI — PASS (severity 3) — "Flock Cameras Are Dividing U.S. Cities. Here’s What to Know About Them."
+[triage] Tech/AI — reject — "Why tech bosses keep sharing their manifestos about AI"
+[triage] Tech/AI — reject — "Protein or pickled garlic? What's new in ice cream"
+[triage] Tech/AI — reject — "Bumble divides users by ditching its signature 'women-first' chat rule"
+[triage] Tech/AI — PASS (severity 2) — "Flock boss admits surveillance firm took too long to act over police abuse"
+[triage] Tech/AI — PASS (severity 3) — "Twitch users outraged as Amazon uses their content to train AI in opt-out featur…"
+[triage] Tech/AI — reject — "Talks to sell PayPal to Stripe and Advent are heating up"
+[triage] Tech/AI — PASS (severity 3) — "Self-driving trucks are officially testing on California highways"
+[triage] Tech/AI — reject — "Thrive’s Joshua Kushner chides Silicon Valley VCs over AI euphoria"
+[triage] Tech/AI — reject — "What we know about the alleged Iranian hacks on US water utilities"
+[triage] Tech/AI — reject — "Read-it-later app Pocket shut down — here are the best alternatives"
+[usage] triage claude-haiku-4-5 in=2796 out=349 cache_r=0 cache_w=0 $0.004541
+[triage] European Football — reject — "VAR, timewasting and subs - new rules for the new season"
+[triage] European Football — PASS (severity 3) — "Chelsea say no Fernandez move as deadline passes - but is it really over?"
+[triage] European Football — reject — "Arteta not worried about Arsenal contract talks"
+[triage] European Football — reject — "Departing Romero says he wasn't perfect at Spurs"
+[triage] European Football — reject — "Football Daily"
+[triage] European Football — reject — "European Cup winner Rimmer dies aged 78"
+[triage] European Football — PASS (severity 2) — "Arsenal express interest in signing Quansah"
+[triage] European Football — reject — "Arsenal lead Hinshelwood race - Saturday's gossip"
+[triage] European Football — PASS (severity 2) — "Shakhtar want to play Champions League ties at Chelsea"
+[triage] European Football — reject — "Hammers & Boro to go up? Championship club-by-club preview"
+[triage] European Football — reject — "Titans & underdogs - League One club-by-club preview"
+[triage] European Football — reject — "Salford champions? Millers to spiral? - League Two club-by-club preview"
+[triage] European Football — reject — "Carrick pushing to improve the squad this summer"
+[triage] European Football — reject — "Taylor on retirement, scrutiny, VAR and referee pundits"
+[triage] European Football — PASS (severity 3) — "Celtic's Engels poised for West Ham transfer"
+[triage] European Football — reject — "Burnley drop shirt sponsor after 42 days"
+[triage] European Football — reject — "Free agent Sancho favours move abroad"
+[triage] European Football — reject — "EFL says losses not sustainable after PFA legal action"
+[triage] European Football — reject — "Burnley sign Chelsea's Satpayev on loan"
+[triage] European Football — reject — "Who to pick, who to avoid - your team's FPL assets analysed"
+[usage] triage claude-haiku-4-5 in=2239 out=257 cache_r=0 cache_w=0 $0.003524
+[triage] Tech/AI — reject — "Alo Discount Code: 20% Off August 2026"
+[triage] Tech/AI — reject — "Braun Promo Codes: 15% Off August"
+[triage] Tech/AI — reject — "Shark Promo Codes for August 2026"
+[triage] Tech/AI — reject — "Jabra Promo Codes: 30% Off Headphones, Headsets & More"
+[triage] Tech/AI — PASS (severity 2) — "Google Meet can take notes for your in-person meetings now - here's how it works"
+[triage] Tech/AI — PASS (severity 2) — "I tested an Android app that lets anyone fight censorship - and shows your impac…"
+[triage] Tech/AI — PASS (severity 2) — "ChatGPT's new Computer History tracks your Mac activity to create a timeline - b…"
+[triage] Tech/AI — PASS (severity 3) — "I used OpenFactory to build my own Linux distro overnight - this AI tool is goin…"
+[triage] Tech/AI — reject — "This free Android assistant fixes my biggest Gemini frustration - and keeps my d…"
+[triage] Tech/AI — reject — "I tried the new ChatGPT Desktop App for Linux - but I'll stick to my browser for…"
+[triage] Tech/AI — reject — "This Micro RGB TV rivals pricier OLED models - and I'd recommend it, especially …"
+[triage] Tech/AI — reject — "I wore Samsung's and Apple's Ultra smartwatches for 3 weeks - apps made all the …"
+[triage] Tech/AI — reject — "You're using DND all wrong: 5 powerful Do Not Disturb settings to try on your iP…"
+[triage] Tech/AI — PASS (severity 2) — "Microsoft is merging Copilot and Copilot 365 into one unified app - and retiring…"
+[triage] Tech/AI — PASS (severity 2) — "75% of developers I surveyed prefer Claude Code - here's why they choose it over…"
+[triage] Tech/AI — PASS (severity 2) — "Android can now tap to share for contact info, photos, and more - which phones g…"
+[triage] Tech/AI — reject — "The best password managers of 2026: Expert tested"
+[triage] Tech/AI — reject — "The best antivirus software to protect your computer in 2026"
+[triage] Tech/AI — reject — "'Specialists aren't required' anymore: How to stay valuable in an AI agent workp…"
+[usage] triage claude-haiku-4-5 in=2214 out=349 cache_r=0 cache_w=0 $0.003959
+[triage] Tech/AI — reject — "Mark Zuckerberg has an Instagzam"
+[triage] Tech/AI — reject — "2025 GOTY Clair Obscur: Expedition 33 is down to $33"
+[triage] Tech/AI — reject — "CMF&#8217;s clip earbuds hit the balance between cheap and good"
+[triage] Tech/AI — reject — "The MSI Claw EX is the most important PC handheld since Steam Deck — I still wou…"
+[triage] Tech/AI — PASS (severity 3) — "Vulnerability giving attackers full control of Macs is under active exploitation"
+[triage] Tech/AI — PASS (severity 2) — "First test flight of largest all-electric aircraft used just $5 of electricity"
+[triage] Tech/AI — reject — "Suspecting court of using AI, man injected prompts in filings to try to win case"
+[triage] Tech/AI — reject — "State judge orders Kalshi to stop offering sports bets and other wagers"
+[triage] Tech/AI — PASS (severity 2) — "PBS station fears losing 50TB of data after being ghosted by cloud storage provi…"
+[triage] Tech/AI — reject — "Policy experts: Europe stuck between 'rock and a hard place' on launch"
+[triage] Tech/AI — reject — "Ars Live recap: How can we stop publishers from killing their own games?"
+[triage] Tech/AI — PASS (severity 3) — "Judge gives Google one week to fix 'anticompetitive' app store download in Googl…"
+[triage] Tech/AI — reject — "Taylor Farms' connections to Trump admin spurs probe into Cyclospora response"
+[triage] Tech/AI — PASS (severity 3) — "OpenAI and Anthropic in price war as Chinese AI rivals gain ground"
+[triage] Tech/AI — reject — "Rocket Report: Rocket Lab shows off its flexibility; Blue Origin's two-pad plan"
+[triage] Tech/AI — reject — "Samsung Galaxy Z Fold 8 Ultra review: The ultra foldable with an ultra price"
+[triage] Tech/AI — reject — "Organic-looking brake assemblies debut on new Czinger 21C Spyder"
+[triage] Tech/AI — reject — "US wait times for cancer surgeries are getting longer and longer"
+[triage] Tech/AI — PASS (severity 4) — "Private security firms will soon be allowed to hack overseas cybercriminals"
+[triage] Tech/AI — reject — "Virgin Galactic wants your help naming its new Delta class spaceship"
+[usage] triage claude-haiku-4-5 in=2402 out=332 cache_r=0 cache_w=0 $0.004062
+[triage] Tech/AI — reject — "Ukrainian drones wipe out entire US tank brigade in live war game"
+[triage] Tech/AI — PASS (severity 2) — "Flock “can’t tech its way out” of the stalker cop problem, experts say"
+[triage] Tech/AI — reject — "Pet owners say smart pet feeder outage led to furry ones going unfed"
+[triage] Tech/AI — PASS (severity 2) — "Waymo receives permission to offer rides in Sacramento and San Diego"
+[triage] Tech/AI — reject — "Kia's EV3 will start under $31,000 in the US"
+[triage] Tech/AI — reject — "The Mandalorian and Grogu will hit Disney+ on September 2"
+[triage] Tech/AI — reject — "Your car's dash cam might be illegal in some states — Here's how to check"
+[triage] Tech/AI — PASS (severity 3) — "France's top court strikes down social media ban for children under 15"
+[triage] Tech/AI — reject — "Get the best battery life for your MacBook by changing these settings"
+[triage] Tech/AI — reject — "DeepSeek's AI models are about to cost four times more"
+[triage] Tech/AI — PASS (severity 2) — "Trump slaps a 100 percent tariff on heavy and 'sensitive' drones"
+[triage] Tech/AI — PASS (severity 3) — "Apple sends out warnings to targets of mercenary spyware attacks"
+[triage] Tech/AI — reject — "Mico, Microsoft's weird lil' AI guy, has been demoted"
+[triage] Tech/AI — reject — "Netflix shuts down Oxenfree studio Night School weeks after praising its 'really…"
+[triage] Tech/AI — reject — "X is testing a tool that will let users see if their posts have been 'shadowbann…"
+[triage] Tech/AI — reject — "Hosting provider Namecheap is down after data center cooling failure"
+[triage] Tech/AI — PASS (severity 3) — "US government to allow private companies to carry out cyberattacks on its behalf"
+[triage] Tech/AI — reject — "The best Spotify alternatives to ease your conscience"
+[triage] Tech/AI — PASS (severity 2) — "New York City Lawmakers Push to ‘Ban the Scan’ at MSG"
+[usage] triage claude-haiku-4-5 in=3346 out=332 cache_r=0 cache_w=0 $0.005006
+[triage] US Politics — reject — "An Unlikely Emergency Appeal to the Supreme Court From a Dog Named Bruce"
+[triage] US Politics — PASS (severity 3) — "Trump’s Justice Dept. Targets Smaller Fraud Cases"
+[triage] US Politics — reject — "Rove: Trump must stop ‘gaslighting’ Americans over economy"
+[triage] US Politics — reject — "Senate investigates kids safety issues in online game Roblox"
+[triage] US Politics — reject — "Gov. DeSantis latest to not support Rep. Mills ahead of Florida primary"
+[triage] US Politics — PASS (severity 3) — "USS Abraham Lincoln returning home"
+[triage] US Politics — PASS (severity 2) — "Judge lifts order on Somalia TPS, clearing way for deportations"
+[triage] US Politics — reject — "Military to reimburse service members freezing eggs, sperm"
+[triage] US Politics — reject — "Accused Olympian seeks protection from future Reflecting Pool charges"
+[triage] US Politics — PASS (severity 3) — "Trump says he will declare Strait of Hormuz a US territory"
+[triage] US Politics — reject — "Live updates: Trump addresses Long Island crowd, with focus on decline in crime"
+[triage] US Politics — PASS (severity 2) — "Son of former Mexican president challenges Trump after visa revoked"
+[triage] US Politics — reject — "Watch: Trump touts federal crackdown on crime at New York rally"
+[triage] US Politics — PASS (severity 2) — "Trump: USS Abraham Lincoln family members not concerned about conditions"
+[triage] US Politics — reject — "EPA sued for approving semiconductor chemicals that may pose health risks"
+[triage] US Politics — reject — "RFK Jr. says he’s seen ‘boxes and boxes’ of McDonald’s on Trump plane"
+[triage] US Politics — reject — "14 years later, Congress still hasn’t delivered a solution for Dreamers"
+[triage] US Politics — PASS (severity 2) — "Mangione pleads guilty to federal charges in UnitedHealthcare CEO shooting"
+[triage] US Politics — PASS (severity 2) — "Federal surveillance operation targeted progressive groups, unions in Minnesota,…"
+[usage] triage claude-haiku-4-5 in=4007 out=349 cache_r=0 cache_w=0 $0.005752
+[triage] European Football — PASS (severity 1) — "Official: Frosinone buy Terzic from RB Sazlburg for €2.5m"
+[triage] European Football — reject — "Lecce: ‘Banda deserves to be suspended, our battle for all clubs who respect rul…"
+[triage] European Football — PASS (severity 2) — "OM-Atlético: 'Je serai toujours derrière lui', Genesio prend la défense de Baler…"
+[triage] European Football — reject — "Ligue 2: Saint-Etienne enchaîne, deux défaites en deux matchs pour Nantes"
+[triage] European Football — PASS (severity 3) — "Le CNOSF veut maintenir l’exclusion de Bordeaux des championnats nationaux: les …"
+[triage] European Football — reject — "AC Milan"
+[triage] European Football — PASS (severity 2) — "AC Milan: Ruben Amorim met au placard deux internationaux français"
+[triage] European Football — PASS (severity 2) — "Annonce surprise au Paris FC: Ciro Immobile met fin à sa carrière"
+[triage] European Football — PASS (severity 3) — "DIRECT. Mercato: ça bouge fort au PSG avec Torres et Godts, Ciro Immobile met fi…"
+[triage] European Football — reject — "Liverpool"
+[triage] European Football — PASS (severity 3) — "Le patron d'Amazon Jeff Bezos devient actionnaire de Liverpool"
+[triage] European Football — reject — "Un départ pour une arrivée: Lorenzi dévoile les conditions pour voir une recrue …"
+[triage] European Football — reject — "FC Barcelone"
+[triage] European Football — reject — "Barça: 'Ces fausses informations nuisent à mon image', Frenkie de Jong règle ses…"
+[triage] European Football — reject — "Real Madrid"
+[triage] European Football — reject — "'Chaque joueur est ravi d'avoir un entraîneur qui sait où il va': Kylian Mbappé …"
+[triage] European Football — PASS (severity 2) — "L’OM retire le brassard de capitaine à Hojbjerg"
+[triage] European Football — reject — "Ballon d'or: Et si Fabian Ruiz était un favori? La presse espagnole veut y croir…"
+[triage] European Football — PASS (severity 2) — "J-2 Lens-PSG: Toppmöller et Thauvin veulent continuer 'd'écrire une grande étape…"
+[triage] European Football — reject — "Bayern Munich"
+[usage] triage claude-haiku-4-5 in=2508 out=349 cache_r=0 cache_w=0 $0.004253
+[triage] Geopolitics — reject — "Muddling through Iceland’s rainy eclipse, accompanied by clouds, whales and at l…"
+[triage] Geopolitics — PASS (severity 3) — "Afghanistan’s Unhappy Anniversary"
+[triage] Geopolitics — reject — "French ambassador to CAR investigated over claims he hosted dozens of women"
+[triage] Geopolitics — PASS (severity 2) — "Zambia elections haunted by ghost of incumbent president’s arch-rival"
+[triage] Geopolitics — reject — "Ontario free to axe Toronto bike lanes, region’s top court rules"
+[triage] Geopolitics — PASS (severity 4) — "BP to develop offshore gasfield in Venezuela with firms linked to Trump administ…"
+[triage] Geopolitics — PASS (severity 2) — "Strong 7.7-magnitude earthquake strikes eastern Indonesia, triggering tsunami wa…"
+[triage] Geopolitics — reject — "Indonesia wildfires threaten orangutans rescued from animal traffickers"
+[triage] Geopolitics — reject — "South Korean airport becomes busiest in world for global traffic amid Iran war"
+[triage] Geopolitics — reject — "A Queensland man enjoyed soaring profits from a crypto trading app. Then his mon…"
+[triage] Geopolitics — reject — "Pocock and crossbenchers call Labor’s NDIS overhaul ‘too far, too fast’ in scath…"
+[triage] Geopolitics — reject — "Lending to property investors falls sharply in ‘tiny’ step towards fairer housin…"
+[triage] Geopolitics — reject — "Alleged victim says Alan Jones groped him at lunch and describes fear of being s…"
+[triage] Geopolitics — reject — "BBC seeks to subpoena Trump children and son-in-law over defamation lawsuit"
+[triage] Geopolitics — reject — "Belgian student strikes gold worth €9m while digging a new sewer"
+[triage] Geopolitics — reject — "Iberian orca known for ramming boats seen with suspected gunshot wounds"
+[triage] Geopolitics — PASS (severity 3) — "Benjamin Netanyahu describes UK as ‘first Islamic republic to get a nuclear weap…"
+[triage] Geopolitics — reject — "Burnham announces £65m for drought-hit farmers after Labour pressure"
+[triage] Geopolitics — reject — "Emergency alert warning of wildfire risk sent to phones in England and Wales"
+[triage] Geopolitics — reject — "Burnham criticised for EV and North Sea approach amid climate crisis"
+[usage] triage claude-haiku-4-5 in=2451 out=315 cache_r=0 cache_w=0 $0.004026
+[triage] US Politics — reject — "Dorm rooms are tiny. The dorm decor economy is not."
+[triage] US Politics — PASS (severity 3) — "Retail sales slump in July"
+[triage] US Politics — PASS (severity 3) — "Consumer sentiment dips, especially among Republicans"
+[triage] US Politics — reject — "OpenAI sheds senior execs in pre-IPO refresh"
+[triage] US Politics — PASS (severity 2) — "America has more majority-minority rural counties than urban and suburban ones"
+[triage] US Politics — PASS (severity 3) — "Data center backlash echoes fossil-fuel politics"
+[triage] US Politics — reject — "A convergence of biological risks"
+[triage] US Politics — PASS (severity 2) — "Scoop: Key W.H. national security aide Andy Baker is departing"
+[triage] US Politics — PASS (severity 3) — "Trump stops short of endorsing Bibi as his campaign falters"
+[triage] US Politics — reject — "'Rubio Realizing' memes become a White House birthday gift"
+[triage] US Politics — PASS (severity 2) — "Scoop: Trump team tells GOP to lean in on health care"
+[triage] US Politics — PASS (severity 2) — "'It is despicable': House Democrats rage over Republican stock trading 'set-up'"
+[triage] US Politics — PASS (severity 3) — "Older Democrats walloped by midterms anti-establishment revolt"
+[triage] US Politics — reject — "Trump's White House remodel tab keeps growing"
+[triage] US Politics — reject — "Maggie Haberman says 70% of Trump's attention goes to monuments, renovations and…"
+[triage] US Politics — reject — "Musk and Zuckerberg claw back into AI race with new model momentum"
+[triage] US Politics — PASS (severity 2) — "Pollsters missed again in Wisconsin. Here's why."
+[triage] US Politics — PASS (severity 2) — "Youth poll: Thumbs down on everything"
+[usage] triage claude-haiku-4-5 in=2585 out=349 cache_r=0 cache_w=0 $0.004330
+[triage] Tech/AI — reject — "Unforgetful is a new reminders app for people who can’t stop hitting snooze"
+[triage] Tech/AI — PASS (severity 2) — "Google will now allow users to remove visible watermark from its AI generations"
+[triage] Tech/AI — reject — "Does Mark Zuckerberg really believe AI is ‘for everyone’?"
+[triage] Tech/AI — PASS (severity 2) — "Apple proposes to take a 15% cut of purchases made outside the App Store"
+[triage] Tech/AI — reject — "Kog is going deeper to squeeze more inference out of GPUs"
+[triage] Tech/AI — PASS (severity 2) — "Hyperscalers might regret embracing natural gas if new forecast proves correct"
+[triage] Tech/AI — reject — "US courts will start publishing how often the government uses spyware"
+[triage] Tech/AI — PASS (severity 3) — "Uber and Pony.ai plan to bring 2,000 robotaxis to Europe"
+[triage] Tech/AI — reject — "Investors sue Selena Gomez alleging fraud tied to her mental health startup"
+[triage] Tech/AI — reject — "Flock says its new tool will help identify police abuse, but hasn’t explained ho…"
+[triage] Tech/AI — PASS (severity 2) — "If Apple sends you a push notification alerting you to a spyware attack, take it…"
+[triage] Tech/AI — reject — "Writer introduces new AI model and upgraded harness to contain token costs"
+[triage] Tech/AI — PASS (severity 3) — "Databricks wanted to raise $1B, investors wanted $15B. It settled on $5B at a $1…"
+[triage] Tech/AI — PASS (severity 3) — "OpenAI introduces ‘Ultrafast,’ a new mode that makes GPT-5.6 Sol work at 14x the…"
+[triage] Tech/AI — PASS (severity 2) — "IBM partners with OpenAI to bolster enterprise AI push"
+[triage] Tech/AI — reject — "Samsung has new Galaxy headphones in the works"
+[triage] Tech/AI — reject — "A RAMageddon guide to back-to-school laptop shopping"
+[triage] Tech/AI — reject — "Lamborghini’s flagship Revuelto levels up with SV trim"
+[triage] Tech/AI — reject — "The X-Files creator Chris Carter wanted to make a more horrific movie"
+[triage] Tech/AI — reject — "Google&#8217;s best new camera feature is only for the Pixel 11 series"
+[digest] Tech/AI: kept 8 of 45 notable — dropped 37 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] US Politics: kept 8 of 47 notable — dropped 39 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] Geopolitics: kept 8 of 26 notable — dropped 18 at severity 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] Morocco: kept 8 of 16 notable — dropped 8 at severity 2, 2, 2, 2, 2, 2, 2, 2
+[digest] US Finance: kept 8 of 22 notable — dropped 14 at severity 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+[digest] European Football: kept 8 of 40 notable — dropped 32 at severity 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1
+[usage] writeCard claude-haiku-4-5 in=677 out=89 cache_r=0 cache_w=0 $0.001122
+[usage] writeCard claude-haiku-4-5 in=645 out=93 cache_r=0 cache_w=0 $0.001110
+[usage] writeCard claude-haiku-4-5 in=650 out=108 cache_r=0 cache_w=0 $0.001190
+[usage] writeCard claude-haiku-4-5 in=651 out=98 cache_r=0 cache_w=0 $0.001141
+[usage] writeCard claude-haiku-4-5 in=743 out=103 cache_r=0 cache_w=0 $0.001258
+[usage] writeCard claude-haiku-4-5 in=783 out=122 cache_r=0 cache_w=0 $0.001393
+[usage] writeCard claude-haiku-4-5 in=649 out=98 cache_r=0 cache_w=0 $0.001139
+[usage] writeCard claude-haiku-4-5 in=740 out=125 cache_r=0 cache_w=0 $0.001365
+[usage] writeCard claude-haiku-4-5 in=733 out=92 cache_r=0 cache_w=0 $0.001193
+[usage] writeCard claude-haiku-4-5 in=657 out=104 cache_r=0 cache_w=0 $0.001177
+[usage] writeCard claude-haiku-4-5 in=663 out=110 cache_r=0 cache_w=0 $0.001213
+[usage] writeCard claude-haiku-4-5 in=635 out=102 cache_r=0 cache_w=0 $0.001145
+[usage] writeCard claude-haiku-4-5 in=723 out=103 cache_r=0 cache_w=0 $0.001238
+[usage] writeCard claude-haiku-4-5 in=776 out=111 cache_r=0 cache_w=0 $0.001331
+[usage] writeCard claude-haiku-4-5 in=641 out=97 cache_r=0 cache_w=0 $0.001126
+[usage] writeCard claude-haiku-4-5 in=660 out=105 cache_r=0 cache_w=0 $0.001185
+[usage] writeCard claude-haiku-4-5 in=634 out=117 cache_r=0 cache_w=0 $0.001219
+[usage] writeCard claude-haiku-4-5 in=707 out=124 cache_r=0 cache_w=0 $0.001327
+[usage] writeCard claude-haiku-4-5 in=694 out=119 cache_r=0 cache_w=0 $0.001289
+[usage] writeCard claude-haiku-4-5 in=712 out=133 cache_r=0 cache_w=0 $0.001377
+[usage] writeCard claude-haiku-4-5 in=687 out=104 cache_r=0 cache_w=0 $0.001207
+[usage] writeCard claude-haiku-4-5 in=741 out=123 cache_r=0 cache_w=0 $0.001356
+[usage] writeCard claude-haiku-4-5 in=631 out=88 cache_r=0 cache_w=0 $0.001071
+[usage] writeCard claude-haiku-4-5 in=675 out=123 cache_r=0 cache_w=0 $0.001290
+[usage] writeCard claude-haiku-4-5 in=652 out=113 cache_r=0 cache_w=0 $0.001217
+[usage] writeCard claude-haiku-4-5 in=621 out=116 cache_r=0 cache_w=0 $0.001201
+[usage] writeCard claude-haiku-4-5 in=620 out=110 cache_r=0 cache_w=0 $0.001170
+[usage] writeCard claude-haiku-4-5 in=658 out=121 cache_r=0 cache_w=0 $0.001263
+[usage] writeCard claude-haiku-4-5 in=669 out=127 cache_r=0 cache_w=0 $0.001304
+[usage] writeCard claude-haiku-4-5 in=638 out=110 cache_r=0 cache_w=0 $0.001188
+[usage] writeCard claude-haiku-4-5 in=670 out=98 cache_r=0 cache_w=0 $0.001160
+[usage] writeCard claude-sonnet-5 in=905 out=201 cache_r=0 cache_w=0 $0.003820
+[usage] writeCard claude-haiku-4-5 in=642 out=134 cache_r=0 cache_w=0 $0.001312
+[usage] writeCard claude-haiku-4-5 in=633 out=121 cache_r=0 cache_w=0 $0.001238
+[usage] writeCard claude-sonnet-5 in=1138 out=214 cache_r=0 cache_w=0 $0.004416
+[usage] writeCard claude-haiku-4-5 in=680 out=128 cache_r=0 cache_w=0 $0.001320
+[usage] writeCard claude-haiku-4-5 in=764 out=113 cache_r=0 cache_w=0 $0.001329
+[usage] writeCard claude-sonnet-5 in=1421 out=205 cache_r=0 cache_w=0 $0.004892
+[usage] writeCard claude-sonnet-5 in=1116 out=155 cache_r=0 cache_w=0 $0.003782
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "The Trump administration has asked the Supreme Court to immediately clear the way for construction of a $400 million White House ballroom, after a lower appeals court ruled the project needed congress…"
+[usage] writeCard claude-sonnet-5 in=1047 out=244 cache_r=0 cache_w=0 $0.004534
+[usage] writeCard claude-sonnet-5 in=1091 out=192 cache_r=0 cache_w=0 $0.004102
+[usage] writeCard claude-sonnet-5 in=904 out=247 cache_r=0 cache_w=0 $0.004278
+[usage] writeCard claude-sonnet-5 in=1402 out=84 cache_r=0 cache_w=0 $0.003644
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "During a Long Island speech, President Trump said he would "
+[usage] writeCard claude-sonnet-5 in=1310 out=250 cache_r=0 cache_w=0 $0.005120
+[usage] writeCard claude-sonnet-5 in=1352 out=211 cache_r=0 cache_w=0 $0.004814
+[usage] writeCard claude-sonnet-5 in=966 out=235 cache_r=0 cache_w=0 $0.004282
+[usage] writeCard claude-sonnet-5 in=1091 out=224 cache_r=0 cache_w=0 $0.004422
+[usage] writeCard claude-sonnet-5 in=934 out=161 cache_r=0 cache_w=0 $0.003478
+[usage] writeCard claude-sonnet-5 in=1372 out=245 cache_r=0 cache_w=0 $0.005194
+[usage] writeCard claude-sonnet-5 in=1243 out=242 cache_r=0 cache_w=0 $0.004906
+[usage] writeCard claude-sonnet-5 in=879 out=205 cache_r=0 cache_w=0 $0.003808
+[usage] writeCard claude-haiku-4-5 in=689 out=111 cache_r=0 cache_w=0 $0.001244
+[usage] writeCard claude-sonnet-5 in=992 out=224 cache_r=0 cache_w=0 $0.004224
+[usage] writeCard claude-sonnet-5 in=951 out=229 cache_r=0 cache_w=0 $0.004192
+[usage] writeCard claude-haiku-4-5 in=638 out=122 cache_r=0 cache_w=0 $0.001248
+[usage] writeCard claude-sonnet-5 in=1042 out=256 cache_r=0 cache_w=0 $0.004644
+[usage] writeCard claude-sonnet-5 in=1105 out=254 cache_r=0 cache_w=0 $0.004750
+[usage] writeCard claude-haiku-4-5 in=670 out=125 cache_r=0 cache_w=0 $0.001295
+[usage] writeCard claude-sonnet-5 in=1389 out=225 cache_r=0 cache_w=0 $0.005028
+[usage] writeCard claude-sonnet-5 in=1100 out=205 cache_r=0 cache_w=0 $0.004250
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "Israeli Defense Minister Israel Katz has ordered the military to draft plans transferring law enforcement over Israeli settlers in the occupied West Bank to police, after the army failed to stop viole…"
+[usage] writeCard claude-sonnet-5 in=1066 out=240 cache_r=0 cache_w=0 $0.004532
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "Prime Minister Sébastien Lecornu is finalizing France's 2027 budget bill, to be unveiled at a cabinet meeting on September 30, after a summer dominated by fiscal preparations. Rather than pursuing maj…"
+[usage] writeCard claude-sonnet-5 in=1092 out=173 cache_r=0 cache_w=0 $0.003914
+[writeCard] output looked incomplete (stop_reason: end_turn) — retrying once: "Vladimir Putin made his first visit to the disputed Kuril Islands, seized by Soviet forces from Japan at the end of World War II, drawing furious protests from Tokyo. Japanese Prime Minister Sanae Tak…"
+[usage] writeCard claude-sonnet-5 in=1402 out=121 cache_r=0 cache_w=0 $0.004014
+[usage] writeCard claude-sonnet-5 in=1116 out=206 cache_r=0 cache_w=0 $0.004292
+[usage] writeCard claude-sonnet-5 in=1066 out=229 cache_r=0 cache_w=0 $0.004422
+[usage] writeCard claude-sonnet-5 in=1100 out=264 cache_r=0 cache_w=0 $0.004840
+[usage] writeCard claude-sonnet-5 in=1092 out=184 cache_r=0 cache_w=0 $0.004024
+[digest] writeCard failed: Error: writeCard produced an incomplete output even after retry (stop_reason: end_turn): "During a speech on Long Island, President Trump said he would soon declare the Strait of Hormuz — a critical global oil chokepoint jointly controlled by Iran and Oman — a "
+    at generateWithRetryOnAmbiguousTruncation (src/lib/claudeText.ts:71:11)
+    at async writeCard (src/lib/writeCard.ts:137:49)
+    at async runDigestPipeline (src/app/api/digest/route.ts:191:21)
+    at async Object.pull (src/app/api/digest/route.ts:326:33)
+  69 |   const retry = await generate();
+  70 |   if (retry.text.trim().length === 0 || !looksComplete(retry.text)) {
+> 71 |     throw new Error(
+     |           ^
+  72 |       `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopR...
+  73 |     );
+  74 |   }
+[digest] writeCard failed: Error: writeCard produced an incomplete output even after retry (stop_reason: end_turn): "Vladimir Putin made his first visit to the disputed Kuril Islands, territory seized by the Soviet Union from Japan at the end of World War II, prompting Tokyo to summon Russia's ambassador in protest. Japanese Prime Minister Sanae Takaichi, a vocal critic of Putin over the Ukraine war, called the visit "
+    at generateWithRetryOnAmbiguousTruncation (src/lib/claudeText.ts:71:11)
+    at async writeCard (src/lib/writeCard.ts:137:49)
+    at async runDigestPipeline (src/app/api/digest/route.ts:191:21)
+    at async Object.pull (src/app/api/digest/route.ts:326:33)
+  69 |   const retry = await generate();
+  70 |   if (retry.text.trim().length === 0 || !looksComplete(retry.text)) {
+> 71 |     throw new Error(
+     |           ^
+  72 |       `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopR...
+  73 |     );
+  74 |   }
+[usage] rank claude-haiku-4-5 in=4885 out=80 cache_r=0 cache_w=0 $0.005285
+[usage] digest complete — 107 calls
+[usage]   stage       calls  model                input  output  cache_r  cache_w       billed      at list
+[usage]   triage         39  claude-haiku-4-5     96400   12046        0        0    $0.156630    $0.156630
+[usage]   writeCard      38  claude-haiku-4-5     25751    4240        0        0    $0.046951    $0.046951
+[usage]   writeCard      29  claude-sonnet-5      32684    6125        0        0    $0.126618    $0.189927
+[usage]   rank            1  claude-haiku-4-5      4885      80        0        0    $0.005285    $0.005285
+[usage]   TOTAL         107                      159720   22491        0        0    $0.335484    $0.398793
+[usage] writeCard made 67 calls for 62 — 5 extra billed attempt(s) (truncation retry and/or a failed item).
+[usage] claude-sonnet-5 introductory pricing was in effect for this run and ends 2026-08-31 — "at list" is what this same run costs from the day after. Rates last verified 2026-08-13.
+ POST /api/digest 200 in 49s (next.js: 241ms, proxy.ts: 9ms, application-code: 49s)
+ GET /topic/european-football 200 in 1588ms (next.js: 492ms, proxy.ts: 55ms, application-code: 1041ms)
+[usage] expand claude-sonnet-5 in=883 out=1115 cache_r=0 cache_w=0 $0.012916
+[usage] expand complete — 1 calls
+[usage]   stage       calls  model                input  output  cache_r  cache_w       billed      at list
+[usage]   expand          1  claude-sonnet-5        883    1115        0        0    $0.012916    $0.019374
+[usage]   TOTAL           1                         883    1115        0        0    $0.012916    $0.019374
+[usage] claude-sonnet-5 introductory pricing was in effect for this run and ends 2026-08-31 — "at list" is what this same run costs from the day after. Rates last verified 2026-08-13.
+ POST /api/cards/61519a70-2954-4639-844e-b479822c1c59/expand 200 in 16.9s (next.js: 706ms, proxy.ts: 7ms, application-code: 16.2s)
+[usage] expand claude-sonnet-5 in=589 out=803 cache_r=0 cache_w=0 $0.009208
+[usage] expand complete — 1 calls
+[usage]   stage       calls  model                input  output  cache_r  cache_w       billed      at list
+[usage]   expand          1  claude-sonnet-5        589     803        0        0    $0.009208    $0.013812
+[usage]   TOTAL           1                         589     803        0        0    $0.009208    $0.013812
+[usage] claude-sonnet-5 introductory pricing was in effect for this run and ends 2026-08-31 — "at list" is what this same run costs from the day after. Rates last verified 2026-08-13.
+ POST /api/cards/87627d9a-bec8-4b4a-9093-249465a5140d/expand 200 in 12.5s (next.js: 8ms, proxy.ts: 6ms, application-code: 12.5s)
+ GET /topic/morocco 200 in 574ms (next.js: 9ms, proxy.ts: 7ms, application-code: 558ms)
+[usage] expand claude-sonnet-5 in=777 out=1115 cache_r=0 cache_w=0 $0.012704
+[usage] expand complete — 1 calls
+[usage]   stage       calls  model                input  output  cache_r  cache_w       billed      at list
+[usage]   expand          1  claude-sonnet-5        777    1115        0        0    $0.012704    $0.019056
+[usage]   TOTAL           1                         777    1115        0        0    $0.012704    $0.019056
+[usage] claude-sonnet-5 introductory pricing was in effect for this run and ends 2026-08-31 — "at list" is what this same run costs from the day after. Rates last verified 2026-08-13.
+ POST /api/cards/7ecb11d0-5740-4299-9ccb-f5ca27e1a592/expand 200 in 15.5s (next.js: 9ms, proxy.ts: 8ms, application-code: 15.4s)
+[?25h

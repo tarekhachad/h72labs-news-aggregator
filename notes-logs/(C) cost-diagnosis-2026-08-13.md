@@ -1,5 +1,7 @@
 # (C) Cost Diagnosis — 2026-08-13
 
+> **Superseded for post-optimization figures — see `(C) cost-diagnosis-2026-08-15-post-optimization.md`.** This note remains accurate for what it measures: the **baseline**, before any optimization. Its $1.944/digest and the per-stage split behind it are the record of the problem, and are deliberately left unedited rather than quietly updated into staleness. The current cost is **$0.399/digest at list**.
+
 The Final Phase's F.3 measurement. First time this app's real per-digest cost has been measured with per-stage attribution rather than read off the Anthropic Console as a single total.
 
 **Headline: a real digest costs $1.66 billed / $1.94 at list — roughly 10× the $0.17 figure recorded in `(C) TECH_STACK.md`, and ~7× the $0.20–0.30 estimate above it.**

@@ -169,7 +169,15 @@ One Haiku call per **~20 clusters of the same topic**. `src/lib/rank.ts` already
 
 **Migration hazards:** `dedup-wiring.test.ts` has three `toHaveBeenCalledTimes(FAKE_CLUSTERS.length)` assertions → become `toHaveBeenCalledWith(FAKE_CLUSTERS)` (the real intent, not a proxy). Any wiring test that mocks `triageBatchCount` away gets `undefined`, which `formatUsageSummary` skips silently — pull it through `vi.importActual`.
 
-## F.4.6 — Re-measure (paid)
+## F.4.6 — DONE (2026-08-13, partial) / F.4.7 — DONE (2026-08-15, phase closed)
+
+**F.4.6 ran and produced numbers but failed two of three criteria:** cost $1.944 → $0.404 at list (−79%), triage 794 → 43 calls, but the triage pass rate went 16.4% → **35.7%** — batching 20 clusters into one call made the model grade them against each other rather than against the topic's typical day. Mean severity passed while the distribution moved underneath it, which is why that criterion was retired. Two of its steps were never run (the expands, the console reconciliation).
+
+**F.4.7 finished the phase.** It replaced the primary metric with **severity ≥ 3 count** — the only passes that survive the 8-card cap — fixed the prompt (base-rate anchor, the reject-when-torn tiebreaker moved into the batch-contract paragraph, and the same rule extended to severity grading), added zero-token per-verdict story titles so a reasons-off capture is auditable, and fixed the nondeterministic topic order that was injecting noise into the measurement itself.
+
+Result: **sev ≥ 3 = 99 against a baseline of 101**, in band. Pass rate 29.3% remained out of band — but 105 of the 110 severity-2 passes were discarded by the cap, so it is a labelling difference, not a calibration regression. That interpretation was fixed in advance of the run, not chosen after seeing it. **Cost $0.399 at list / $0.335 billed**, missing the ≤$0.30 target and accepted at Tarek's call. Expands measured for the first time at ~$0.017/card. Full write-up in `notes-logs/(C) cost-diagnosis-2026-08-15-post-optimization.md`.
+
+### Original F.4.6 plan (kept for reference)
 
 One real digest, same 9-topic profile, `TRIAGE_REASONS=1`, plus 2–3 expands (still unmeasured). **Acceptance band set before running**, since batching's worst failure is silent drift:
 

@@ -25,11 +25,15 @@ You ask for news (either "give me today's news," or something ad-hoc like "what'
                     "is this actually a distinct, notable story?"
                     Filters out noise before the expensive step.
 
- 4. Write           For clusters that pass triage, one Claude Sonnet
-                    call writes the card's short summary in the
-                    briefing tone. This is the one step that truly
-                    needs a capable LLM — turning messy multi-source
-                    text into clean, readable prose.
+ 4. Write           For clusters that pass triage, one Claude call
+                    writes the card's short summary in the briefing
+                    tone — Sonnet for multi-source clusters, Haiku for
+                    single-source ones (hybrid routing added in F.4.3,
+                    once the F.3 measurement found ~89% of clusters
+                    hold a single article, i.e. have nothing to
+                    synthesize). Sonnet is kept exactly where the
+                    product's "synthesized from multiple sources"
+                    claim actually lives.
 
  5. Serve            Cards render in the scrollable feed, newest/most
                     notable first. No fixed card count — however many
@@ -42,7 +46,7 @@ You ask for news (either "give me today's news," or something ad-hoc like "what'
                     avoids paying for reports nobody reads.
 ```
 
-Steps 1–3 cost nothing or close to it. Step 4 (and occasionally step 6) is the only real per-use cost — see the cost note in `(C) TECH_STACK.md`.
+Steps 1–2 cost nothing. **Step 3 (triage) is the largest single cost, not step 4** — this line claimed the reverse until the Final Phase measured it, and the inversion mattered: it pointed optimization effort at the writing step for months while triage was ~65% of spend, because triage fires once per *cluster* (hundreds a day) while writing fires once per *card* (dozens). Batching triage in F.4.5 cut its call count ~95%, and it is still the biggest stage. Step 6 is per-expand and only for cards someone actually opens. Current per-digest figures live in `(C) TECH_STACK.md`.
 
 ---
 
@@ -58,7 +62,7 @@ Steps 1–3 cost nothing or close to it. Step 4 (and occasionally step 6) is the
 ## Accounts & auth
 
 Real signup/login from v1 (not a hardcoded single user) — handled by a managed auth provider (see Tech Stack) rather than hand-built, so password/session security isn't something built from scratch. On signup, a user picks:
-- **Topics of interest** — curated multi-select, up to 5, from a fixed list (free-text topic entry is a v2 idea, deferred — it would need its own step to interpret arbitrary text into a source query, which is real added complexity for not much MVP value).
+- **Topics of interest** — curated multi-select from a fixed list, **no hard cap on how many** (`profile.ts` enforces only `.min(1)`; Tarek's own profile runs 9). What bounds a digest is the per-topic card cap of 8, not the topic count. This said "up to 5" until 2026-08-14 — a number nothing ever enforced, and every cost measurement was taken at 9 topics. Free-text topic entry stays a v2 idea, deferred: it needs its own step to interpret arbitrary text into a source query, real added complexity for not much MVP value.
 - **Preferred sources** — same pattern, curated multi-select (NYT, WaPo, Reuters, BBC, etc.), used as the weighting signal described above.
 
 ---
