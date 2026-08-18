@@ -23,6 +23,14 @@ No code changed and nothing in this repo was modified. Recorded here because the
 
 **Next:** unchanged for this project — the Roadmap V2 planning session, opening on V2.0's spend-cap decision, still wanting a returning-account digest measurement first since every Final Phase figure is a cold start. Separately, once the vault backup is handled, project #2 is ready to scaffold; `new-project` will now ask whether it has a UI and branch on that.
 
+**Addendum (same session) — the root `CLAUDE.md` was stale, and the reason is a process gap this file's step 5 now closes.** Tarek spotted that the vault root's `CLAUDE.md` still described this project as "in active build, one phase from the end of v1" — three days after v1 closed on 2026-08-15. Root cause: the root one-liner had three writers, all at lifecycle boundaries (`new-project` at scaffold, `project-brainstorm` at brainstorm-end, `new-project`'s ship flow at ship) and **none during the build**. Every status change this project ever had happened in that unowned span.
+
+What makes the diagnosis certain rather than plausible: `Job Applications/Master Resources/projects/(C) personalized-news-aggregator.md` was **not** stale — current through 2026-08-15, carrying the 79% figure and the correct undeployed framing — because propagating to it is an enforced per-phase step with a stated consequence for skipping. Same project, same milestone, same three days. The only variable was ownership. Compounding it: this file's own rule said refresh "that one line **here**," scoping the instruction to itself; build sessions run inside this folder where the root file is loaded as parent context but owned by nobody; and the vault root isn't a git repo, so nothing surfaces its drift the way `git status` does in here.
+
+**Fixed:** step 5 above is now "Sync the project's outward-facing status," covering both `project-resume-sync` **and** the root CLAUDE.md one-liner as one item off one trigger — with the stale-2026-08-12 incident named in the rule itself, so the *why* travels with it the same way step 4 carries its two incidents. Same change applied to `Projects/(PROJECT TEMPLATE)/_project-CLAUDE-template.md`, so project #2 starts with it; `new-project`'s rules now state that registering a project is its job and keeping it fresh is not. Root CLAUDE.md itself brought current. Reasoning in `(C) decision-log.md`.
+
+Worth noticing the shape: this is the third time a convention in this file has been tightened *after* the gap produced a real miss (step 4 twice, now step 5). The pattern each time is a rule that was correct but scoped one step too narrowly.
+
 
 ## 2026-08-18 (post-v1, backlog) — two deferred items added to `ROADMAP.md`; the second is a confirmed bug, diagnosed before being written down
 
