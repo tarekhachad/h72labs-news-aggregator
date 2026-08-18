@@ -17,7 +17,9 @@ Fix direction recorded but deliberately not implemented (Tarek explicitly didn't
 
 **Honest limit on the diagnosis:** read from code and Motion's source, not reproduced in an instrumented browser. A zero-cost discriminator is recorded in the roadmap item for next time it happens — if the page shows "No edition yet today." with the topic nav disabled, the state never arrived and this diagnosis is wrong; blank space with the nav enabled (it's gated on `hasDigest`) and `opacity: 0` on the card elements in DevTools confirms it.
 
-**Next:** unchanged — the Roadmap V2 planning session, still opening on V2.0's spend-cap decision, and still wanting a returning-account digest measurement (~$0.15–0.20) first since every Final Phase figure is a cold start.
+**Committed and pushed** — `0bbcc1a` (the two roadmap items + this entry), then `CLAUDE.md`'s `Last updated` line amended to name the rendering bug as a second known open v1.1 item alongside the severity-tie one, so a fresh session sees it without reading the roadmap. `origin/master` is current.
+
+**Next:** unchanged — the Roadmap V2 planning session, still opening on V2.0's spend-cap decision, and still wanting a returning-account digest measurement (~$0.15–0.20) first since every Final Phase figure is a cold start. Nothing from this session is in flight or half-done: no code was touched, and the only open threads are the ones the Final Phase already carried (console reconciliation, `PRICING_VERIFIED_ON`, the unmeasured returning-account cost).
 
 
 ## 2026-08-15 (Final Phase, F.4.7 measurement) — **v1 is closed.** $1.944 → $0.399/digest (−79.5%); the primary metric came back to baseline
