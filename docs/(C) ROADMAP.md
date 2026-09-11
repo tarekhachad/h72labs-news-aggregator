@@ -291,6 +291,32 @@ _Opened 2026-08-12, after Tarek reversed the "close v1 undeployed and hand frien
 
 ---
 
+### V2 SETUP — trial Matt Pocock's engineering skills (do this before V2 code, not during)
+
+> **Raised 2026-08-26, during h72labs-website's tooling review. Tarek's explicit instruction: surface this unprompted when V2 work opens, even if he has forgotten it.**
+
+[`mattpocock/skills`](https://github.com/mattpocock/skills) — "Skills for Real Engineers," MIT, 237,830★, actively maintained (last push 2026-08-24). 29 skills across engineering / productivity / misc. Its thesis: as agents accelerate coding, engineering fundamentals matter *more*, not less. It targets four failure modes — misalignment (agent builds the wrong thing), verbosity (no shared project vocabulary), non-functional code (weak feedback loops), and architectural decay (velocity without design discipline).
+
+**Why it was deferred here rather than adopted on h72labs-website:** that project is a four-page static marketing site whose verification convention is explicitly *look at it in a browser*, not unit tests. `tdd` had no tests to work with, `codebase-design` had no modules to shape, `to-tickets`/`wayfinder`/`triage` are multi-session issue-tracker machinery for a repo that had no `git init`, and `code-review` duplicates the `code-reviewer` subagent and `/code-review` this vault already has. Adopting a 29-skill framework onto a stalled small site is the over-planning failure mode wearing a lab coat.
+
+**Why PNA V2 is the right home:** every one of those objections inverts. Real multi-thousand-line codebase, real backend, Supabase auth, a multi-stage AI pipeline, **79 vitest tests already running**, a genuinely multi-session roadmap, and known open v1.1 bugs to work.
+
+**Trial exactly three skills first — do not install all 29:**
+
+| Skill | Why this one |
+|---|---|
+| `grill-with-docs` | Interview session that builds a `CONTEXT.md` of shared domain language. PNA re-explains its pipeline vocabulary (triage, notability, cards, clusters, front-page rank) every session — this is the direct fix, and it cuts tokens on every later request. |
+| `tdd` | Red-green-refactor. The one project here with a real test suite to build on. |
+| `writing-for-agents` | Documentation standards for agent-readable docs. Sharpens the `CLAUDE.md`/`project-log.md` conventions this vault already leans on hard. |
+
+**Then, and only then**, evaluate the rest and decide what — if anything — belongs in the `new-project` scaffold. Rolling all 29 into every future project before testing three on one project is the same mistake in a different domain.
+
+**Install (per the repo's own README):** `/plugin install mattpocock-skills` (managed, auto-updating) or `npx skills@latest add mattpocock/skills` (editable copies you own). Then `/setup-matt-pocock-skills` once per repo — it asks for an issue-tracker preference (GitHub / Linear / local files), triage labels, and a docs location.
+
+⚠ **Known name collision:** Pocock ships a `prototype` skill and so does Emil Kowalski's set (already installed here). Decide which one wins in this repo before installing, or they will shadow each other.
+
+---
+
 ### V2.0 — BLOCKING DECISION: who pays for the Claude API, and how keys are handled
 
 > **This is a hard gate, not a task.** Nothing ships to another human being — not a deploy link, not the repo — until this is decided and the chosen option is built and tested. It determines whether a credential-storage subsystem exists in this codebase at all, so deciding it late means building V2.1 twice. Decide it **after** the Final Phase produces the real per-digest cost figure (that number is what makes Option B's caps sizable) and **before** writing any V2.1 code.
@@ -372,15 +398,23 @@ _Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after depl
 - **How to run it locally** — still worth documenting for anyone reading the code, but now secondary to the hosted link: Node version, `npm install`, Supabase setup, every env var, `npm run dev`.
 - **What it doesn't do** — honest limits, refreshed against whatever V2.1 actually shipped (e.g. password reset, UTC-based "today," known duplicate-story cases).
 
-- **Done when:** someone who has never seen the project can understand what it is, use the hosted app, and — if they want to — run it locally, from this file alone.
+- **Choose and add a license** — added 2026-08-27 at Tarek's direction, while making the same call for `h72labs-website`. **Verified that day: this repo has no `LICENSE` file, no `license` field in `package.json`, and GitHub reports `licenseInfo: null` — while the repo is PUBLIC.** The practical effect is that it defaults to *all rights reserved*: anyone can read the code, nobody may legally copy, modify, or reuse it. That default is defensible, but right now it is an omission rather than a decision, and on a repo whose job is to be read by recruiters, an explicit license reads as deliberate where a missing one reads as unfinished. Make the call, then write **both** the `LICENSE` file and the `package.json` `license` field so they can't disagree. If the choice is to keep everything reserved, say so in an explicit `LICENSE` file — do not leave it implicit.
+
+- **Done when:** someone who has never seen the project can understand what it is, use the hosted app, and — if they want to — run it locally, from this file alone; and the repo states its license explicitly in both `LICENSE` and `package.json`.
 
 ### V2.3+ — unscoped
 
-Drawn from "Explicitly deferred (not v1)" below in a dedicated planning session: ad-hoc chat topic requests, story-dedup improvements, per-user timezone handling, forgot-password/email reset, the source-preference redesign, free-text topics, hot-topic discovery, hierarchical subtopics, the real calendar-grid history view, and the accumulated small accepted trade-offs. Not ordered or committed yet.
+Drawn from "Explicitly deferred (not v1)" below in a dedicated planning session: ad-hoc chat topic requests, story-dedup improvements, per-user timezone handling, forgot-password/email reset, the source-preference redesign, free-text topics, hot-topic discovery, hierarchical subtopics, the real calendar-grid history view, the 21st.dev UI refresh pass over onboarding and the curated multi-selects, and the accumulated small accepted trade-offs. Not ordered or committed yet.
 
 ---
 
 ## Explicitly deferred (not v1)
+
+- **V2 UI refresh pass using 21st.dev, with onboarding and the curated multi-selects as the target** (Tarek's call, 2026-08-28): v1's UI phase (4.1–4.4) put its design attention on the feed, cards, focus mode and the page-flip; **onboarding and the profile screens got the least of it**, and the two curated multi-selects (topics, preferred sources) are the specific screens Tarek wants redone. The framing is deliberate and worth keeping: this is a **refresh layered on v1's existing UI as the foundation**, not a redesign — the tokens, the newspaper identity and the component structure stay, and 21st-sourced components get restyled into them exactly as `UI_WORKFLOW` step 4 requires ("pull for behavior, not appearance"). Four things to know before scoping it:
+  - **This is a continuation, not a first use.** Phase 4.2 already settled shadcn/ui-via-21st for v1's primitives (dropdown, Sheet/Dialog, base card/button). The decision is made; what's new is applying it to the screens that phase under-served.
+  - **Sequence it AFTER the source-preference redesign**, the "make preferred-source selection optional, and non-restrictive when set" item below. That change alters what the onboarding form *is* — topics go to a minimum of 3, sources become optional and act as a ranking signal rather than a hard filter. Rebuilding the multi-select UI first and then changing its semantics would mean doing the UI twice.
+  - **Two access questions are still open and both are Tarek's**, carried over from `h72labs-website`'s roadmap where the same MCP was deferred on 2026-08-27: it needs his API key, and MCP auth cannot be completed from inside a Claude Code session. The free-tier limit (unlimited vs. 2 installs/day) was left unresolved there on the grounds of "resolve it when a component is actually wanted, not before." **This is that moment** — settle it when this item is scoped.
+  - **The mandatory security review applies to every 21st-sourced file.** There is an open advisory that library components can carry prompt-injection instructions inside comments, targeting the agent rather than the reader, so a style-skim does not catch it. `h72labs-website`'s `docs/(C) UI_WORKFLOW.md` §4 holds the seven-check list; run it and report the checks explicitly rather than performing them silently.
 
 - **Digest "today" isn't synced to the viewing user's local timezone — real, recurring complaint, not just a theoretical edge case** (originally documented as an accepted trade-off in `src/lib/digests.ts`'s `todayDateString()` comment during Phase 2/3, promoted here 2026-08-07 after Tarek hit it live): a digest's `date` column is a UTC calendar day (`todayDateString()`, duplicated identically in `src/app/(paper)/topic/[slug]/page.tsx`), not the viewer's own local day — the app has no per-user timezone setting. Tarek is in Atlanta (EDT, UTC-4 in summer): at 8:30pm local on 2026-08-07, UTC has already rolled over past midnight into 2026-08-08, so the server's "today" no longer matches the digest generated earlier that (local) day — it silently reclassifies as history instead of showing on the home page. The original comment flagged this as "revisit if it becomes a real complaint"; this is that complaint, and it'll recur every evening (worse in winter EST, UTC-5, rolling over an hour earlier). A real fix needs the viewer's IANA timezone (browser-detectable via `Intl.DateTimeFormat().resolvedOptions().timeZone`, ideally stored per-user rather than re-detected every request so a user traveling doesn't get a moving target mid-digest) threaded through both `todayDateString()` call sites, and likely touches the RSS "since"-cursor semantics and the history date list too, since they currently share the same UTC-day assumption. Not scoped or estimated yet — needs its own pass when it comes up.
 - **Real calendar-grid history view** (scoped down during Phase 3, 2026-07-30): Phase 3 ships a simple reverse-chronological date list instead of an actual month-view calendar component — faster to ship and already satisfies the "revisit a past digest" done-condition. Deliberately built so upgrading later is a small extension, not a rewrite: `src/lib/digests.ts`'s `listDigestDatesForUser()` already takes an optional `{ from, to }` date range; a future month-grid view just calls it bounded to that month instead of leaving it unbounded.

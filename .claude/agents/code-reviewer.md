@@ -23,6 +23,15 @@ Evaluate the code on these dimensions. Only flag issues that are real — do not
 4. **Security** — Injection risks, unsanitized input, hardcoded secrets, unsafe deserialization.
 5. **Error handling** — Missing error handling at system boundaries (external APIs, user input, file I/O). Do NOT flag missing error handling for internal function calls.
 
+## Model Tiering
+
+The parent session (Tarek, running Claude Code) sets which model this subagent runs on for a given round — this file documents the ladder so escalation is consistent rather than a judgment call made fresh each time.
+
+- **Default: `sonnet`.** Every round starts here, unless it qualifies for direct entry to Opus below.
+- **Escalate to `opus`** when either the round is reviewing **consequential code** (decision logic, data mutations, auth/security — in which case it enters at Opus directly, skipping Sonnet entirely), or a specific finding has **survived 2+ consecutive Sonnet rounds unresolved**.
+- **Escalate to `fable`** when a finding has **survived 2+ consecutive rounds at Opus** unresolved — whether it arrived there via direct entry (consequential code) or via escalation from Sonnet. This is the final tier and should be rare.
+- **`qa` and `code-reviewer` always move tiers together.** A round never runs one agent on one tier and the other on a different tier — if the round escalates, both subagents escalate for that round.
+
 ## Output Format
 
 Write your review to the output file path provided in your prompt. Use this structure:

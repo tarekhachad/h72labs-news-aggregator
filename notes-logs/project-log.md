@@ -1,6 +1,14 @@
 # Session Log — Personalized News Aggregator
 Append-only. Newest entries at the top. Each entry: date + what was done/decided/next.
 
+## 2026-09-10 — QA/code-reviewer loop hardened: delivery-bar rules + 3-tier model tiering
+
+**Done:** two vault-wide changes applied to this project (also applied to Regista, h72labs-website, and the project template, in the same session). (1) `CLAUDE.md` step 4 got a new enforced "Delivery bar" MUST/MUST NOT block, pulled from language already in the existing step 4 prose rather than new rules. (2) `.claude/agents/qa.md` and `code-reviewer.md` (copies of the `Skills/agents/` masters) got a new "Model Tiering" section: `sonnet` default, `opus` entered directly for consequential code (decision logic, data mutations, auth/security) or after 2+ consecutive rounds with an unresolved finding, `fable` entered after 2+ consecutive rounds unresolved at `opus`. Both agents always move tiers together.
+
+**Decided:** triggered by reading the r/micro_saas SpacePlanner builder's post (analysis in `Notes/Miscellaneous/(C) claude-code-workflow-agent-orchestration-analysis.md`) and auditing project review-round history (h72labs-website's, since this project's has fewer recorded rounds) for the efficiency case — `qa` going clean early and staying clean while `code-reviewer` alone caught the remaining findings, round after round at full Sonnet cost, is exactly what the tiering targets. Both changes were proposed as a plan and confirmed step by step with Tarek before any file was edited.
+
+**Next:** applies automatically the next time this project runs a qa/code-reviewer round (relevant once Roadmap V2 work resumes).
+
 ## 2026-08-18 (post-v1, second session) — vault-level scaffolding overhaul before project #2; **PNA's own repo deliberately left as-is**
 
 No code changed and nothing in this repo was modified. Recorded here because the work was *derived entirely from this project's history* and because one of its decisions is a standing call about this repo that a future session should not reopen.

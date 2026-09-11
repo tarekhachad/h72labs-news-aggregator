@@ -26,3 +26,9 @@ next-env.d.ts
 # misc
 *.pem
 npm-debug.log*
+
+# Raw dev-server transcripts from cost measurement runs. These were captured
+# with `npm run dev | tee` — 667 KB of interleaved Next.js request logs with
+# the [usage] lines buried in them. Superseded by the structured cost pipeline;
+# kept out of git so measurement output never lands here as scrollback again.
+notes-logs/cost-test-log*
