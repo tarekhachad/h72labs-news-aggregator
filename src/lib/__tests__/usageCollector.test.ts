@@ -249,19 +249,37 @@ describe("collector reporting", () => {
     expect(collector.summarize().totalTokens.inputTokens).toBe(100);
   });
 
-  it("prices the whole run at the collector's fixed instant", () => {
-    // Fixing `at` per run means a generation spanning the day a promo lapses
-    // can't be priced half one way and half the other.
-    const collector = createUsageCollector(new Date("2026-09-01T00:00:00Z"));
+  it("holds one instant for its whole lifetime", () => {
+    // READ THIS BEFORE STRENGTHENING THE ASSERTIONS. The property that matters
+    // is that a run spanning the day a rate changes is priced once, not half
+    // each way. This test used to demonstrate that through Sonnet 5's
+    // introductory window: it asserted promos[0].applied === false on a date
+    // just past the window's end.
+    //
+    // That window is gone — Anthropic made the introductory rate permanent in
+    // Sep 2026 — and PRICING now carries no promo at all. Which means `at` is
+    // currently INERT: summarizeUsage returns deep-equal summaries for 1970,
+    // 2026, 2099 and new Date(NaN). So no assertion about cost, and no
+    // determinism check across repeated summarize() calls, can demonstrate
+    // anything here; each would pass just as happily against a summarize()
+    // that re-read the clock on every call.
+    //
+    // Rather than dress that up, this test now guards only what it can
+    // actually show: the collector stores the instant it was handed, and
+    // exposes that same instant rather than a fresh one. The date-boundary
+    // behaviour itself is covered in usage.test.ts against PROMO_TABLE, which
+    // is the level that can still observe it.
+    const at = new Date("2026-09-01T00:00:00Z");
+    const collector = createUsageCollector(at);
     collector.add({
       stage: "writeCard",
       model: "claude-sonnet-5",
       tokens: { inputTokens: 1000, outputTokens: 1000, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
 
-    const summary = collector.summarize();
-    expect(summary.promos[0].applied).toBe(false);
-    expect(summary.totalBilledUsd).toBe(summary.totalListUsd);
+    expect(collector.at).toBe(at);
+    // Sonnet at its standard $2/$10: 1000 in + 1000 out.
+    expect(collector.summarize().totalBilledUsd).toBeCloseTo(0.012, 10);
   });
 
   it("hands out a copy of its records, not its live array", () => {

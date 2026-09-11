@@ -1,6 +1,6 @@
 # (C) Cost Diagnosis — 2026-08-13
 
-> **Superseded for post-optimization figures — see `(C) cost-diagnosis-2026-08-15-post-optimization.md`.** This note remains accurate for what it measures: the **baseline**, before any optimization. Its $1.944/digest and the per-stage split behind it are the record of the problem, and are deliberately left unedited rather than quietly updated into staleness. The current cost is **$0.399/digest at list**.
+> **Superseded for post-optimization figures — see `(C) cost-diagnosis-2026-08-15-post-optimization.md`.** This note remains accurate for what it measures: the **baseline**, before any optimization. Its \$1.944/digest and the per-stage split behind it are the record of the problem, and are deliberately left unedited rather than quietly updated into staleness. The current cost is **\$0.335/digest** (corrected 2026-09-11: this line read "\$0.399/digest at list" until Anthropic cancelled Sonnet 5's scheduled price increase, collapsing the at-list and billed columns onto the lower figure).
 
 The Final Phase's F.3 measurement. First time this app's real per-digest cost has been measured with per-stage attribution rather than read off the Anthropic Console as a single total.
 

@@ -10,7 +10,7 @@ What's chosen, and why, in plain language. Every non-obvious term also lives in 
 
 **Why:** You're not from a software-engineering background, and this pairing is the most common, best-documented combination for exactly this kind of solo-built web app — meaning Claude Code has the most to work with when building it, and there's the most help available if something breaks.
 
-**Cost:** Vercel's Hobby plan is **free forever** for non-commercial projects (100GB data transfer/month, 1M function calls/month — far beyond what you and a handful of friends testing this would use). It's explicitly non-commercial-only, which is fine — this project isn't monetized yet. Upgrade to Pro ($20/month) only once/if it starts generating revenue, per the freemium plan.
+**Cost:** Vercel's Hobby plan is **free forever** for non-commercial projects (100GB data transfer/month, 1M function calls/month — far beyond what you and a handful of friends testing this would use). It's explicitly non-commercial-only, which is fine — this project isn't monetized yet. Upgrade to Pro (\$20/month) only once/if it starts generating revenue, per the freemium plan.
 
 ---
 
@@ -20,7 +20,7 @@ What's chosen, and why, in plain language. Every non-obvious term also lives in 
 
 **Why:** You specifically want a real, working login screen in v1 to test that workflow — but hand-rolling password storage and session security yourself is exactly the kind of place a solo non-engineer introduces security bugs, and it teaches you auth plumbing rather than your actual product. Supabase Auth gives you the real signup/profile-creation workflow you want to test, without you owning the risky parts.
 
-**Cost:** Free tier — $0/month. Limits: 500MB database, 50,000 monthly active users (far more than needed here). One quirk: a free project auto-pauses after 7 days with zero activity — data isn't lost, it just needs a manual resume. Not an issue once real usage is happening.
+**Cost:** Free tier — \$0/month. Limits: 500MB database, 50,000 monthly active users (far more than needed here). One quirk: a free project auto-pauses after 7 days with zero activity — data isn't lost, it just needs a manual resume. Not an issue once real usage is happening.
 
 ---
 
@@ -49,19 +49,21 @@ One caveat this framing got wrong for months, worth stating so the next reader d
 
 **Real cost (measured 2026-08-15, end of the Final Phase).** A full digest against the real 9-topic profile, 716 clusters, 62 cards:
 
-| | at list | billed |
-|---|---|---|
-| **per digest** | **$0.399** | $0.335 |
-| triage (39 calls, Haiku) | $0.157 | $0.157 |
-| card writing (67 calls: 29 Sonnet, 38 Haiku) | $0.237 | $0.174 |
-| front-page ranking (1 call) | $0.005 | $0.005 |
-| **per card expanded** (Sonnet, on demand) | **~$0.017** | ~$0.012 |
+| | cost |
+|---|---|
+| **per digest** | **\$0.335** |
+| triage (39 calls, Haiku) | \$0.157 |
+| card writing (67 calls: 29 Sonnet, 38 Haiku) | \$0.174 |
+| front-page ranking (1 call) | \$0.005 |
+| **per card expanded** (Sonnet, on demand) | **~\$0.012** |
 
-Use the **at-list** column for any forward projection: Sonnet is on introductory pricing until 2026-08-31, and from 1 September the at-list figure *is* the bill.
+**Corrected 2026-09-11 — this table used to have two columns and the wrong one was bolded.** It read \$0.399 "at list" against \$0.335 "billed", and instructed the reader to use at-list for any forward projection because Sonnet 5's introductory \$2/\$10 rate was scheduled to rise to \$3/\$15 on 2026-09-01. **Anthropic cancelled that increase and made \$2/\$10 the standard price**, so the two columns collapsed into one and the surviving figure is the one that was labelled "billed". The old at-list column overstated by ~19%.
 
-**Read this as a cold-start number.** Every measurement so far — this one included — is the first run of a brand-new account: null cursor, full 48h lookback, cross-run dedup skipped because there are no cards yet to compare against. A returning daily user starts from a ~24h cursor and ingests roughly half as much, so their recurring digest costs materially less. That figure has never been measured. Sizing anything off $0.399 per user per day therefore overestimates, probably by close to 2× — the safe direction, but not the true one.
+Two things follow, and the second is the one that bites. The advice to prefer at-list is now exactly inverted — it over-provisions rather than under-provisions. And a run measured today prints **~\$0.336**, which against the documented \$0.399 looks like a 16% improvement that never happened; it is the same run at corrected rates. Anything comparing a new measurement to a pre-2026-09-11 figure has to correct the baseline first.
 
-**What the two earlier numbers on this line said, and why they were wrong.** The original estimate was $0.20–0.30/digest and ~$15–50/month. A 2026-07-28 run then recorded **$0.17** and was read as confirming it. That run used the 2-topic/3-source dev profile; the real profile has 9 topics, and cost scales with topics far harder than the estimate assumed, because triage fires per *cluster*. Measured properly on 2026-08-13 the same pipeline cost **$1.94/digest — about 10× the documented figure**, and that error had already propagated into V2.0's spend caps. Optimization (input caps, a per-topic card cap, hybrid Haiku/Sonnet writing, a cross-day cursor, and batched triage) brought it to $0.399, **−79.5%**. Full history in `notes-logs/(C) cost-diagnosis-2026-08-13.md` and its post-optimization successor.
+**Read this as a cold-start number.** Every measurement so far — this one included — is the first run of a brand-new account: null cursor, full 48h lookback, cross-run dedup skipped because there are no cards yet to compare against. A returning daily user starts from a ~24h cursor and ingests roughly half as much, so their recurring digest costs materially less. That figure has never been measured. Sizing anything off \$0.335 per user per day therefore overestimates, probably by close to 2× — the safe direction, but not the true one. Note this is now the *only* remaining overstatement in the figure: the pricing error above has been corrected, so cold-vs-warm is the one caveat left, and it is what the cost pipeline's planned `run_shape` field is meant to measure — unmeasured as of this edit, so treat the ~2x as reasoning, not data.
+
+**What the two earlier numbers on this line said, and why they were wrong.** The original estimate was \$0.20–0.30/digest and ~\$15–50/month. A 2026-07-28 run then recorded **\$0.17** and was read as confirming it. That run used the 2-topic/3-source dev profile; the real profile has 9 topics, and cost scales with topics far harder than the estimate assumed, because triage fires per *cluster*. Measured properly on 2026-08-13 the same pipeline cost **\$1.94/digest — about 10× the documented figure**, and that error had already propagated into V2.0's spend caps. Optimization (input caps, a per-topic card cap, hybrid Haiku/Sonnet writing, a cross-day cursor, and batched triage) brought it to \$0.335, **−79.8%**. Full history in `notes-logs/(C) cost-diagnosis-2026-08-13.md` and its post-optimization successor.
 
 The lesson worth carrying: a measurement taken against a toy profile is not a measurement of the product, and "in line with the estimate" is the most dangerous thing a cheap number can look like.
 
@@ -71,10 +73,10 @@ The lesson worth carrying: a measurement taken against a toy profile is not a me
 
 | Piece | Cost |
 |---|---|
-| Vercel (hosting) | $0/month (Hobby, non-commercial) |
-| Supabase (DB + Auth) | $0/month (Free tier) |
-| RSS feeds | $0 (always) |
-| GNews (supplement) | $0 (free tier, non-commercial) |
-| Claude API (synthesis) | **$0.399/digest at list** (+~$0.017 per card expanded). One user once a day ≈ **$12/month**; ten users ≈ **$120/month** at full daily usage. Cold-start figure — a returning daily user costs materially less. |
+| Vercel (hosting) | \$0/month (Hobby, non-commercial) |
+| Supabase (DB + Auth) | \$0/month (Free tier) |
+| RSS feeds | \$0 (always) |
+| GNews (supplement) | \$0 (free tier, non-commercial) |
+| Claude API (synthesis) | **\$0.335/digest** (+~\$0.012 per card expanded). One user once a day ≈ **\$10/month**; ten users ≈ **\$100/month** at full daily usage. Cold-start figure — a returning daily user costs materially less. |
 
 Living document — will be revised as the build reveals what actually works.

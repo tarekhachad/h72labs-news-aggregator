@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  LOG_PREFIX,
   formatCallLine,
   formatUsageSummary,
   normalizeUsage,
@@ -67,10 +68,15 @@ export interface UsageCollector {
    */
   add(call: RecordedCall): void;
   /**
-   * A snapshot of everything recorded so far. Both the array and the records
-   * in it are frozen, so a consumer can read a run's spend but can't rewrite
-   * it — a shallow array copy alone would still hand out the live `tokens`
-   * objects, and mutating one of those would silently change the run's total.
+   * A snapshot of everything recorded so far. The array is a fresh copy and
+   * the records inside it are frozen, so a consumer can read a run's spend
+   * without being able to rewrite it: pushing to the returned array affects
+   * nothing, and the records themselves reject mutation. (The array itself is
+   * NOT frozen — an earlier version of this sentence said it was. A copy is
+   * what matters here; freezing it would only stop a caller sorting a value
+   * they already own.) A shallow copy alone would not be enough, because it
+   * would still hand out the live `tokens` objects, and mutating one of those
+   * would silently change the run's total.
    */
   calls(): readonly Readonly<RecordedCall>[];
   summarize(): UsageSummary;
@@ -118,9 +124,25 @@ export function createUsageCollector(at: Date = new Date()): UsageCollector {
       // even when this line doesn't.
       try {
         console.log(formatCallLine(stored, at));
-      } catch {
-        // Nothing useful to do: reporting the logging failure would use the
-        // same channel that just failed.
+      } catch (error) {
+        // Same treatment report() got, and for the same reason — round 2 fixed
+        // only one of the two sites. formatCallLine prices the call, so an
+        // unpriceable model throws here, and a bare catch made every per-call
+        // line for that model vanish with nothing said. The record itself is
+        // already stored above, so the run's totals are unaffected; what was
+        // lost was any sign that the lines were missing.
+        //
+        // console.error, not console.log: a different stream, so the channel
+        // that just failed is not the one carrying the news. Nested guard
+        // because this handler exists precisely because logging can throw.
+        try {
+          console.error(
+            `${LOG_PREFIX} FAILED to log a ${stored.stage}/${stored.model} call —`,
+            error
+          );
+        } catch {
+          // Genuinely nothing left to try.
+        }
       }
     },
     calls() {
@@ -142,8 +164,23 @@ export function createUsageCollector(at: Date = new Date()): UsageCollector {
         for (const line of formatUsageSummary(summarize(), opts)) {
           console.log(line);
         }
-      } catch {
-        // Nothing useful to do: reporting this would use the same channel.
+      } catch (error) {
+        // The swallow stays — a stranded generation mutex is worse than a
+        // missing cost line — but it no longer swallows *silently*. This
+        // handler was written for a failing console, where there genuinely
+        // was nothing to say. It now also catches real logic errors from
+        // summarize()/formatUsageSummary(), and those produced total silence,
+        // which is indistinguishable from a run that made no Claude calls at
+        // all. A run that cost money and reported nothing must not look free.
+        //
+        // console.error rather than console.log: a different stream, so a
+        // broken stdout doesn't take the diagnostic with it. Nested guard
+        // because this path exists precisely because logging can throw.
+        try {
+          console.error(`${LOG_PREFIX} FAILED to report usage for "${opts.label}" —`, error);
+        } catch {
+          // Genuinely nothing left to try.
+        }
       }
     },
   };

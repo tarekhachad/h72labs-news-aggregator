@@ -1,5 +1,10 @@
 # (C) Cost — post-optimization measurement, 2026-08-15
 
+> **CORRECTION 2026-09-11 — the "at list" column in this note is wrong, and its forward-looking advice is inverted.** Every figure here was computed with Claude Sonnet 5 at \$3/\$15 per MTok for the at-list column and \$2/\$10 for the billed column, because \$2/\$10 was introductory pricing scheduled to end 2026-08-31. **Anthropic cancelled that increase**: \$2/\$10 is now Sonnet 5's standard price and the rise to \$3/\$15 never happened. So the **billed** column is the real cost and always was — **\$0.335 per digest, ~\$0.012 per expand** — and the at-list column overstates by ~19%.
+>
+> The measured token counts, call counts, severity distributions and per-stage attribution below are all unaffected and remain the record of this run. Only the at-list dollar column and the sizing advice that depends on it are wrong. **The figures are deliberately left unedited** — this is a dated measurement record, not a current-state document. Corrected current figures live in `docs/(C) TECH_STACK.md`.
+
+
 Closes the Final Phase. Companion to `(C) cost-diagnosis-2026-08-13.md`, which measured the problem; this measures what's left. That file is a dated record of the *baseline* and has deliberately not been edited — its figures are still correct for what they describe.
 
 Raw capture: `notes-logs/cost-test-log-f47-1f823c5-4015d9f6` (self-describing header: base commit, working-tree diff hash, flag state, acceptance band).
@@ -24,7 +29,9 @@ Against the baseline: **$1.944 → $0.399 at list, −79.5%.** Calls 930 → 107
 
 Zero `WARNING` lines, so these are real totals rather than a floor. Passes + rejects = 716 = clusters triaged, so no verdict was lost to a fail-closed path.
 
-**Use the at-list column for anything forward-looking.** Sonnet introductory pricing ends 2026-08-31; from 1 September, at-list is the bill. Sizing off billed under-provisions by ~19%.
+~~**Use the at-list column for anything forward-looking.** Sonnet introductory pricing ends 2026-08-31; from 1 September, at-list is the bill. Sizing off billed under-provisions by ~19%.~~
+
+**↑ WRONG, struck 2026-09-11. Every clause of that is now false.** Anthropic cancelled the 2026-09-01 increase and made \$2/\$10 Sonnet 5's standard price, so at-list never became the bill. Sizing off billed was correct; sizing off at-list **over**-provisions by ~19%. Struck rather than deleted because this note is the record of what was believed on 2026-08-15, and because this exact sentence was about to be used to size V2.0's spend cap.
 
 ---
 

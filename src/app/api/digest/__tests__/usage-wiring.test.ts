@@ -369,12 +369,17 @@ describe("digest route: cost instrumentation is wired into every stage", () => {
     expect(summaryText()).not.toContain("rank recorded 0 calls");
   });
 
-  it("reports the introductory-pricing caveat alongside the totals", async () => {
-    // The number quoted in the docs has to carry its expiry with it.
+  it("states when rates were last verified alongside the totals", async () => {
+    // A cost figure that reaches a document has to carry its provenance with
+    // it. This asserted "introductory pricing" until Sep 2026, when Anthropic
+    // made Sonnet 5's introductory rate permanent and the promo left PRICING.
+    // The verification date is the durable half of that caveat and the only
+    // staleness signal this app has — a changed *list* price is undetectable
+    // from inside it — so this is what the route must be shown to emit.
     await runPostToCompletion();
 
     const text = summaryText();
     expect(text).toContain("at list");
-    expect(text).toContain("introductory pricing");
+    expect(text).toContain("Rates last verified");
   });
 });
