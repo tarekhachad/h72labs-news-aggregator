@@ -8,6 +8,23 @@
 # Personal/local Claude Code settings — not meant to be shared (like .env.local).
 .claude/settings.local.json
 
+# Agent/skill tooling. Third-party skills are installed and updated per-machine,
+# not vendored here: they are not ours to redistribute and are irrelevant to
+# anyone reading this code. `skills-lock.json` is their install manifest and goes
+# with them. Untracked 2026-09-11 after a scan found 158 files / 2.8 MB of
+# third-party skill content — plus five symlinks into ~/.claude/skills/ that are
+# dead for anyone who clones — published in this PUBLIC repo.
+# `.claude/agents/` is deliberately NOT ignored: qa.md and code-reviewer.md are
+# ours, they encode this project's review process, and they belong in history.
+.claude/skills/
+skills-lock.json
+
+# Local MCP server config. Project scope exists to share servers with
+# collaborators; this is a solo build, so the file has no reader but this
+# machine. It also points at a specific Supabase project and carries a
+# read_only flag that gets toggled deliberately — state git should not record.
+.mcp.json
+
 # Next.js
 /node_modules
 /.next/
