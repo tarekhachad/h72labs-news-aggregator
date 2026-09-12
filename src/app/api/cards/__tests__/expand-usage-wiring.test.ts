@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   maybeSingle: vi.fn(),
   updateIs: vi.fn(),
   generateExpandedReport: vi.fn(),
+  defaultUsageSinks: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -33,7 +34,15 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/cards", () => ({ generateExpandedReport: mocks.generateExpandedReport }));
 
+// Only the sink LIST is swapped; emitUsageRun stays real, so its "never
+// rejects, never hangs" guarantee is exercised here rather than mocked away.
+vi.mock("@/lib/usageSinks", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/usageSinks")>("@/lib/usageSinks");
+  return { ...actual, defaultUsageSinks: mocks.defaultUsageSinks };
+});
+
 import { recordCall } from "@/lib/usageCollector";
+import type { UsageRunRecord } from "@/lib/usageRecord";
 
 const CARD_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -55,16 +64,23 @@ function usage(inputTokens: number) {
 }
 
 let logLines: string[];
+let emitted: UsageRunRecord[];
 
 beforeEach(() => {
   vi.clearAllMocks();
   logLines = [];
+  emitted = [];
   vi.spyOn(console, "log").mockImplementation((line: unknown) => {
     if (typeof line === "string") logLines.push(line);
   });
   vi.spyOn(console, "error").mockImplementation(() => {});
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+  mocks.defaultUsageSinks.mockReturnValue([
+    async (record: UsageRunRecord) => {
+      emitted.push(record);
+    },
+  ]);
   mocks.maybeSingle.mockResolvedValue({ data: CARD_ROW, error: null });
   mocks.updateIs.mockResolvedValue({ error: null });
   mocks.generateExpandedReport.mockImplementation(async () => {
@@ -193,5 +209,110 @@ describe("expand route: cost instrumentation", () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ expandedReport: "a full report" });
+  });
+});
+
+describe("expand route: the run is recorded durably", () => {
+  it("emits exactly one record on a cache miss, identified by card rather than digest", async () => {
+    await runPost();
+
+    expect(emitted).toHaveLength(1);
+    const record = emitted[0];
+    expect(record.route).toBe("expand");
+    expect(record.userId).toBe("user-1");
+    expect(record.cardId).toBe(CARD_ID);
+    expect(record.digestId).toBeNull();
+    expect(record.outcome).toBe("complete");
+    expect(record.label).toBe("expand complete");
+    expect(record.totalBilledUsd).toBeGreaterThan(0);
+  });
+
+  it("records every digest-shaped field as null rather than zero", async () => {
+    // An expand has no articles, no clusters and no ranking pass. Zero would
+    // assert a measurement that was never taken, and would pull the mean of
+    // "articles per run" toward nothing.
+    await runPost();
+
+    const record = emitted[0];
+    expect(record.articleCount).toBeNull();
+    expect(record.clusterCount).toBeNull();
+    expect(record.clustersAfterDedup).toBeNull();
+    expect(record.notableCount).toBeNull();
+    expect(record.cardsDroppedByCap).toBeNull();
+    expect(record.cardsWritten).toBeNull();
+    expect(record.cardsFailed).toBeNull();
+    expect(record.rankApplied).toBeNull();
+    expect(record.topicCount).toBeNull();
+    expect(record.sourceCount).toBeNull();
+    expect(record.runShape).toBe("unknown");
+  });
+
+  it("writes NO record when the report was already cached", async () => {
+    // The counterpart to printing nothing: a free read must not appear in the
+    // durable record either, or the cost-per-expand mean gets divided by a
+    // denominator full of runs that never called Claude.
+    mocks.maybeSingle.mockResolvedValue({
+      data: { ...CARD_ROW, expanded_report: "already generated" },
+      error: null,
+    });
+
+    await runPost();
+
+    expect(emitted).toEqual([]);
+  });
+
+  it("records the spend when generation fails and the user gets a 502", async () => {
+    mocks.generateExpandedReport.mockImplementation(async () => {
+      await recordCall("expand", "claude-sonnet-5", async () => ({ usage: usage(2000) }));
+      throw new Error("model unavailable");
+    });
+
+    const res = await runPost();
+
+    expect(res.status).toBe(502);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].outcome).toBe("endedEarly");
+    expect(emitted[0].label).toBe("expand failed");
+    expect(emitted[0].totalBilledUsd).toBeGreaterThan(0);
+  });
+
+  it("does not let a failing sink change the response", async () => {
+    mocks.defaultUsageSinks.mockReturnValue([
+      async () => {
+        throw new Error("supabase insert exploded");
+      },
+    ]);
+
+    const res = await runPost();
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ expandedReport: "a full report" });
+  });
+
+  it("does not let a failing sink list change the response either", async () => {
+    // Building the record runs outside emitUsageRun's totality guarantee.
+    mocks.defaultUsageSinks.mockImplementation(() => {
+      throw new Error("could not build the sink list");
+    });
+
+    const res = await runPost();
+
+    expect(res.status).toBe(200);
+  });
+
+  it("keeps two concurrent expands in two separate records", async () => {
+    mocks.generateExpandedReport.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await recordCall("expand", "claude-sonnet-5", async () => ({ usage: usage(2000) }));
+      return "a full report";
+    });
+
+    await Promise.all([runPost(), runPost()]);
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[0].runId).not.toBe(emitted[1].runId);
+    for (const record of emitted) {
+      expect(record.totalCalls).toBe(1);
+    }
   });
 });

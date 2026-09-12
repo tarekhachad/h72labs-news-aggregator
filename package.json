@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run",
+    "cost-report": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/cost-report.mts",
     "lint": "eslint"
   },
   "dependencies": {

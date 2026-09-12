@@ -322,3 +322,128 @@ begin
   where id = p_digest_id;
 end;
 $$;
+
+-- usage_runs — one row per Claude-spending run (a digest generation or a
+-- card expand), written from the route's own finally block.
+--
+-- THIS IS A MEASUREMENT TABLE, NOT A LEDGER, AND NOT AN ENFORCEMENT SOURCE.
+-- Every row is written through the user's own cookie session (this app has
+-- no service-role client anywhere), so RLS can guarantee only that a row's
+-- user_id matches its author — it cannot validate the dollar figures. A user
+-- holding their own JWT can POST a row claiming total_billed_usd = 0 and
+-- every policy below passes. V2.0's spend cap must therefore SIZE itself
+-- from this table and ENFORCE against something the user cannot write
+-- downward — a count of `digests` rows (insert-only, already unique
+-- (user_id, date)). A cap that sums total_billed_usd is bypassable in one curl.
+--
+-- Append-only by construction: SELECT and INSERT policies only. With RLS
+-- enabled, policies are deny-by-default, so UPDATE and DELETE affect zero
+-- rows for the authenticated role — the subject of a row-counting cap cannot
+-- reset it.
+--
+-- This is the STRICTEST table in the file, and no other one shares its shape.
+-- `digests` and `cards` both carry UPDATE policies, and need them (the
+-- generation mutex, the lazily-written expanded_report, front_page_rank
+-- reassignment). `bookmarks`, `user_topics` and `user_preferred_sources` are
+-- select+insert+DELETE, since preferences are saved by replacing the whole
+-- set. Only this table forbids both, because it is the only one whose rows
+-- are evidence about the person who writes them.
+--
+-- Two holes this does NOT close: deleting the auth user cascades these rows
+-- away, and creating a second account resets any per-user count. Invite-only
+-- signup (V2.0) closes the second; nothing in SQL closes it.
+--
+-- No FK on digest_id/card_id, deliberately — written from a `finally` whose
+-- one job is to never complicate the pipeline, and the sink swallows its own
+-- errors, so a referential failure would silently drop the measurement.
+-- numeric(12,6), not float: formatUsd renders six decimals and one triage
+-- call costs ~$0.0015. is_floor is the machine-readable FLOOR warning;
+-- anything averaging these rows MUST exclude is_floor rows.
+
+create table public.usage_runs (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  schema_version smallint not null default 1,
+
+  route text not null,                 -- 'digest' | 'expand'
+  digest_id uuid,
+  card_id uuid,
+
+  -- The collector's fixed `at` — the instant the run was PRICED, not when
+  -- the row was written (created_at below is that). Nullable for exactly one
+  -- reason, and it is not laxness: when the clock was unusable there is no
+  -- ISO instant to record, and writing the write-time or the epoch instead
+  -- would put a fabricated timestamp on a money row. The check constraint
+  -- below ties the null to its only legitimate cause, so a null here can
+  -- never mean "the writer forgot".
+  priced_at timestamptz,
+  -- False when the run's `at` was an Invalid Date, so no promotional window
+  -- could be confirmed for any model and everything fell back to list.
+  clock_usable boolean not null,
+
+  outcome text not null,               -- 'complete' | 'endedEarly'
+  label text not null,
+  run_shape text not null,             -- 'cold'|'warmNewDay'|'warmSameDay'|'unknown'
+
+  -- All nullable ON PURPOSE. A run that exits early never learns these, and
+  -- null means "unmeasured", a different fact from 0. Never default to zero.
+  topic_count smallint,
+  source_count smallint,
+  article_count integer,
+  cluster_count integer,
+  clusters_after_dedup integer,
+  notable_count integer,               -- AFTER applyCardCap
+  cards_dropped_by_cap integer,
+  cards_written integer,
+  cards_failed integer,
+  rank_applied boolean,                -- null = ranking never attempted
+
+  total_calls integer not null,
+  total_calls_without_usage integer not null,
+  total_tokens jsonb not null,
+  total_billed_usd numeric(12,6) not null,
+  total_list_usd numeric(12,6) not null,
+  is_floor boolean not null,
+  -- Models in this run that had no usable pricing entry. Non-empty means the
+  -- dollar totals above are a floor — those rows contributed real tokens and
+  -- $0.000000, because there was no honest figure to substitute.
+  unpriced_models jsonb not null default '[]'::jsonb,
+  pricing_verified_on date not null,
+  stages jsonb not null default '[]'::jsonb,
+
+  created_at timestamptz not null default now(),
+
+  constraint usage_runs_nonnegative_usd
+    check (total_billed_usd >= 0 and total_list_usd >= 0),
+  -- A missing priced_at is only ever explained by an unusable clock.
+  constraint usage_runs_priced_at_present
+    check (priced_at is not null or clock_usable = false)
+);
+
+-- Exactly the query a V2.0 per-user cap will run. Built now because adding it
+-- later means an index build on a live table.
+--
+-- PARTIAL, and the predicate is the point. priced_at is nullable (see the
+-- column), and Postgres orders DESC as NULLS FIRST by default — so a plain
+-- `order by priced_at desc` would surface a clock-unusable row AHEAD of a
+-- user's genuinely most recent runs. Excluding nulls from the index makes the
+-- degenerate rows unreachable through it rather than leaving every future
+-- caller to remember a filter. Any window query (`priced_at >= now() -
+-- interval '1 day'`) implies the predicate, so it still uses this index; a
+-- query that genuinely wants the null rows is not a cap query and should say
+-- so explicitly.
+create index usage_runs_user_priced_at_idx
+  on public.usage_runs (user_id, priced_at desc)
+  where priced_at is not null;
+
+alter table public.usage_runs enable row level security;
+
+create policy "select own usage runs"
+  on public.usage_runs for select
+  using (auth.uid() = user_id);
+
+create policy "insert own usage runs"
+  on public.usage_runs for insert
+  with check (auth.uid() = user_id);
+
+-- Deliberately no update and no delete policy. Their absence is the design.

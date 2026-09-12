@@ -766,8 +766,17 @@ export function summarizeUsage(
   };
 }
 
-/** The smallest cost `formatUsd` can render without rounding it away. */
-const SMALLEST_SHOWN_USD = 0.000001;
+/**
+ * The smallest cost `formatUsd` can render without rounding it away.
+ *
+ * Exported so `costReport.ts`'s table cells can hold the same line as
+ * `formatUsd` does. They render differently — the table omits the `$` because
+ * its row label carries the unit — but they must agree on WHEN a figure is too
+ * small to print, or the same report says `<$0.000001` in prose and
+ * `0.000000` in a table for one number. That happened, and a second literal is
+ * what made it possible.
+ */
+export const SMALLEST_SHOWN_USD = 0.000001;
 
 /**
  * Six decimal places: a single Haiku triage call costs around $0.0015.

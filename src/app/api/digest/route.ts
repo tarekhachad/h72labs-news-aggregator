@@ -20,6 +20,8 @@ import type { Card, Source, Topic } from "@/types";
 import { applyCardCap, MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import type { UsageStage } from "@/lib/usage";
+import { buildUsageRunRecord, deriveRunShape, type RunShape } from "@/lib/usageRecord";
+import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 
 // The embedding model needs Node APIs (not available on the Edge runtime).
 export const runtime = "nodejs";
@@ -63,6 +65,11 @@ type DigestEvent =
 
 async function* runDigestPipeline(
   supabase: SupabaseClient,
+  // Threaded in rather than derived from digestId. It is genuinely absent
+  // here today, and the alternative — looking it up from the digest row —
+  // would put a database round trip inside the finally block, which is the
+  // one place in this function that must not acquire new ways to fail.
+  userId: string,
   digestId: string,
   profile: { topics: Topic[]; preferredSources: Source[] },
   sinceIso: string | null
@@ -88,6 +95,48 @@ async function* runDigestPipeline(
   const expectedCalls: Partial<Record<UsageStage, number>> = {};
   let reachedDone = false;
 
+  // The run's own shape, filled in as each fact becomes known — the same
+  // idiom as `expectedCalls` and `reachedDone` above, and out here for the
+  // same reason: the counts below are all `try`-scoped and invisible from the
+  // finally block that has to write the record.
+  //
+  // Every field starts null, and null is a claim: "this run never got far
+  // enough to learn it". It is NOT zero. A run that dies during ingest wrote
+  // no cards and a run that wrote none also wrote no cards, but only the
+  // second is a measurement, and averaging the first as a 0 would drag every
+  // trend line down by an amount nothing records. `usageRecord.ts` refuses to
+  // default these for the same reason; this is the call site that has to
+  // honour it.
+  //
+  // runShape is the exception, because something IS known before the
+  // pipeline starts: a null cursor means no run has ever completed, which is
+  // decisive on its own. Refined below once today's existing cards are known.
+  const shape: {
+    runShape: RunShape;
+    topicCount: number | null;
+    sourceCount: number | null;
+    articleCount: number | null;
+    clusterCount: number | null;
+    clustersAfterDedup: number | null;
+    notableCount: number | null;
+    cardsDroppedByCap: number | null;
+    cardsWritten: number | null;
+    cardsFailed: number | null;
+    rankApplied: boolean | null;
+  } = {
+    runShape: deriveRunShape(sinceIso, null),
+    topicCount: profile.topics.length,
+    sourceCount: profile.preferredSources.length,
+    articleCount: null,
+    clusterCount: null,
+    clustersAfterDedup: null,
+    notableCount: null,
+    cardsDroppedByCap: null,
+    cardsWritten: null,
+    cardsFailed: null,
+    rankApplied: null,
+  };
+
   // The whole body is wrapped so the generation claim (see claimDigestForGeneration
   // in the POST handler below) is always released on every exit path —
   // normal completion, a thrown error, or early cancellation (toNdjsonStream's
@@ -96,9 +145,11 @@ async function* runDigestPipeline(
   try {
     yield { stage: "ingesting" };
     const articles = await ingestArticles(profile.topics, profile.preferredSources, sinceIso);
+    shape.articleCount = articles.length;
 
     yield { stage: "clustering", articleCount: articles.length };
     const clusters = await clusterArticles(articles);
+    shape.clusterCount = clusters.length;
 
     // Today's already-persisted cards (empty on a first run, since nothing's
     // saved yet) — fetched once and reused by two independent consumers
@@ -116,6 +167,10 @@ async function* runDigestPipeline(
       existingCardsFetchFailed = true;
       console.error("[digest] failed to load today's existing cards, proceeding without them:", err);
     }
+    // Now decidable: a failed fetch leaves warmNewDay and warmSameDay
+    // genuinely indistinguishable, which is what `unknown` means here — not
+    // that nothing is known, but that the warm/warm split is not.
+    shape.runShape = deriveRunShape(sinceIso, existingCardsFetchFailed ? null : existingCards.length);
 
     // Cross-run duplicate check: on a second/third same-day run, a fresh
     // article about a story already covered earlier today (a follow-up, an
@@ -147,6 +202,10 @@ async function* runDigestPipeline(
         console.error("[digest] cross-run dedup failed, proceeding without it:", err);
       }
     }
+    // Recorded after the catch, so a dedup that failed open reports the
+    // cluster count that actually went to triage rather than the count it
+    // would have produced had it worked.
+    shape.clustersAfterDedup = survivingClusters.length;
 
     yield { stage: "triaging", clusterCount: survivingClusters.length };
     // Batched: one call per ~20 same-topic clusters rather than one per
@@ -178,6 +237,12 @@ async function* runDigestPipeline(
     // against that same number — capping after either would make one of
     // them lie.
     const { kept: notableClusters, cuts } = applyCardCap(triaged.filter((t) => t.notable));
+    // AFTER the cap, matching what writeCard is actually asked to produce —
+    // the same number the client is shown and the same one expectedCalls
+    // compares against. Recording the pre-cap figure here would make the row
+    // disagree with both.
+    shape.notableCount = notableClusters.length;
+    shape.cardsDroppedByCap = cuts.reduce((sum, cut) => sum + cut.dropped, 0);
     for (const cut of cuts) {
       console.log(
         `[digest] ${cut.topic}: kept ${MAX_CARDS_PER_TOPIC} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
@@ -207,6 +272,8 @@ async function* runDigestPipeline(
         console.error("[digest] writeCard failed:", result.reason);
       }
     }
+    shape.cardsWritten = cards.length;
+    shape.cardsFailed = written.length - cards.length;
 
     // Secondary key on id: matches getDigestForDate's tiebreaker (see
     // digests.ts) so ties between cards sharing a publishedAt resolve the
@@ -256,6 +323,12 @@ async function* runDigestPipeline(
         console.error("[digest] rankFrontPage threw unexpectedly, leaving today's front page unchanged:", err);
       }
     }
+    // Three states, not two. null means ranking was never attempted (the
+    // existing-cards fetch failed, so ranking would have been unsafe); false
+    // means it was attempted and failed open; true means it produced ranks
+    // that were applied. Collapsing the first two would report a deliberate
+    // skip as a failure.
+    shape.rankApplied = existingCardsFetchFailed ? null : rankResult !== null;
 
     // rankResult === null means ranking either didn't run at all (existing
     // cards couldn't be fetched, so ranking would be unsafe) or failed (the
@@ -310,11 +383,56 @@ async function* runDigestPipeline(
     // summary per run. `report` swallows its own failures, so it can't stop
     // the generation claim below from being released and lock the user out
     // of generating again.
-    usage.report({
-      label: reachedDone ? "digest complete" : "digest ended early (error or cancelled)",
-      expectedCalls,
-    });
+    const label = reachedDone ? "digest complete" : "digest ended early (error or cancelled)";
+    usage.report({ label, expectedCalls });
     await releaseDigestGeneration(supabase, digestId);
+
+    // DELIBERATELY LAST, and the order is a guarantee rather than a
+    // precaution.
+    //
+    // `usage.report` above is synchronous, so there is no suspension point
+    // between it and the release — nothing can interleave there. This line is
+    // different: it awaits a database insert (plus, in development only, a
+    // file write — see defaultUsageSinks). Put it BEFORE
+    // the release and a sink that never settles holds the release hostage,
+    // the response stream never closes, and the user is locked out of
+    // generating again until the stale-claim window (2 min) expires. A
+    // try/catch would not help — it catches a throw, and the failure here is
+    // a hang. Only running after the release makes that impossible, which is
+    // why the ordering is load-bearing and not stylistic.
+    //
+    // `emitUsageRun` is itself total: it never rejects and races each sink
+    // against a timeout. The try/catch is therefore not about the sinks —
+    // it covers `usage.summarize()` and `buildUsageRunRecord`, which run
+    // outside that guarantee. Instrumentation must not be able to turn a
+    // completed digest into a failed one.
+    try {
+      await emitUsageRun(
+        defaultUsageSinks(supabase),
+        buildUsageRunRecord(
+          usage.summarize(),
+          {
+            userId,
+            route: "digest",
+            digestId,
+            cardId: null,
+            outcome: reachedDone ? "complete" : "endedEarly",
+            // The exact string report() used, so a row and a log line from
+            // the same run can be matched up by eye.
+            label,
+            ...shape,
+            expectedCalls,
+          },
+          // The collector's own instant, not a fresh clock reading: the row
+          // has to be priced at the same moment the console summary was, or
+          // a run spanning a rate change would be recorded two ways.
+          usage.at,
+          crypto.randomUUID()
+        )
+      );
+    } catch (err) {
+      console.error("[digest] failed to build this run's cost record:", err);
+    }
   }
 }
 
@@ -419,7 +537,7 @@ export async function POST() {
   }
 
   return new Response(
-    toNdjsonStream(runDigestPipeline(supabase, digestId, profile, sinceCursor)),
+    toNdjsonStream(runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor)),
     { headers: { "Content-Type": "application/x-ndjson" } }
   );
 }

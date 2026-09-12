@@ -6,6 +6,14 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Required by `scripts/cost-report.mts` and the one relative import in
+    // `src/lib/costReport.ts`. Node's native type stripping resolves a
+    // relative TypeScript import only when the specifier carries the real
+    // `.ts` extension, and that is how `npm run cost-report` runs without a
+    // bundler or an extra dev dependency. Safe here because `noEmit` is true
+    // — TypeScript only rejects these specifiers when it would have to
+    // rewrite them on the way out, and this project never emits.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { generateExpandedReport } from "@/lib/cards";
 import type { Card, Topic } from "@/types";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
+import { buildUsageRunRecord } from "@/lib/usageRecord";
+import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 
 const CardId = z.string().uuid();
 
@@ -74,10 +76,66 @@ export async function POST(
     // reading "complete" for a run that returned a 502 would misattribute
     // that spend to anyone grepping these logs. `report` swallows its own
     // failures, so this can't affect the response either way.
-    usage.report({
-      label: generated ? "expand complete" : "expand failed",
-      expectedCalls: { expand: 1 },
-    });
+    const label = generated ? "expand complete" : "expand failed";
+    usage.report({ label, expectedCalls: { expand: 1 } });
+
+    // The durable counterpart to the line above. Unlike the digest route
+    // there is no generation mutex here to strand, so ordering carries less
+    // weight — but it is kept the same way round regardless, so both routes
+    // read alike and neither becomes the odd one that a later edit "fixes"
+    // in the wrong direction.
+    //
+    // Every digest-shaped field is null, and that is the honest value rather
+    // than a placeholder: an expand has no articles, no clusters and no
+    // ranking pass, so 0 would assert a measurement that was never taken.
+    // runShape is "unknown" for the same reason — an expand has no cold/warm
+    // dimension at all — which is why reports must segment by route before
+    // they segment by shape, or these rows would pool with digests whose
+    // shape genuinely could not be determined.
+    //
+    // Note what this does NOT cover: a cache hit returns long before this
+    // point, so a free read writes no row, exactly as it prints no line.
+    //
+    // This IS awaited before the response goes out, unlike the digest route
+    // where the emit lands after the stream's last event. So an uncached
+    // expand pays the sink's latency — a Supabase insert, bounded at 2s by
+    // emitUsageRun. Accepted rather than fired-and-forgotten because on a
+    // serverless platform an unawaited promise can be frozen the moment the
+    // response is returned, which would drop the record silently on exactly
+    // the runs that cost money. If that latency ever matters, Next's
+    // `after()` is the right tool and not a try/catch.
+    try {
+      await emitUsageRun(
+        defaultUsageSinks(supabase),
+        buildUsageRunRecord(
+          usage.summarize(),
+          {
+            userId: user.id,
+            route: "expand",
+            digestId: null,
+            cardId: id,
+            outcome: generated ? "complete" : "endedEarly",
+            label,
+            runShape: "unknown",
+            topicCount: null,
+            sourceCount: null,
+            articleCount: null,
+            clusterCount: null,
+            clustersAfterDedup: null,
+            notableCount: null,
+            cardsDroppedByCap: null,
+            cardsWritten: null,
+            cardsFailed: null,
+            rankApplied: null,
+            expectedCalls: { expand: 1 },
+          },
+          usage.at,
+          crypto.randomUUID()
+        )
+      );
+    } catch (err) {
+      console.error("[cards/expand] failed to build this run's cost record:", err);
+    }
   }
 
   // Conditioned on still being null: the read-then-generate above isn't

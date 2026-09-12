@@ -44,6 +44,21 @@ next-env.d.ts
 *.pem
 npm-debug.log*
 
+# Structured cost records, and the generated HTML view of them.
+#
+# `notes-logs/cost/(C) COST.md` in the same directory IS committed, deliberately:
+# it is the trend history, and `git diff` on it is how a cost regression gets
+# noticed. These two are not. runs.jsonl is raw local measurement data and this
+# is a PUBLIC repo — it carries no user id by construction (see toJsonlLine),
+# but it still records one person's digest ids, run shapes and spend, and that
+# belongs in git no more than the transcripts below did. report.html is a build
+# artifact regenerated from it.
+#
+# Consequence accepted: the data behind a committed report is then local-only
+# and unbacked. The Supabase usage_runs table is the durable copy.
+notes-logs/cost/runs.jsonl
+notes-logs/cost/report.html
+
 # Raw dev-server transcripts from cost measurement runs. These were captured
 # with `npm run dev | tee` — 667 KB of interleaved Next.js request logs with
 # the [usage] lines buried in them. Superseded by the structured cost pipeline;
