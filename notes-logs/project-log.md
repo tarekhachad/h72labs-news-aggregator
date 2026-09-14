@@ -7,13 +7,15 @@ Append-only. Newest entries at the top. Each entry: date + what was done/decided
 
 **Both runs must be under `npm run dev`.** The JSONL sink is gated on `NODE_ENV === "development"`, so a run against a production build records to Supabase only and `npm run cost-report` will never see it — silently, with no error. After the warm run: `npm run cost-report` to regenerate `notes-logs/cost/(C) COST.md`.
 
-**SESSION CLOSED 2026-09-14. What a fresh session needs, in order:**
+**SESSION CLOSED 2026-09-14. Everything is committed and pushed — `2521c2c` on `origin/master`, working tree clean. What a fresh session needs, in order:**
 
-1. **Tonight — the same-day top-up run.** Open the app, hit *Complete Today's Brief*, then `npm run cost-report`. Prices a second generation in one day.
-2. **Tomorrow morning (2026-09-15) — another first-of-day run.** ~24h-stale cursor rather than today's three-day one. **This is the recurring daily figure V2.0's cap consumes.** Today's run cannot answer it: a three-day gap saturates the 48h lookback ceiling, so it ingested a full window exactly as a first-ever run would.
-3. **Then: the capping session.** Its own dedicated conversation, per Tarek's instruction — see `ROADMAP.md` V2.0 for the five questions it has to settle. Option B is already decided and logged; only the mechanisms and the cap remain.
+1. **The capping session** — its own dedicated conversation, per Tarek. `ROADMAP.md` V2.0 holds the five questions it has to settle. Option B is already decided and logged; only the mechanisms and the cap number remain. **Open on the 13× spread** (\$0.036677 narrow vs \$0.471763 full config), because that is what rules out a digest-count cap.
+2. **Two cost runs are owed, and they answer different questions.** A *Complete Today's Brief* top-up prices a second same-day generation. A first-of-day run with a **~24h-stale cursor** is the recurring daily figure the cap consumes — 2026-09-14's run had a three-day gap, which saturates the 48h lookback ceiling and costs first-ever money. Both under `npm run dev`, then `npm run cost-report`.
+3. **Before any V2 code, raise `ROADMAP.md` → V2 SETUP unprompted.** Standing instruction from 2026-08-26. This session judged two of its three skills low-value here and `grill-with-docs`' artifact largely duplicated by `(C) GLOSSARY.md` — but the call is Tarek's, and the item is still open.
 
-**Before any V2 code, raise `ROADMAP.md` → V2 SETUP unprompted.** Standing instruction from 2026-08-26. Note this session's assessment: two of its three skills look low-value here, and that recommendation is written into the log entry below rather than into the roadmap, so the item itself is still open and still Tarek's call.
+**One owed item deliberately skipped, recorded rather than inferred away: review round 3 on the run-shape rename.** Round 2's findings were all fixed and verified, but a fix earns the same two-agent pass as the code it fixed. It was put to Tarek as an explicit choice and skipped because round 2 found only wording, never behaviour — which is this project's own 2026-09-11 standing correction ("the rule forbids stopping for fatigue; it does not require polishing code that cannot run").
+
+**Also owed, unchanged and needing Tarek:** the throwaway measurement auth accounts cannot be deleted from this machine (no service-role key). And `(C) GLOSSARY.md` is stale — four false claims (GNews described as in use when it is unbuilt, prompt caching described as reducing cost when nothing sets `cache_control`, tiered usage described as two-way when writeCard is hybrid, Vercel in the present tense) and not one project-specific term. A `glossary-sync` skill mirroring `project-resume-sync` was proposed and not built.
 
 **Decided today:** no service-role key and no Supabase write access for now (Tarek's call) — the throwaway measurement accounts are few enough to delete by hand in a batch whenever he wants, and at this scope that is not worth the blast radius of a key that bypasses RLS in a public repo. The reset-the-cursor-instead-of-making-a-new-account fix stays available if cold runs ever become frequent.
 
