@@ -1,6 +1,6 @@
 # (C) Implementation Plan — Phase 6 (UI Tweaks)
 
-> Copied from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `IMPLEMENTATION_PLAN_PHASE5.md`. This is the file-level detail; `ROADMAP.md`'s Phase 6 section is only a summary that gets "Done (date):" notes appended as each sub-phase ships.
+> Copied from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `docs/archive/(C) IMPLEMENTATION_PLAN_PHASE5.md`. This is the file-level detail; `ROADMAP.md`'s Phase 6 section is only a summary that gets "Done (date):" notes appended as each sub-phase ships.
 
 # Phase 6 — UI Tweaks (new intermediary phase)
 
@@ -147,4 +147,4 @@ Live-in-browser checks needed beyond automated tests (this app has no visual/ani
 - `src/app/(paper)/topic/[slug]/page.tsx`
 - `src/hooks/useDynamicLineClamp.ts` (comment-only touch in 6.3)
 - `docs/(C) ROADMAP.md` (renumber old Phase 6 → 7, insert new Phase 6 structure)
-- `docs/(C) IMPLEMENTATION_PLAN_PHASE6.md` (this file)
+- `docs/archive/(C) IMPLEMENTATION_PLAN_PHASE6.md` (this file)

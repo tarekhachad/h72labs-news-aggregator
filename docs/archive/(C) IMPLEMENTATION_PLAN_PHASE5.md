@@ -1,6 +1,6 @@
 # (C) Phase 5 Implementation Plan — Fix Iterations
 
-> Copied here from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `(C) IMPLEMENTATION_PLAN_4.4.md`. This is the plan; `notes-logs/project-log.md` and `docs/(C) ROADMAP.md`'s Phase 5 entries are the ongoing record of what's actually been done against it, and take precedence if this doc and those ever disagree. Read `CLAUDE.md`'s "Current Status" for the fastest way to reorient at the start of a new session.
+> Copied here from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `docs/archive/(C) IMPLEMENTATION_PLAN_4.4.md`. This is the plan; `notes-logs/project-log.md` and `docs/(C) ROADMAP.md`'s Phase 5 entries are the ongoing record of what's actually been done against it, and take precedence if this doc and those ever disagree. Read `CLAUDE.md`'s "Current Status" for the fastest way to reorient at the start of a new session.
 
 ## Context
 

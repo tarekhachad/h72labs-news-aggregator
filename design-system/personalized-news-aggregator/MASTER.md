@@ -99,7 +99,7 @@ Real newsprint has no drop shadows. Reserve shadow use for interactive elevation
 
 ---
 
-## Component Notes (guidance, not prescriptive CSS — actual components are shadcn/ui primitives per `IMPLEMENTATION_PLAN_4.4.md` B3, restyled with these tokens)
+## Component Notes (guidance, not prescriptive CSS — actual components are shadcn/ui primitives per `docs/archive/(C) IMPLEMENTATION_PLAN_4.4.md` B3, restyled with these tokens)
 
 - **Buttons:** `--color-primary` fill for primary actions (ink black on paper), `--color-accent` reserved for the rare emphasis action, not default buttons — matches "minimal color."
 - **Cards (`NewsCard`):** flat, `--color-card` bg, `--color-border` hairline, no shadow at rest; rank/severity badge uses `--color-accent`.

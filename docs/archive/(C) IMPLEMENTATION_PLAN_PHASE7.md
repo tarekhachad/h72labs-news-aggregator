@@ -1,6 +1,6 @@
 # (C) Implementation Plan — Phase 7 (UI Fixes)
 
-> Copied from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `IMPLEMENTATION_PLAN_PHASE5.md`/`IMPLEMENTATION_PLAN_PHASE6.md`. This is the file-level detail; `ROADMAP.md`'s Phase 7 section is only a summary that gets "Done (date):" notes appended as each sub-phase ships.
+> Copied from the ephemeral Claude Code plan-mode artifact (`.claude/plans/`, not part of this repo and not durable across sessions) so it survives session restarts — same convention as `docs/archive/(C) IMPLEMENTATION_PLAN_PHASE5.md`/`docs/archive/(C) IMPLEMENTATION_PLAN_PHASE6.md`. This is the file-level detail; `ROADMAP.md`'s Phase 7 section is only a summary that gets "Done (date):" notes appended as each sub-phase ships.
 
 # Phase 7 — UI fixes
 
@@ -128,4 +128,4 @@ Live-in-browser checks needed beyond automated tests:
 - `src/app/(paper)/layout.tsx` (7.2 — mounts the new provider)
 - `src/lib/digests.ts` (7.2 — `digestExistsForDate` cards-aware fix)
 - `docs/(C) ROADMAP.md` (this file's own Phase 7 section)
-- `docs/(C) IMPLEMENTATION_PLAN_PHASE7.md` (this file)
+- `docs/archive/(C) IMPLEMENTATION_PLAN_PHASE7.md` (this file)
