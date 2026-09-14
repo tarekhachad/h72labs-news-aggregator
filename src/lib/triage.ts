@@ -452,9 +452,9 @@ async function judgeWithSplitRetry(
  * triage calls for a single digest at 65% of its cost, with 91% of the
  * input being the same prompt bytes re-sent each time.
  *
- * Never rejects. The digest route used to wrap each cluster in its own
- * try/catch so one failure couldn't take down the run; with batching that
- * guarantee has to live in here instead, because a rejection would now
+ * Never rejects, and the caller depends on that rather than wrapping clusters
+ * in its own try/catch. With batching the guarantee has to live in here,
+ * because a rejection would
  * discard a whole batch rather than one cluster.
  */
 export async function triageClusters(

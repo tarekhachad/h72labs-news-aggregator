@@ -211,9 +211,9 @@ describe("filterAlreadyCovered", () => {
     // F.4.5 batched triage.ts's per-cluster fan-out into ≤20-cluster groups
     // (planTriageBatches / MAX_CLUSTERS_PER_BATCH), but deliberately left
     // dedup.ts's isSameStory fan-out untouched -- this is the exact claim
-    // the F.4.5 review round's rewritten comments make (dedup.ts's
+    // several comments make (dedup.ts's
     // filterAlreadyCovered comment, usageCollector.ts's ambient-collector
-    // comment, and ROADMAP.md's new deferred entry all assert it). Prove it
+    // comment, and ROADMAP.md's deferred entry all assert it). Prove it
     // numerically: 25 same-topic candidates, all clearing the embedding
     // gate, must produce exactly 25 separate Haiku calls -- not the ~2
     // batched calls triage's MAX_CLUSTERS_PER_BATCH=20 would produce for

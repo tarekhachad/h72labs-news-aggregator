@@ -9,11 +9,11 @@
  * single row (rowSpan 1 / 180px) — confirmed exactly by Tarek: hero alone
  * at full width and double height; the next tier (ranks/severities just
  * below hero) pairs up, sharing width, still at double height; everything
- * below that packs at single-row height. Previously a fourth tier ("large")
- * was the same width as hero but the same height as medium/small, which let
- * a lone "large" card (nothing else to share its row with that day) get
- * widened to hero's full width AND full height — visually as prominent as
- * the actual #1 story. Removed rather than special-cased. Mixing hero/
+ * below that packs at single-row height. **Do not add a fourth tier between
+ * hero and medium.** One that is hero's width but medium's height lets a lone
+ * card of that tier (nothing to share its row with that day) widen to hero's
+ * full width AND full height — visually as prominent as the actual #1 story.
+ * That is why there are three tiers rather than four. Mixing hero/
  * medium's rowSpan 2 with small's rowSpan 1 doesn't reopen that risk: a
  * band is always 100% one tier (see packGrid.ts's tier-identity rule), so
  * small never shares rows with hero/medium regardless of its own height.

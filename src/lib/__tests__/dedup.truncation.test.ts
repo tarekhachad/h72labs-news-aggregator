@@ -4,7 +4,7 @@ import type { Cluster, Article } from "@/types";
 // This file exists to verify one specific fix applied after code review:
 // clusterText() in dedup.ts now truncates each article's snippet to 200
 // chars before concatenating (SNIPPET_CHARS_PER_ARTICLE), where it
-// previously concatenated the full, unbounded snippet. clusterText() itself
+// must not concatenate the full, unbounded snippet. clusterText() itself
 // isn't exported, so this drives it indirectly through filterAlreadyCovered
 // and inspects the actual text handed to embed() and to the Anthropic call
 // (via isSameStory) — the two real consumers of clusterText()'s output.

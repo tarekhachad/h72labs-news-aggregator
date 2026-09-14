@@ -1,6 +1,6 @@
 /**
- * QA round 3 — probes aimed at the mutants that SURVIVED round 3's mutation
- * sweep, plus the round-2 fixes whose new lines no test reaches.
+ * Probes aimed at mutants that survive an ordinary mutation sweep, and at
+ * lines that fixes added but no test reaches.
  * PERMANENT — do not delete. Same reasoning as usage.adversarial.test.ts:
  * mutation testing shows this file is the sole coverage for five mutants, and
  * P1b is the only test anywhere in the repo that kills `billedAtList`'s
@@ -58,8 +58,8 @@ describe("P1: a promo'd model split across a measured and an unmeasured stage gr
     const s = summarizeUsage(mixed, AT, tableWith(R(9)));
     expect(s.totalBilledUsd).toBeGreaterThan(s.totalListUsd);
     // `applied` tracks the promo WINDOW and `discounted` the saving — split in
-    // round 3 after a spend-only `applied` reported a live promo as "not in
-    // effect" whenever a run's tokens were unmeasurable. A dearer promo is
+    // A spend-only `applied` reports a live promo as "not in
+    // effect" whenever a run's tokens are unmeasurable. A dearer promo is
     // live and not a discount, which is exactly this case.
     expect(s.promos[0].applied).toBe(true);
     expect(s.promos[0].discounted).toBe(false);

@@ -127,22 +127,18 @@ export const PRICING: Record<TrackedModel, ModelPricing> = deepFreezePricing({
     },
   },
   "claude-sonnet-5": {
-    // No promo entry, and its absence is the whole story. $2/$10 *was* Sonnet
-    // 5's launch introductory rate, scheduled to rise to $3/$15 on 2026-09-01,
-    // and the dated promo that used to sit here modelled that correctly. Then
-    // Anthropic cancelled the increase and made $2/$10 the standard price —
-    // "the previously scheduled increase ... will not occur", per the pricing
-    // docs, re-checked 2026-09-11. The promo expired on schedule; the world
-    // didn't follow. So this was never a modelling error — but nor did the
-    // mechanism catch its own staleness: it went on pricing Sonnet at $3/$15
-    // for eleven days until a human re-read the pricing page. ModelPricing.promo
-    // stays, unused, because the alternative encoding of a temporary rate —
-    // editing `list` down and back up — under-reports silently, and a figure
-    // below the real bill is the one output this module must never produce.
+    // No promo entry: $2/$10 is Sonnet 5's standard price, not a promotional
+    // one. `ModelPricing.promo` stays available but unused, because the
+    // alternative way to encode a temporary rate — editing `list` down and back
+    // up — under-reports silently, and a figure below the real bill is the one
+    // output this module must never produce.
     //
-    // Watch for one coincidence when re-verifying: $3/$15 is also Sonnet 4.6's
-    // rate, so a reader can mistake the old value for a copy-paste slip from
-    // the wrong model. It wasn't one.
+    // Two traps when re-verifying these rates. A dated promo models a
+    // SCHEDULED price change, and it expires on schedule whether or not the
+    // change actually happens — so a cancelled increase leaves this table
+    // over-stating a rate with nothing in the app able to detect it. And
+    // $3/$15 is also Sonnet 4.6's rate, so that value appearing here reads like
+    // a copy-paste slip from the wrong model when it may not be one.
     list: {
       inputPerMTok: 2.0,
       outputPerMTok: 10.0,
@@ -160,29 +156,22 @@ export const PRICING: Record<TrackedModel, ModelPricing> = deepFreezePricing({
  * is visible rather than silent.
  *
  * Printed on every summary that reports spend — `formatUsageSummary` emits it
- * for any run with recorded calls, independently of whether a promotion
- * exists. (Not on the two zero-call early returns: those report no cost, so
- * there is no figure whose rates could be stale.) It used to ride along on the
- * promo footer, which meant it printed only while some model had a promotion.
- * Sep 2026 proved why that matters: Anthropic cancelled Sonnet 5's scheduled
- * increase, the promo entry came out, and the staleness date would have
- * vanished with it.
+ * for any run with recorded calls, and **deliberately not only when a promotion
+ * exists**. Gating it on the promo footer would make it disappear the moment
+ * the last promo is removed, taking the only staleness signal with it and
+ * leaving nothing to notice it had gone. (It is not printed on the two
+ * zero-call early returns: those report no cost, so there is no figure whose
+ * rates could be stale.)
  *
- * Self-expiry is worth restating here because it is the failure this constant
- * exists for: a date gate expires on schedule whether or not the world does.
- * The Sonnet promo lapsed correctly on 2026-09-01 and began over-stating
- * Sonnet's rate by 50% that same day, because the *scheduled* successor price
- * never took effect. Note the digest-level error was much smaller — roughly
- * +19%. Derivation, since the two figures are easy to confuse: at the
- * 2026-08-15 mix, Sonnet card-writing was $0.126 of the $0.335 digest and the
- * remaining $0.209 was Haiku, whose rate never changed. Pricing that Sonnet
- * share at the old $3/$15 instead of $2/$10 scales it by 1.5 to $0.189, giving
- * $0.398 — about +19% on the digest, against +50% on the Sonnet line alone. It
- * is spend *share* that sets the blended error, not call count; Haiku
- * dominates the call count far more than it dominates the bill.
- * Quote whichever of those two numbers the claim actually needs; they are not
- * interchangeable. Nothing in this app could have caught either. Only
- * re-checking the published rates against this date can.
+ * **A per-model rate error and a per-digest error are different numbers and are
+ * easy to confuse.** What sets the blended error is each model's share of
+ * SPEND, not its share of calls — Haiku dominates the call count far more than
+ * it dominates the bill, so a Sonnet-only rate error moves the digest total by
+ * much less than it moves the Sonnet line. Quote whichever the claim actually
+ * needs; they are not interchangeable.
+ *
+ * Nothing inside this app can detect a list-price change. Only re-checking the
+ * published rates against this date can.
  */
 export const PRICING_VERIFIED_ON = "2026-09-11";
 
@@ -240,9 +229,8 @@ export const ZERO_TOKENS: Readonly<CallTokens> = Object.freeze({
 /**
  * A token count is a non-negative finite number.
  *
- * (This predicate does no normalizing. The `+ 0` that turns -0 into 0 lives in
- * the callers that build CallTokens; the note used to sit here and described
- * them rather than this function.)
+ * This predicate does no normalizing. The `+ 0` that turns -0 into 0 lives in
+ * the callers that build CallTokens.
  */
 function isTokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -502,10 +490,10 @@ export interface StageTotals {
    * substitute, so the zeros stay and `unpricedModels` plus the formatter's
    * FLOOR warning are what stop them being read as a complete figure. A
    * consumer reading a dollar total without checking `unpricedModels` will be
-   * misled; that is why the field exists. An unpriceable stage used to
-   * throw out of summarizeUsage and take the entire run's report with it —
-   * including the stages that priced perfectly well — and since report()
-   * swallows, the result was silence that reads exactly like a free run.
+   * misled; that is why the field exists. The alternative — throwing out of
+   * summarizeUsage — would take the entire run's report with it, including the
+   * stages that priced perfectly well, and since report() swallows, the result
+   * is silence that reads exactly like a free run.
    * Destroying correct numbers to avoid one unknown one is the wrong trade for
    * a module whose job is cost visibility.
    */
@@ -557,9 +545,8 @@ export interface PromoNotice {
    * "we had nothing to measure". Zero tokens make billed and list both 0, so
    * `billed < list` is false — and a run whose calls all reported unreadable
    * usage would be told its 33%-cheaper promo was NOT cheaper than list. That
-   * is a false claim about Anthropic's rate card sourced from this app failing
-   * to parse a usage payload, which is the same fault that has now produced a
-   * wrong footer twice in opposite directions.
+   * is a false claim about Anthropic's rate card sourced from nothing more than
+   * this app failing to parse a usage payload.
    */
   measurable: boolean;
   /**
@@ -640,16 +627,11 @@ export interface UsageSummary {
  * Grouped by the **(stage, model) pair**, not by stage alone. This is not
  * defensive futureproofing — **a stage already mixes models today.**
  * `modelForCluster` in writeCard.ts routes single-article clusters to Haiku
- * and multi-source ones to Sonnet, so a single run's writeCard stage emits
- * both (the 2026-08-15 measurement: 29 Sonnet, 38 Haiku). Summing that
- * stage's tokens and pricing them once would be wrong by up to 2x — Sonnet
- * bills 2x Haiku on both input and output — and wrong quietly. Grouping on
- * the pair makes that structurally impossible.
- *
- * (This comment used to claim every stage used exactly one model, and that
- * the 2x was a hypothetical. It was neither, and a reader who believed it
- * could have collapsed the grouping. The "3x" it quoted came from Sonnet 5's
- * pre-2026-09-11 $3/$15 rate against Haiku's $1/$5.)
+ * and multi-source ones to Sonnet, so a single run's writeCard stage routinely
+ * emits both. Summing that stage's tokens and pricing them once would be wrong
+ * by up to 2x — Sonnet bills 2x Haiku on both input and output — and wrong
+ * quietly. Grouping on the pair makes that structurally impossible, so do not
+ * collapse it on the assumption that a stage uses one model.
  */
 export function summarizeUsage(
   calls: RecordedCall[],
@@ -1034,11 +1016,10 @@ export function formatUsageSummary(summary: UsageSummary, opts: SummaryOptions):
   }
 
   // Load-bearing, and deliberately not conditional on a promotion existing.
-  // PRICING_VERIFIED_ON used to be printed only inside the promo loop above.
-  // That was fine while Sonnet 5 carried a promo — but when the promo was
-  // removed in Sep 2026, `summary.promos` went permanently empty (Haiku has
-  // never had one) and the date would have stopped appearing entirely, with
-  // nothing to notice it had gone. A stale *list* price is undetectable from
+  // Printing PRICING_VERIFIED_ON inside the promo loop above would make it
+  // vanish the moment no model carries a promo — `summary.promos` would be
+  // permanently empty and the date would stop appearing entirely, with nothing
+  // to notice it had gone. A stale *list* price is undetectable from
   // inside this app by construction, so this line is the only staleness signal
   // there is. Removing the promo and this line together would have silently
   // disabled the tripwire while looking like a refresh.
@@ -1053,7 +1034,7 @@ export function formatUsageSummary(summary: UsageSummary, opts: SummaryOptions):
       ? `${LOG_PREFIX} Rates last verified against published pricing ${PRICING_VERIFIED_ON}.`
       : summary.unpricedModels.length > 0
         ? // Same guard `billedAtList` already applies per model, applied here
-          // too — round 3 fixed one of these two sites and not the other. With
+          // too: both sites need it. With
           // an unpriced model there is no promo notice at all, so this line is
           // the only one left, and it would otherwise tell the reader that the
           // $0.000000 standing in for an UNKNOWN cost is the list price.

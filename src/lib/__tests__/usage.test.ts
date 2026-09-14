@@ -27,17 +27,14 @@ const DURING_PROMO = new Date("2026-08-13T12:00:00Z");
  * A synthetic promoted model. The promo machinery is exercised through this
  * rather than through PRICING.
  *
- * Sonnet 5 carried a real introductory rate and these tests used to reach the
- * promo path through it. In Sep 2026 Anthropic made that rate permanent and
- * cancelled the scheduled increase, the promo entry left PRICING, and ten
- * correct tests broke on a correct pricing change — because the only route
- * they had to the promo branch was whatever Anthropic happened to charge that
- * month. A fixture decouples the machinery from the table permanently: the
- * next real promo costs one PRICING entry, not a test rewrite.
+ * **Never reach the promo path through whatever PRICING happens to contain.**
+ * A real model's promo is Anthropic's to add or remove, so tests routed through
+ * one break on a correct pricing change, and the breakage looks like a bug in
+ * this module. A fixture decouples the machinery from the table permanently:
+ * the next real promo costs one PRICING entry, not a test rewrite.
  *
- * The numbers are the historical Sonnet 5 ones ($2/$10 intro against a $3/$15
- * list) so every dollar assertion below survives verbatim and stays checkable
- * by hand.
+ * The numbers are a $2/$10 intro against a $3/$15 list, so every dollar
+ * assertion below stays checkable by hand.
  */
 const PROMO_FIXTURE: ModelPricing = {
   list: {
@@ -141,7 +138,7 @@ describe("costFor", () => {
   // promo *machinery* through a fixture; this is the only place the actual
   // rates Anthropic charges today are pinned. $2/$10 is Sonnet 5's standard
   // price — it was introductory at launch, and the scheduled rise to $3/$15
-  // on 2026-09-01 was cancelled, which is why there is no promo to apply.
+  // Sonnet 5's $2/$10 is its standard rate, so there is no promo to apply.
   it("prices Sonnet 5 at its standard rate, with no promotion in play", () => {
     const cost = costFor(
       "claude-sonnet-5",
@@ -429,16 +426,12 @@ describe("summarizeUsage", () => {
 
   // Pins the (stage, model) grouping. NOT a hypothetical: writeCard's
   // modelForCluster already sends single-article clusters to Haiku and
-  // multi-source ones to Sonnet, so a real run emits both from one stage (the
-  // 2026-08-15 measurement: 29 Sonnet, 38 Haiku). Summing that stage's tokens
-  // and pricing them once would be wrong by up to 2x — Sonnet bills 2x Haiku
-  // on input and output alike.
+  // multi-source ones to Sonnet, so a real run emits both from one stage.
+  // Summing that stage's tokens and pricing them once would be wrong by up to
+  // 2x — Sonnet bills 2x Haiku on input and output alike.
   //
-  // (This comment is the twin of one in usage.ts that said the same two false
-  // things: that every stage used one model, and that the error was "up to
-  // 3x". The 3x came from Sonnet 5's pre-2026-09-11 $3/$15 against Haiku's
-  // $1/$5. Both were corrected together; if you are editing one, check the
-  // other.)
+  // usage.ts carries the twin of this comment. If you edit one, check the
+  // other; do not let either claim a stage uses exactly one model.
   it("keeps a stage's models in separate groups so each is priced at its own rate", () => {
     const summary = summarizeUsage(
       [
@@ -618,10 +611,10 @@ describe("formatUsageSummary", () => {
     expect(text).not.toContain("was in effect for this run");
   });
 
-  // The staleness tripwire, and the reason Step 2 existed. PRICING_VERIFIED_ON
-  // used to be printed only inside the promo footer loop. Removing Sonnet's
-  // promo emptied `summary.promos` permanently — Haiku has never had one — so
-  // the date would have stopped printing with nothing to notice it had gone.
+  // The staleness tripwire. PRICING_VERIFIED_ON must NOT be printed only
+  // inside the promo footer loop: a table with no promo leaves
+  // `summary.promos` permanently empty, so the date would stop printing with
+  // nothing to notice it had gone.
   // A stale *list* price cannot be detected from inside this app, so this line
   // is the only signal there is. If this test fails, the tripwire is off.
   it("always states when rates were last verified, promo or not", () => {
@@ -629,7 +622,7 @@ describe("formatUsageSummary", () => {
       label: "digest complete",
     }).join("\n");
     // "against published pricing" is load-bearing wording, not decoration:
-    // this project has previously conflated checking Anthropic's published
+    // it is easy to conflate checking Anthropic's published
     // rates with reconciling a run against a Console invoice. Only the first
     // is what this date attests to, and only the first is automated.
     expect(text).toContain(`Rates last verified against published pricing ${PRICING_VERIFIED_ON}`);

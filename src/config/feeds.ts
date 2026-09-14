@@ -6,16 +6,14 @@ import type { Source, Topic } from "@/types";
  *
  * Every URL here was verified live (fetched and confirmed to return real
  * RSS/Atom XML with current items, not a 404/redirect/paywall page or a
- * stale/abandoned feed) during Phase 2 sourcing research, 2026-07-28.
+ * stale/abandoned feed) before being added here, and any new one must be.
  * Outlets that looked plausible but turned out dead, Cloudflare-blocked,
  * or frozen (e.g. Reuters, AP, WSJ Markets, CNN Business, Morocco World
  * News, L'Economiste, Goal.com, NBA.com, ATP/WTA official) were excluded
  * rather than guessed.
  *
- * Transfermarkt and The Athletic (European Football) added 2026-07-30,
- * same live-verification standard. Footmercato was checked too but has no
- * public RSS feed (no feed-discovery link, every common path 404s) — left
- * out rather than guessed at.
+ * Footmercato was checked and has no public RSS feed (no feed-discovery link,
+ * every common path 404s) — left out rather than guessed at.
  */
 export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
   "Tech/AI": {

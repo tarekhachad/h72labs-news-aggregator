@@ -252,9 +252,9 @@ describe("collector reporting", () => {
   it("holds one instant for its whole lifetime", () => {
     // READ THIS BEFORE STRENGTHENING THE ASSERTIONS. The property that matters
     // is that a run spanning the day a rate changes is priced once, not half
-    // each way. This test used to demonstrate that through Sonnet 5's
-    // introductory window: it asserted promos[0].applied === false on a date
-    // just past the window's end.
+    // each way. Demonstrating that through a REAL model's promo window is the
+    // trap: such a test asserts promos[0].applied === false on a date just past
+    // the window's end, and breaks whenever the real table changes.
     //
     // That window is gone — Anthropic made the introductory rate permanent in
     // Sep 2026 — and PRICING now carries no promo at all. Which means `at` is

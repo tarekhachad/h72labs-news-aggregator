@@ -1,5 +1,5 @@
 /**
- * ROUND 6 — exhaustive reachable-state enumeration for the promo footer.
+ * Exhaustive reachable-state enumeration for the promo footer.
  *
  * Not scaffolding-by-example: this sweeps a cross product of genuine inputs
  * through summarizeUsage, records every (priced, clockUsable, applied,

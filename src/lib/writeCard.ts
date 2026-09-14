@@ -132,12 +132,9 @@ async function generateSummary(cluster: Cluster) {
  * call only happens on the rare ambiguous-completion retry inside
  * generateWithRetryOnAmbiguousTruncation, not on the normal path.
  *
- * (This used to say "one Sonnet call per triaged cluster — the only step that
- * genuinely needs a capable model", which `modelForCluster` above has
- * contradicted since the hybrid split was introduced. Most clusters are
- * single-article and go to Haiku: 38 of 67 card-writing calls in the
- * 2026-08-15 measurement. The claim also mis-sized the pipeline — triage, not
- * writing, was ~65% of spend.)
+ * Do not describe this stage as "one Sonnet call per cluster": most clusters
+ * are single-article and go to Haiku, so the stage routinely mixes both models.
+ * Nor is card writing the pipeline's dominant cost — triage is.
  */
 export async function writeCard(cluster: Cluster, severity: number): Promise<Card> {
   const { text: shortSummary, title, labels } = await generateWithRetryOnAmbiguousTruncation(

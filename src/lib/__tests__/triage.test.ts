@@ -573,9 +573,9 @@ describe("triageClusters failure handling", () => {
 
   it("holds the never-rejects contract when BOTH loggers throw during a partially-successful batch — success-path console.log and failure-path console.error firing together, not just in isolation", async () => {
     // The two existing tests above each throw exactly one logger in
-    // isolation (log-only success, error-only failure). Round 4's defect
-    // was specifically in the failure-path guard, found after four rounds
-    // had already exercised the success-path one -- so this pins the
+    // isolation (log-only success, error-only failure). The failure-path guard
+    // is the one that gets missed, because ordinary tests exercise the
+    // success-path guard instead -- so this pins the
     // combination explicitly: one call judges some clusters (hits the
     // guarded console.log) while others in the same run fail and retry
     // (hits the guarded console.error), with BOTH loggers throwing at once,
@@ -1022,7 +1022,7 @@ describe("triage log line", () => {
     // The reason is unconstrained model output — z.string() with no .max(),
     // and the 12-word cap is only a prompt instruction. An embedded newline
     // would split one verdict across what reads as two [triage] lines, in
-    // exactly the reasons-on capture used to investigate calibration.
+    // exactly the reasons-on capture that calibration work depends on.
     process.env.TRIAGE_REASONS = "1";
     mockParse.mockResolvedValue({
       parsed_output: {

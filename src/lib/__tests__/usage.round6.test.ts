@@ -1,4 +1,4 @@
-/** ROUND 6 — killing tests for mutants that SURVIVED the round-6 sweep. */
+/** Killing tests for promo-footer mutants that survive an ordinary sweep. */
 import { describe, expect, it } from "vitest";
 import {
   PRICING, costFor, formatUsageSummary, formatUsd, summarizeUsage,

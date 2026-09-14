@@ -183,12 +183,11 @@ export function NewsCard({
     prevFocused.current = focused;
   }, [focused]);
 
-  // Explicitly user-triggered as of Phase 8.3 — this used to be an effect
-  // keyed on `focused`, so merely opening focus mode spent a Sonnet call.
-  // Opening a card is often just how you read the *short* summary in full
-  // (the grid clamps it to fit), which made the old behavior pay for a
-  // report the reader never asked to see. Now the overlay shows a button
-  // and nothing is generated until it's pressed.
+  // Explicitly user-triggered, and **must not become an effect keyed on
+  // `focused`**: opening a card is often just how you read the *short* summary
+  // in full (the grid clamps it to fit), so generating on open pays a Sonnet
+  // call for a report the reader never asked to see. The overlay shows a button
+  // and nothing is generated until it is pressed.
   //
   // Two overlapping guards, deliberately:
   //   - `report !== null` — already have it, from a seed or an earlier
@@ -254,11 +253,11 @@ export function NewsCard({
   // element's onClick already does. Without this, focusing e.g. the
   // Sources button and pressing Enter/Space fires the *card's*
   // handleOpenKeyDown first (native keydown bubbles before the browser
-  // synthesizes the button's own click), which used to just no-op while
-  // flipped but — now that it actively flips the card back — would also
-  // wrongly intercept Enter on a focused source link (blocking its
-  // navigation) or the Save button (opening focus mode instead of
-  // toggling the bookmark). Only Enter/Space are stopped, matching exactly
+  // synthesizes the button's own click). Because that handler actively flips
+  // the card back, leaving it unstopped would wrongly intercept Enter on a
+  // focused source link (blocking its navigation) or the Save button (opening
+  // focus mode instead of toggling the bookmark). Only Enter/Space are
+  // stopped, matching exactly
   // what handleOpenKeyDown itself reacts to; every other key still bubbles
   // normally.
   function stopEnterSpacePropagation(e: React.KeyboardEvent) {

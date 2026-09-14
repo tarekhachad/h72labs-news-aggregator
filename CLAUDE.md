@@ -68,6 +68,30 @@ Personalized News Aggregator/
 - **Data handling:** real user accounts from v1 (not just Tarek) — see `docs/DATA_HANDLING.md` before touching anything account/data-related.
 - **Topic/source selection:** curated multi-select only for v1 (both topics and preferred sources) — free-text entry is explicitly deferred to v2, don't build it early.
 
+## Comments — what belongs in the code and what doesn't
+
+**The one test.** Before writing any comment, ask: *would this sentence still be true if the code had been written this way the first time?* **Yes** → it's a reason or a constraint, keep it. **No** → it's history, and it goes in the commit message or `notes-logs/project-log.md`.
+
+**Never in a code comment:** a date · "used to" / "previously" / "before the rename" / "this was changed" · review round numbers or agent names · bug counts ("this appeared five times") · a changelog of any kind. Git already records what changed and why, and a comment that repeats it goes stale the next time the code moves — silently, because no tool checks a comment.
+
+**Worth writing:** why a non-obvious choice was made and what breaks otherwise · an external constraint (an API quirk, a platform limit) · an invariant a reader could accidentally break · a warning that stops someone "fixing" code that is already correct.
+
+**Better than a comment: make it fire.** A comment says "don't do this"; a lint rule, a test, or a type *stops* you. When a constraint actually matters, encode it — then the comment is one line, or unnecessary. Prefer clear naming over explanation.
+
+**Where each thing goes:**
+
+| Thing | Goes where |
+|---|---|
+| What changed and why | the commit message |
+| Session story, decisions, lessons | `notes-logs/project-log.md` |
+| Design reasoning | `docs/` |
+| A constraint that is true right now | a short code comment |
+| A constraint that must never break | a lint rule, test, or type |
+
+**In the review loop (step 4):** both agents review **behaviour**. Comment wording gets **one pass, not convergence** — every fix writes new prose, so re-reviewing fixes generates findings indefinitely with no finish line. Fix what a round reports on comments, then stop; a further round is for behaviour only.
+
+---
+
 ## Current Status
 
 > **Last updated:** 2026-09-11 — **v1 closed; the cost pipeline (plan steps 3–8) is now BUILT and MEASURED LIVE.** Every run writes a durable record: `src/lib/usageRecord.ts` (pure shape), `src/lib/usageSinks.ts` (JSONL + Supabase, a *total* emitter that never rejects or hangs), emit wired into both `/api/digest` and `/api/cards/[id]/expand`, the `usage_runs` table applied to Supabase, and `src/lib/costReport.ts` + `npm run cost-report` producing the committed `notes-logs/cost/(C) COST.md`. `npm test` exists now. **Tests 517 → 735 across 47 → 57 files**; 17 review rounds, every group closed on a round clean from both agents. **Live measurement, \$0.499 spent:** a full-config cold run (13 topics, 48 sources) cost **\$0.450229** for 1280 articles / 91 cards / 152 calls. That is NOT a regression against the documented \$0.335 — it did **1.42× the work**, and **unit cost came in at \$0.002962/call vs \$0.003131, i.e. 5.4% cheaper**. **Never quote a per-digest figure without its article and card counts**; \$0.335 and \$0.450 are the same economics at different news volumes. Expand measured **\$0.010194** against the documented ~\$0.012 and IS directly comparable (one Sonnet call per card, independent of topic breadth) — confirmed, slightly low. **The warm/returning-user number is STILL UNMEASURED**: the warm run fired 24s after the cold one, so the cursor had taken everything — 0 articles, 1 call, \$0.002038, a floor rather than a typical warm day. That is the number V2.0's per-user cap consumes, and it needs a warm run hours after a cold one on a day with real news. **Two lessons carried:** the cost-report validator had ONE bug shape recur five times (a guard on one path but not the other, once fabricating a plausible-but-wrong date out of a coerced number) and the cure was deleting the second validator rather than widening it again; and wiring the routes silently made every `vitest run` append fabricated records to the real `runs.jsonl` — 322 lines had accumulated before `qa` caught it by deleting the file and looking. The sink gate is an allowlist (`NODE_ENV === "development"`) for that reason. **Two throwaway auth accounts** (`cost-measurement-2026-09-11@…`, `cost-measurement-full-2026-09-11@…`) cannot be deleted from this machine — no service-role key. **Next: the Roadmap V2 planning session**, still opening on V2.0's spend-cap decision, now with real per-run data to size from. Before any V2 code, raise `ROADMAP.md` → *V2 SETUP* unprompted (the three Matt Pocock skills deferred 2026-08-26; Tarek asked to be reminded even if he has forgotten).

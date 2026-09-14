@@ -85,10 +85,9 @@ export interface GridPosition {
  * of a given tier (e.g. only 3 "medium" cards instead of the usual 4), the
  * odd one out lands alone in its band and widens to full width — rendering
  * the *same size* as hero (both full-width, both 2 rows), though always
- * positioned in a later row. This is a milder version of an earlier,
- * already-accepted trade-off (previously a lower-ranked card could render
- * *bigger* than hero; now the worst case is *equal*, never bigger, and
- * always later in reading order).
+ * positioned in a later row. This is an accepted trade-off, and the bound that
+ * makes it acceptable: the worst case is a lower-ranked card rendering *equal*
+ * to hero, never bigger, and always later in reading order.
  */
 export function packGrid(items: GridItemInput[]): Map<string, GridPosition> {
   // Stable sort: preserves relative order within a tier (already the

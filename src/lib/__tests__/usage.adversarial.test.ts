@@ -2,8 +2,7 @@
  * Adversarial probes against usage.ts's pricing guarantees.
  *
  * PERMANENT — do not delete. Written by the `qa` subagent as review
- * scaffolding and originally marked "delete after the review round", which
- * mutation testing showed would have been a mistake: this file and
+ * **Do not delete these as scaffolding.** Mutation testing shows this file and
  * usage.round3.test.ts are the sole coverage for 23 mutants across the
  * hardening in this module. Remove them and reverting the prototype-pollution
  * guard, the null-entry guard, deepFreezePricing, billedAtList, the per-group
@@ -198,9 +197,9 @@ describe("B. attempts to produce a wrong number through the table argument", () 
   it("B8: costFor and summarizeUsage must agree on whether a promo applied", () => {
     // Same table, same instant, same model — two 'applied' answers is the
     // divergence the round-1 single-lookup-path fix was meant to end.
-    // CONTRACT CHANGED IN ROUND 3, deliberately. `applied` used to mean
-    // `costFor(...).promoApplied` (window open AND billed < list). That single
-    // boolean was wrong in both directions in turn, so it is now split:
+    // `applied` deliberately does NOT mean `costFor(...).promoApplied` (window
+    // open AND billed < list). That single boolean is wrong in both directions
+    // in turn, so the meaning is split:
     //   applied    = the promo WINDOW was open   (costFor's promoLive)
     //   discounted = it actually reduced spend    (costFor's promoApplied)
     // The break that forced it: a stage whose calls all reported no usage
@@ -362,9 +361,9 @@ describe("C. the named throw's blast radius", () => {
     const text = formatUsageSummary(summary, { label: "digest complete" }).join("\n");
     expect(summary.unpricedModels).toEqual([UNPRICED]);
     // Asserted by substance, not by literal phrasing. The wording changed once
-    // already: it used to say "no pricing entry ... Add the model to PRICING",
-    // which over-diagnosed — a table entry of `{ list: null }` has the model
-    // present but malformed, so the stated remedy was wrong. What must hold is
+    // already. Do NOT word it as "no pricing entry ... Add the model to
+    // PRICING": that over-diagnoses, since a table entry of `{ list: null }`
+    // has the model present but malformed, so the remedy would be wrong. What must hold is
     // that the model is named, the zero is explicitly not a claim of "free",
     // and the totals are labelled a FLOOR.
     expect(text).toContain("WARNING");
@@ -403,9 +402,9 @@ describe("C. the named throw's blast radius", () => {
     expect(() => collector.report({ label: "digest complete" })).not.toThrow();
 
     // NOT `expect(printed).not.toBe("")`. That was this test's original
-    // assertion and it became a false pass the moment round 2's per-group
-    // catch landed: an unpriceable model no longer throws out of
-    // formatUsageSummary, so the ordinary console.log table makes `printed`
+    // assertion, and that would be a false pass: because the per-group catch
+    // means an unpriceable model no longer throws out of
+    // formatUsageSummary, the ordinary console.log table makes `printed`
     // non-empty whether or not any diagnostic was emitted. Verified — it
     // passed with the console.error line deleted. Assert the specific channel
     // and the specific content instead.
@@ -541,19 +540,19 @@ describe("D. footer claims", () => {
     const table = promoTable({ rate: CHEAP });
     const unmeasured: RecordedCall[] = [{ stage: "writeCard", model: "claude-sonnet-5", tokens: null }];
     const summary = summarizeUsage(unmeasured, AT, table);
-    // This assertion used to read `applied === stages[0].cost.promoApplied`,
-    // which pinned the regression as correct: with zero measurable tokens
-    // promoApplied is false, so the footer claimed a live promo was not in
-    // effect. `applied` now tracks the window; `discounted` tracks the saving.
+    // Do NOT write this as `applied === stages[0].cost.promoApplied`: that
+    // pins a regression as correct, because with zero measurable tokens
+    // promoApplied is false and the footer would claim a live promo was not in
+    // effect. `applied` tracks the window; `discounted` tracks the saving.
     expect(summary.promos[0].applied).toBe(summary.stages[0].cost.promoLive);
     expect(summary.promos[0].discounted).toBe(summary.stages[0].cost.promoApplied);
     expect(summary.promos[0].applied).toBe(true);
     expect(summary.promos[0].discounted).toBe(false);
 
-    // ASSERT THE RENDERED STRING, not just the flags. Round 3 checked only the
-    // booleans here and shipped a footer that told the reader a 33%-cheaper
-    // promo was "NOT cheaper than list" — the flags were right and the sentence
-    // built from them was false. A cost report is read as prose, so the prose
+    // ASSERT THE RENDERED STRING, not just the flags. Checking only the
+    // booleans here lets through a footer that tells the reader a 33%-cheaper
+    // promo was "NOT cheaper than list" — flags right, sentence
+    // built from them false. A cost report is read as prose, so the prose
     // is what has to be pinned.
     const text = formatUsageSummary(summary, { label: "digest complete" }).join("\n");
     expect(text).not.toContain("NOT cheaper than list");
@@ -567,13 +566,12 @@ describe("D. footer claims", () => {
 /* ------------------------------------------------------------------ *
  * E. A model that carries a promo AND cannot be priced.
  *
- * Round 4's mutation sweep found this region reached by nothing at all —
- * seven killable mutants clustered in it, including the footer's
- * not-live-and-not-confirmably-at-list branch, which zero tests entered.
- * It is also where round 4's live bug was: `applied` was being read off the
- * per-group costs, and an unpriceable group keeps a zero seed whose
- * promoLive is false, so a live promo on a malformed entry was announced as
- * "not in effect for this run".
+ * This region is easy to leave unreached: seven killable mutants cluster in
+ * it, including the footer's not-live-and-not-confirmably-at-list branch, which
+ * no ordinary test enters. It is also where a real bug hides — reading
+ * `applied` off the per-group costs, when an unpriceable group keeps a zero
+ * seed whose promoLive is false, announces a live promo on a malformed entry
+ * as "not in effect for this run".
  *
  * Latent rather than live today — it needs a promo, and PRICING has none —
  * which is exactly why it needs pinning now. It arms itself the day the next
@@ -624,10 +622,10 @@ describe("E. a promoted model that cannot be priced", () => {
     expect(summary.promos[0].billedAtList).toBe(false);
 
     const text = formatUsageSummary(summary, { label: "digest complete" }).join("\n");
-    // Round 5: this branch fires ONLY for an unpriced group (when the promo is
+    // This branch fires ONLY for an unpriced group (when the promo is
     // not live, billedUsd is literally assigned listUsd, so billedAtList can
-    // only be false if the cost never got computed). Its old wording told the
-    // reader to "treat the billed column as the figure of record" — pointing
+    // only be false if the cost never got computed). Do not word it as
+    // "treat the billed column as the figure of record" — that points
     // at the $0.000000 placeholder the FLOOR warning above calls UNKNOWN.
     expect(text).toContain("could not be established at all");
     expect(text).toContain("placeholders, not a bill");
@@ -648,8 +646,8 @@ describe("E. a promoted model that cannot be priced", () => {
  * F. An unusable priced instant.
  *
  * `applied: false` has two causes that mean opposite things — the window was
- * shut, or it could not be checked. Round 5 found the footer flattening them:
- * an Invalid Date rendered as "introductory pricing is not in effect for this
+ * shut, or it could not be checked. The footer must not flatten them:
+ * an Invalid Date rendering as "introductory pricing is not in effect for this
  * run", which asserts something about Anthropic's rate card that a run with a
  * broken clock is in no position to claim. `clockUsable` separates them.
  * ------------------------------------------------------------------ */

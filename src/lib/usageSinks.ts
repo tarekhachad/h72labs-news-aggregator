@@ -12,10 +12,9 @@
  *
  * - **JSONL**, local, and **written in development only**. What
  *   `npm run cost-report` reads. It carries no `user_id` (see `toJsonlLine`).
- *   It is gitignored, by a rule added in review round 1 that had been assumed
- *   rather than written: `notes-logs/cost-test-log*` covers the old flat
- *   transcripts and never matched `notes-logs/cost/runs.jsonl`, so until then
- *   this file would have been committed to a public repo.
+ *   It is gitignored by a rule that names this path specifically — note that
+ *   `notes-logs/cost-test-log*` covers only the old flat transcripts and does
+ *   NOT match `notes-logs/cost/runs.jsonl`. This is a public repo.
  * - **Supabase**, the durable copy and the one a per-user cap can read. Note
  *   what it is NOT: an enforcement source. Every write goes through the
  *   user's own cookie session under RLS (this app has no service-role client
@@ -111,12 +110,11 @@ export function createSupabaseSink(supabase: SupabaseClient): UsageSink {
  *   `/tmp`, so the write throws on every run, is swallowed here, and leaves a
  *   file that never appears.
  * - **test**: this suite has ZERO filesystem usage by design, and the routes
- *   are driven end-to-end by nine wiring test files. Under the old denylist
- *   every `vitest run` appended a real line per simulated run to the real
- *   `notes-logs/cost/runs.jsonl` — 322 lines had accumulated before round 1's
- *   qa caught it. That is unbounded local disk growth, it makes the suite
- *   depend on a writable filesystem, and worst of all it mixes fabricated
- *   test runs into the file the cost report computes its averages from.
+ *   are driven end-to-end by nine wiring test files. A denylist here lets every
+ *   `vitest run` append a real line per simulated run to the real
+ *   `notes-logs/cost/runs.jsonl`. That is unbounded local disk growth, it makes
+ *   the suite depend on a writable filesystem, and worst of all it mixes
+ *   fabricated test runs into the file the cost report averages.
  *
  * Written as an allowlist precisely because that bug came from a denylist:
  * "not production" silently included an environment nobody had considered.
@@ -168,15 +166,13 @@ async function runOneSink(
     // synchronously — rather than returning a rejected promise — becomes a
     // rejection like any other.
     //
-    // What this does NOT do, since the comment here used to imply it: it is
-    // not what keeps this function total. Round 1's qa deleted the wrapper and
-    // emitUsageRun still resolved, because the outer catch backstops a sync
-    // throw on its own. What silently changed under that mutation was the
-    // DIAGNOSTIC — the sync throw fell to the outer catch and was reported as
+    // What this wrapper does NOT do: it is not what keeps this function total.
+    // Delete it and emitUsageRun still resolves, because the outer catch
+    // backstops a sync throw on its own. What it protects is the DIAGNOSTIC —
+    // without it a sync throw falls to the outer catch and is reported as
     // "could not be run at all", which this function reserves for its own
     // plumbing failing, instead of naming the sink as the thing that broke.
-    // That is the regression the wrapper actually prevents, and it now has a
-    // test asserting the message rather than the resolution.
+    // A test asserts the message, not just the resolution.
     const work = (async () => sink(record))();
     // `settled` can only ever RESOLVE — a rejection becomes a value.
     //

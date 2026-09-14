@@ -1,4 +1,4 @@
-/** ROUND 6 — killing tests for writeCard mutants that survived the sweep. */
+/** Killing tests for writeCard mutants that survive an ordinary sweep. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Cluster } from "@/types";
 

@@ -62,10 +62,10 @@ const DigestGenerationContext = createContext<DigestGenerationContextValue | nul
  * fetch/NDJSON-stream-reading loop that drives it, mounted once at the
  * (paper) layout level rather than inside FrontPage — Next.js remounts
  * FrontPage on every navigation between `/`, `/history`, `/saved`, etc.
- * (they're all siblings under one layout), which used to destroy this state
- * (and orphan the still-running fetch's setState calls) the instant the
- * user navigated away mid-generation. Living here instead, this survives
- * exactly like PageTransitionProvider already does.
+ * (they're all siblings under one layout), so holding this state inside
+ * FrontPage would destroy it — and orphan the still-running fetch's setState
+ * calls — the instant the user navigated away mid-generation. Living at the
+ * layout level, it survives exactly like PageTransitionProvider does.
  */
 export function DigestGenerationProvider({ children }: { children: React.ReactNode }) {
   const [cards, setCards] = useState<Card[] | undefined>(undefined);
@@ -226,8 +226,8 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
           // only ever returns cards published after the last run, so they
           // can't overlap what's already on screen.
           //
-          // The rank rewrite is the other half, and used to be missing
-          // (fixed in Phase 8.4): rank.ts re-ranks the full cumulative pool
+          // The rank rewrite is the other half, and is not optional:
+          // rank.ts re-ranks the full cumulative pool
           // every run, so a later run's bigger story can dethrone an earlier
           // pick. The server computes and persists those changes but only
           // returns the new cards, so already-rendered cards kept a stale

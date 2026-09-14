@@ -24,9 +24,9 @@ import {
  * `rankFrontPage` catches and returns `null`; `isSameStory` catches and
  * returns `false`; a failed triage attempt is swallowed inside
  * `triageClusters`, which catches per batch and fails its residue closed
- * (it used to be the digest route catching per cluster — F.4.5 moved that
- * guarantee into the module when batching made a rejection cost twenty
- * clusters instead of one, but the shape of the problem here is the same
+ * (that guarantee lives in the module rather than at the call site, because
+ * with batching a rejection costs twenty clusters instead of one, but the
+ * shape of the problem here is the same
  * either way); `writeCard`'s rejection is absorbed by
  * `Promise.allSettled`; and `generateWithRetryOnAmbiguousTruncation` has
  * three throw paths, the worst firing *after two billed Sonnet calls*. A
@@ -125,8 +125,8 @@ export function createUsageCollector(at: Date = new Date()): UsageCollector {
       try {
         console.log(formatCallLine(stored, at));
       } catch (error) {
-        // Same treatment report() got, and for the same reason — round 2 fixed
-        // only one of the two sites. formatCallLine prices the call, so an
+        // Same treatment report() got, and for the same reason; both sites
+        // need it. formatCallLine prices the call, so an
         // unpriceable model throws here, and a bare catch made every per-call
         // line for that model vanish with nothing said. The record itself is
         // already stored above, so the run's totals are unaffected; what was

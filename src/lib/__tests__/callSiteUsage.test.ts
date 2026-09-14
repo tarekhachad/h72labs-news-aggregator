@@ -275,7 +275,7 @@ describe("Claude call sites still report on their failure paths", () => {
   });
 });
 
-// F.4.5 final review round: closes a specific gap in the existing coverage.
+// Closes a specific gap in the coverage the other suites provide.
 // callSiteUsage.test.ts above proves the REAL triage.ts retry ladder records
 // one collector entry per real attempt (including retries). usage-wiring.test
 // proves formatUsageSummary prints the right line shape ("made N calls for

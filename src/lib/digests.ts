@@ -45,8 +45,8 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
 
 // The digest "date" is a UTC calendar day, not the visiting user's local
 // day — a deliberate v1 simplification (this app has no per-user timezone
-// setting yet). Confirmed a real, recurring complaint (not just a
-// theoretical edge case) 2026-08-07: a user well west of UTC sees "today"
+// setting yet). This is a real, recurring complaint rather than a theoretical
+// edge case: a user well west of UTC sees "today"
 // roll over several hours before their own local midnight, silently
 // reclassifying that day's digest as history. Deferred, not fixed —
 // see docs/(C) ROADMAP.md's "Explicitly deferred" section for what a real
@@ -303,9 +303,9 @@ export async function listDigestDatesForUser(
  * successfully generated *anything*, across every digest they own — not
  * just today's row. Null means no run has ever completed for this user.
  *
- * Scoping this to today's row (which is what upsertDigestForToday used to
- * return) made every new day's first run start from null and fall back to
- * ingest's lookback window, so it re-ingested the previous 48 hours and
+ * Do NOT scope this to today's row: that makes every new day's first run
+ * start from null and fall back to
+ * ingest's lookback window, so it re-ingests the previous 48 hours and
  * re-covered stories yesterday's digest already had. Cross-run dedup
  * couldn't catch those either — it only compares against *today's* cards,
  * and on a new day there aren't any yet.

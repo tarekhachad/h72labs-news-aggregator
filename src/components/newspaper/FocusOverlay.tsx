@@ -20,7 +20,7 @@ import { useInertBackground } from "@/hooks/useInertBackground";
  * report fetch (and its in-flight/retry bookkeeping) lives entirely in
  * NewsCard.tsx, which stays mounted across opens/closes; this component
  * unmounts on every close (it's conditionally portaled), so anything
- * stateful living here previously caused real bugs: a reopen re-flashing
+ * stateful living here causes real bugs: a reopen re-flashing
  * a loading state for an already-fetched report, and — worse — closing
  * before a slow real Claude call resolved, then reopening, firing a
  * genuine second paid API call because the fresh instance had no way to

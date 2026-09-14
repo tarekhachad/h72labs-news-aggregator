@@ -9,10 +9,10 @@ import type { Cluster } from "@/types";
 // or fully skipped -- based on whether there are existing cards to compare
 // against, not just "cheaply" short-circuited.
 //
-// The gate used to be sinceIso !== null. F.4.4 made the since-cursor carry
-// across days, so a new day's first run now has a non-null cursor and zero
-// existing cards -- the two stopped coinciding, and the gate moved to the
-// condition it always actually meant.
+// The gate is existing cards, NOT sinceIso !== null. The since-cursor carries
+// across days, so a new day's first run has a non-null cursor and zero
+// existing cards -- the two do not coincide, and only the former is the
+// condition this actually means.
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
@@ -225,10 +225,10 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
 
     // The fetch failure is caught by its own dedicated try/catch, separate
     // from the dedup filter's -- existingCards falls back to [], which the
-    // gate then reads as "nothing to compare against." Previously this
-    // called filterAlreadyCovered with an empty list, which its own
-    // documented early return made a no-op; skipping is the same behaviour
-    // decided one level up. Either way the clusters reach triage intact.
+    // gate then reads as "nothing to compare against." Calling
+    // filterAlreadyCovered with an empty list would be a no-op by its own
+    // documented early return, so skipping is the same behaviour decided one
+    // level up. Either way the clusters reach triage intact.
     expect(mocks.filterAlreadyCovered).not.toHaveBeenCalled();
     expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
 
