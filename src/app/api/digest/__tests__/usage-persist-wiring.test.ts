@@ -228,29 +228,29 @@ describe("digest route: the run is recorded durably", () => {
 });
 
 describe("digest route: run shape is classified from what the run actually saw", () => {
-  it("calls a first-ever run cold", async () => {
+  it("calls a first-ever run firstEver", async () => {
     mocks.getLatestGeneratedAtForUser.mockResolvedValue(null);
     mocks.getTodaysCardSummaries.mockResolvedValue([]);
 
     await runPostToCompletion();
 
-    expect(emitted[0].runShape).toBe("cold");
+    expect(emitted[0].runShape).toBe("firstEver");
   });
 
-  it("calls a new day's first run warmNewDay", async () => {
+  it("calls a new day's first run firstOfDay", async () => {
     mocks.getTodaysCardSummaries.mockResolvedValue([]);
 
     await runPostToCompletion();
 
-    expect(emitted[0].runShape).toBe("warmNewDay");
+    expect(emitted[0].runShape).toBe("firstOfDay");
   });
 
-  it("calls a same-day repeat run warmSameDay", async () => {
+  it("calls a same-day repeat run sameDayTopUp", async () => {
     // The default fixture: a cursor is set AND today already has a card, so
     // dedup runs and bills. This is the shape V2.0's cap actually consumes.
     await runPostToCompletion();
 
-    expect(emitted[0].runShape).toBe("warmSameDay");
+    expect(emitted[0].runShape).toBe("sameDayTopUp");
   });
 
   it("calls it unknown when the existing-cards fetch failed", async () => {

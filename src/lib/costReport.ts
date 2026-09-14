@@ -22,7 +22,7 @@
  * ## The two rules that shape the type
  *
  * **1. Segmentation is structural.** There is deliberately NO all-runs mean
- * anywhere on `CostReport` — not private, not unused. Cold runs and warm runs
+ * anywhere on `CostReport` — not private, not unused. First-of-day runs and top-ups
  * cost materially different amounts, and a blended mean describes no real
  * user while looking authoritative. Making the field nonexistent means a
  * renderer cannot print one by accident; if someone wants a blend they have
@@ -42,12 +42,26 @@
 // type stripping — so an aliased runtime import here fails at the shell with a
 // module-not-found while type-checking perfectly.
 //
-// It stays a one-line exception rather than spreading: `usage.ts` imports
-// nothing itself, so this is the entire runtime dependency chain. The second
-// import below is type-only and therefore erased before Node ever sees it —
-// if it ever becomes a value import, it has to become relative too.
+// The chain is short and ends quickly: `usage.ts` imports nothing itself, so
+// it is a leaf. Note that a TYPE-ONLY import is erased before Node sees it and
+// would work aliased — which is exactly the trap, because it makes an aliased
+// specifier here look safe right up until someone adds a value binding to it.
+// `eslint.config.mjs` enforces relative specifiers for this file,
+// `usageRecord.ts` and `usage.ts` rather than leaving it to this comment.
 import { formatUsd, SMALLEST_SHOWN_USD } from "./usage.ts";
-import type { PublicUsageRunRecord, RunShape } from "@/lib/usageRecord";
+// RELATIVE, with an explicit `.ts` extension, and it must stay that way.
+// `scripts/cost-report.mts` loads this module through Node 24's native type
+// stripping, which resolves specifiers itself and knows nothing about the `@/`
+// path alias — so a VALUE import from an aliased path breaks `npm run
+// cost-report` with ERR_MODULE_NOT_FOUND while `tsc`, eslint and all 746 tests
+// stay green, because every one of those goes through a resolver that does
+// understand the alias. Only running the script catches it.
+import {
+  normalizeRunShape,
+  RUN_SHAPES,
+  type PublicUsageRunRecord,
+  type RunShape,
+} from "./usageRecord.ts";
 
 /**
  * A statistic over the runs that actually carried a value.
@@ -69,7 +83,7 @@ export interface SampleStat {
 
 /**
  * One (route, run shape) group. Keyed by BOTH, not by shape alone: an expand
- * carries `runShape: "unknown"` because it has no cold/warm dimension at all,
+ * carries `runShape: "unknown"` because it has no first/top-up dimension at all,
  * and a digest carries it when the existing-cards fetch failed. Those are
  * different facts, and pooling them would put a single Sonnet call in the
  * same mean as a whole digest pipeline.
@@ -85,7 +99,7 @@ export interface CostReportSection {
   /**
    * False when fewer than two usable runs back this section. The renderers
    * must say so rather than printing a mean of one run as if it were a trend
-   * — a single cold start is a measurement, not a rate.
+   * — a single first-ever run is a measurement, not a rate.
    */
   isTrend: boolean;
   billedUsd: SampleStat;
@@ -123,9 +137,8 @@ export interface CostReport {
   lastRunDate: string | null;
   /**
    * Every distinct `pricingVerifiedOn` across the runs. More than one means
-   * the report spans a pricing correction and its figures are not all on the
-   * same rate card — which is exactly what happened on 2026-09-11 and took
-   * eleven days to notice.
+   * the report spans a pricing correction, so its figures are not all on the
+   * same rate card and must not be averaged together without saying so.
    */
   pricingVerifiedOn: string[];
   sections: CostReportSection[];
@@ -143,7 +156,6 @@ export interface CostReport {
  * showed, and nothing on it said why. One list means the validator can only
  * admit what the loop can place.
  */
-const RUN_SHAPES = ["cold", "warmNewDay", "warmSameDay", "unknown"] as const;
 
 /** The routes a section can be keyed by. Paired with RUN_SHAPES, above. */
 const ROUTES = ["digest", "expand"] as const;
@@ -151,11 +163,11 @@ const ROUTES = ["digest", "expand"] as const;
 /**
  * An ISO-8601 instant of the shape `toISOString()` produces.
  *
- * A type check alone was not enough, which is the milder half of the same
- * fabrication: `new Date()` is lenient with STRINGS too, so a hand-corrupted
- * `"09/11/2026"` parses to a real date (2026-09-11) rather than being
- * rejected. Less dangerous than the numeric case — that one silently shifted
- * the year — but the same shape, and one pattern closes it.
+ * A type check alone is not enough, which is the milder half of the same
+ * fabrication: `new Date()` is lenient with STRINGS too, so a corrupted
+ * `"09/11/2026"` parses to a real date rather than being rejected. Less
+ * dangerous than the numeric case, which can silently shift the year, but the
+ * same shape — and one pattern closes both.
  *
  * Deliberately accepts more than `toISOString()` emits (optional fractional
  * seconds, a numeric offset instead of `Z`), because over-rejection here would
@@ -180,21 +192,24 @@ function isRoute(value: unknown): value is PublicUsageRunRecord["route"] {
   return typeof value === "string" && (ROUTES as readonly string[]).includes(value);
 }
 
-function isRunShape(value: unknown): value is RunShape {
-  return typeof value === "string" && (RUN_SHAPES as readonly string[]).includes(value);
-}
+/**
+ * Rows written under the earlier vocabulary (`cold`/`warmNewDay`/
+ * `warmSameDay`) cannot be rewritten — `usage_runs`
+ * has no update policy on purpose. `normalizeRunShape` is therefore the ONLY
+ * comparison this file makes: a legacy row groups with its current equivalent
+ * instead of failing placement and disappearing from every section while still
+ * being counted in the headline, which is this report's oldest bug shape.
+ */
 
 /**
  * The section this record belongs in, or null when this report has no section
  * that can hold it.
  *
- * ONE function, called by both the partition and the grouping loop, because
- * this bug shape has now appeared three times and each fix only closed the
- * field it was looking at. First a bad `runShape` slipped past the validator;
- * then the partition was added but checked `runShape` alone while the section
- * key is `(route, runShape)`, so a bad ROUTE walked straight through the guard
- * written to make that impossible — and `excludedRuns` reported 0, actively
- * asserting everything was accounted for when it was not.
+ * ONE function, called by both the partition and the grouping loop. Two lists
+ * gating placement in two places regenerates the same bug: a guard checking
+ * `runShape` alone lets a bad ROUTE through, because the section key is the
+ * PAIR — and `excludedRuns` then reports 0, actively asserting everything is
+ * accounted for when it is not.
  *
  * Two lists gating placement in two places is what kept regenerating the bug.
  * Now a record is kept if and only if this function finds it a bucket, and the
@@ -202,8 +217,9 @@ function isRunShape(value: unknown): value is RunShape {
  * a state the code can express, rather than one no current test triggers.
  */
 function sectionKeyOf(record: { route?: unknown; runShape?: unknown }): string | null {
-  if (!isRoute(record.route) || !isRunShape(record.runShape)) return null;
-  return `${record.route}|${record.runShape}`;
+  const runShape = normalizeRunShape(record.runShape);
+  if (!isRoute(record.route) || runShape === null) return null;
+  return `${record.route}|${runShape}`;
 }
 
 
@@ -247,31 +263,23 @@ export function parseUsageRunLines(lines: string[]): {
  * `buildCostReport`, because two of them is what kept regenerating the same
  * bug.
  *
- * THE HISTORY, told once and only here — other comments point at this one,
- * because two docstrings narrating it separately is how their counts drifted
- * apart. Five review rounds found five instances of a single shape: a guard
- * that existed on one path into the report and not the other.
+ * **Do not add a second validator, and do not narrow this one.** Every field
+ * checked here has to be checked on every path into the report, because the
+ * failure mode is not a crash: a record this function admits but the grouping
+ * loop cannot place is counted in the headline and shown in no section. A
+ * partition that checks `runShape` but not `route` has that hole, since the
+ * section key is the PAIR. So does one that checks placement and dollars but
+ * not `pricingVerifiedOn` (which crashes both renderers), `schemaVersion` or
+ * `isFloor`.
  *
- * 1. The validator accepted any string as `runShape`, so a record the
- *    grouping loop could not place was counted in the headline anyway.
- * 2. `buildCostReport` had no placement guard at all, so a direct caller
- *    reproduced (1) even after the validator was fixed.
- * 3. The partition it then grew checked `runShape` but not `route` — and the
- *    section key is the PAIR, so a bad route walked through the guard written
- *    to make that impossible.
- * 4. That partition checked placement and dollars, but not `pricingVerifiedOn`
- *    (which crashed both renderers), `schemaVersion`, or `isFloor`.
- * 5. `pricedAtIso` went unchecked here, and `utcDate` coerces a number into a
- *    plausible date rather than rejecting it — the only one of the five that
- *    invented an answer instead of losing a record.
+ * `pricedAtIso` is the field to be most careful with, because it fails in the
+ * opposite direction from the rest: `utcDate` coerces a number into a
+ * plausible date rather than rejecting it, so a corrupted value invents an
+ * answer instead of losing a record.
  *
- * Rounds 1-4 each widened the narrower guard by exactly the field that round
- * had found, which is precisely why there was always another field. The
- * narrower guard is gone now.
- *
- * There is no second guard now. A record is admitted here or not at all, and
- * a field added to this function is enforced on every path by construction
- * rather than by remembering to add it twice.
+ * A record is admitted here or not at all, and a field added to this function
+ * is enforced everywhere by construction rather than by remembering to add it
+ * in a second place.
  *
  * Checks `schemaVersion` explicitly. A future version 2 with different
  * semantics must not be silently averaged in with version 1 — that is the
@@ -392,7 +400,7 @@ function utcDate(iso: string | null): string | null {
  * Every number in the report, computed once, here.
  *
  * Sections come out in a stable order — digests before expands, and within a
- * route the shapes in pipeline order (cold, warmNewDay, warmSameDay, unknown)
+ * route the shapes in pipeline order (firstEver, firstOfDay, sameDayTopUp, unknown)
  * — so regenerating an unchanged log produces a byte-identical report and
  * `git diff` on the committed markdown shows real movement rather than
  * reordering noise.
@@ -481,9 +489,9 @@ export function buildCostReport(
 /** Human label for a section, used identically by both renderers. */
 export function sectionTitle(section: CostReportSection): string {
   const shape: Record<RunShape, string> = {
-    cold: "Cold start",
-    warmNewDay: "Warm, new day",
-    warmSameDay: "Warm, same day",
+    firstEver: "First-ever run",
+    firstOfDay: "First of day",
+    sameDayTopUp: "Same-day top-up",
     unknown: "Unclassified",
   };
   return `${section.route === "digest" ? "Digest" : "Expand"} — ${shape[section.runShape]}`;
@@ -649,7 +657,7 @@ export function renderCostMarkdown(report: CostReport): string {
   }
 
   lines.push(
-    "Sections are split by route and run shape on purpose. A cold start and a returning-user run cost materially different amounts, so there is no combined average anywhere in this report — a blended figure would describe no real user."
+    "Sections are split by route and run shape on purpose. A first-of-day brief and a same-day top-up cost materially different amounts, so there is no combined average anywhere in this report — a blended figure would describe no real user. Note that `firstEver` and a `firstOfDay` following a gap longer than the 48h lookback ceiling are the same run in every respect that bills, so those two sections are comparable to each other in a way neither is to a top-up."
   );
   lines.push("");
 
@@ -759,7 +767,7 @@ export function renderCostHtml(report: CostReport): string {
   }
 
   parts.push(
-    "<p>Sections are split by route and run shape on purpose. A cold start and a returning-user run cost materially different amounts, so there is no combined average anywhere in this report.</p>"
+    "<p>Sections are split by route and run shape on purpose. A first-of-day brief and a same-day top-up cost materially different amounts, so there is no combined average anywhere in this report.</p>"
   );
 
   for (const section of report.sections) {

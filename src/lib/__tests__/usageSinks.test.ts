@@ -33,7 +33,7 @@ function makeRecord(overrides: Partial<UsageRunContext> = {}): UsageRunRecord {
     cardId: null,
     outcome: "complete",
     label: "digest complete",
-    runShape: "cold",
+    runShape: "firstEver",
     topicCount: 2,
     sourceCount: 3,
     articleCount: 40,
@@ -112,7 +112,7 @@ describe("createSupabaseSink", () => {
     const row = insert.mock.calls[0][0];
     expect(row.id).toBe("run-1");
     expect(row.user_id).toBe("user-1");
-    expect(row.run_shape).toBe("cold");
+    expect(row.run_shape).toBe("firstEver");
     expect(row.total_billed_usd).toBeGreaterThan(0);
   });
 

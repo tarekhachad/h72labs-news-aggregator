@@ -383,7 +383,11 @@ create table public.usage_runs (
 
   outcome text not null,               -- 'complete' | 'endedEarly'
   label text not null,
-  run_shape text not null,             -- 'cold'|'warmNewDay'|'warmSameDay'|'unknown'
+  run_shape text not null,             -- 'firstEver'|'firstOfDay'|'sameDayTopUp'|'unknown'
+                                       -- Rows written before 2026-09-14 carry the previous
+                                       -- names ('cold'|'warmNewDay'|'warmSameDay') and are NOT
+                                       -- migrated: this table has no update policy by design.
+                                       -- normalizeRunShape() in usageRecord.ts maps them on read.
 
   -- All nullable ON PURPOSE. A run that exits early never learns these, and
   -- null means "unmeasured", a different fact from 0. Never default to zero.

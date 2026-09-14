@@ -24,42 +24,78 @@
  * here may default to 0.
  */
 
+// RELATIVE with an explicit `.ts` extension, and not a style choice — see the
+// same note in `costReport.ts`. `scripts/cost-report.mts` reaches this module
+// through Node's native type stripping, which does not know the `@/` alias, so
+// the whole chain it can reach (cost-report.mts -> costReport.ts ->
+// usageRecord.ts -> usage.ts) has to resolve without one. `usage.ts` is a leaf
+// and imports nothing, so the chain ends there. A VALUE import is what makes
+// this bite; a type-only import is erased and would not.
 import {
   PRICING_VERIFIED_ON,
   type CallTokens,
   type TrackedModel,
   type UsageStage,
   type UsageSummary,
-} from "@/lib/usage";
+} from "./usage.ts";
 
 /**
  * How much work a digest run had to do from scratch — the single biggest
  * driver of what it costs, and the thing every published figure so far has
  * silently averaged over.
  *
- * Every cost number in this project's docs came from a COLD run: a new
- * account, a null cursor, a full 48h lookback, dedup skipped because there
- * was nothing to dedup against. A returning user's run is materially cheaper
- * and has never been measured — and it is the returning-user number that
- * V2.0's per-user cap actually consumes. Recording the shape on every row is
- * what stops the report blending the two into a mean that describes no real
- * user.
+ * The names here are the PRODUCT's names, not the cursor's. A day opens with
+ * a fresh brief and "Complete Today's Brief" tops it up, so those are the two
+ * shapes a reader of a cost report is thinking in. An earlier version named
+ * these `cold`/`warmNewDay`/`warmSameDay`, which inverted that vocabulary —
+ * what the product calls the normal daily brief was labelled "warm", as if it
+ * were an incremental top-up, and a session misread real measurements off the
+ * label within an hour of them landing.
+ *
+ * **What this axis does NOT capture, and the reason it cannot size a cap on
+ * its own.** `LOOKBACK_CEILING_MS` is 48h, so a null cursor and a three-day-old
+ * one produce an identical ingest window (`ingest.ts` says as much: a brand-new
+ * user gets 48h, "someone returning after a week gets 48h too"), and
+ * `filterAlreadyCovered` is gated on today's cards existing, so both skip dedup
+ * as well. `firstEver` and a `firstOfDay` that follows a long gap are therefore
+ * THE SAME RUN in every respect that bills — two of these three labels collapse
+ * whenever the gap exceeds the ceiling. The fact that actually drives cost is
+ * the effective ingest window, `min(now - cursor, 48h)`, as a number rather
+ * than a bucket, plus whether dedup fired. Recording those two is tracked in
+ * `ROADMAP.md`'s V2.0 as blocking the cap sizing; this rename does not do it.
  */
 export type RunShape =
   /** No successful generation has ever run for this user. Full lookback, no dedup. */
-  | "cold"
-  /** Has generated before, but not yet today: cursor set, no cards to dedup against. */
-  | "warmNewDay"
-  /** A second or later run on the same day: cursor set AND today's cards exist, so dedup bills. */
-  | "warmSameDay"
+  | "firstEver"
+  /** The day's first brief: cursor set, no cards yet today, so nothing to dedup against. */
+  | "firstOfDay"
+  /** "Complete Today's Brief" — a second or later run today, so today's cards exist and dedup bills. */
+  | "sameDayTopUp"
   /**
    * Not determinable. Two causes, both real: the existing-cards fetch failed
    * (so the pipeline itself proceeded on an incomplete view), or the route
-   * has no cold/warm dimension at all — an expand is a single cached-miss
+   * has no first-of-day/top-up dimension at all — an expand is a single cached-miss
    * Sonnet call and is neither. Reports must segment by route as well as
    * shape so those two never share a mean.
    */
   | "unknown";
+
+/**
+ * Every current run shape, in pipeline order. The single list — `costReport`
+ * imports this rather than keeping its own, because two lists that must agree
+ * is the exact shape of the bug family this module already has five instances
+ * of.
+ */
+export const RUN_SHAPES = ["firstEver", "firstOfDay", "sameDayTopUp", "unknown"] as const;
+
+// Compile-time proof that the list and the union agree in BOTH directions, so
+// adding a shape to one and forgetting the other is a `tsc` error rather than
+// a shape that silently groups nowhere. Cheap here; the promo-state entry in
+// ROADMAP.md wants the same move for a harder case.
+type ListCoversUnion = Exclude<RunShape, (typeof RUN_SHAPES)[number]> extends never ? true : never;
+type UnionCoversList = Exclude<(typeof RUN_SHAPES)[number], RunShape> extends never ? true : never;
+const RUN_SHAPE_LIST_IS_TOTAL: [ListCoversUnion, UnionCoversList] = [true, true];
+void RUN_SHAPE_LIST_IS_TOTAL;
 
 export type RunOutcome = "complete" | "endedEarly";
 
@@ -84,15 +120,59 @@ export function deriveRunShape(
     // and the cursor advance in the same transaction (persist_generated_cards),
     // so a user who has never completed a run cannot have cards today. Only
     // the case where the cursor IS set leaves the warm/warm split unresolved.
-    return sinceIso === null ? "cold" : "unknown";
+    return sinceIso === null ? "firstEver" : "unknown";
   }
   if (sinceIso === null) {
     // Cards with no cursor contradicts persist_generated_cards' atomicity.
     // Whatever produced it, the run is genuinely mixed — a cold 48h lookback
     // that will nonetheless pay for dedup — so it belongs in no clean bucket.
-    return existingCardCount > 0 ? "unknown" : "cold";
+    return existingCardCount > 0 ? "unknown" : "firstEver";
   }
-  return existingCardCount > 0 ? "warmSameDay" : "warmNewDay";
+  return existingCardCount > 0 ? "sameDayTopUp" : "firstOfDay";
+}
+
+/**
+ * Run-shape names from the earlier vocabulary, mapped to their current
+ * equivalents.
+ *
+ * This exists because the old rows CANNOT be rewritten: `usage_runs` has no
+ * update and no delete policy, and their absence is the design (see
+ * `schema.sql`). Migrating the durable copy is therefore not an option that
+ * exists, so normalising on read is the only place the two vocabularies can
+ * ever be reconciled. The local JSONL is deliberately left unmigrated too —
+ * one reader-side mechanism that handles both sources beats a file rewrite
+ * plus a mapping that must agree with it forever.
+ *
+ * **Known, accepted exposure, stated rather than implied:** this reconciles the
+ * READERS, not the files. `runs.jsonl` still holds raw legacy strings on disk,
+ * so anything reading it without going through `costReport.ts` — a `jq`
+ * one-liner, an ad-hoc script — sees `cold`/`warmNewDay`/`warmSameDay` and must
+ * map them itself. No such consumer exists today (checked across both route
+ * handlers, `costReport.ts` and `usageSinks.ts`); this note is here so the next
+ * one is written knowing it.
+ */
+const LEGACY_RUN_SHAPE: Readonly<Record<string, RunShape>> = Object.freeze({
+  cold: "firstEver",
+  warmNewDay: "firstOfDay",
+  warmSameDay: "sameDayTopUp",
+});
+
+/**
+ * Reads a persisted `runShape` into the current vocabulary, or null if it is
+ * not a run shape at all.
+ *
+ * Every consumer goes through this rather than comparing strings, so a record
+ * written before the rename groups with its post-rename equivalents instead of
+ * silently falling out of the report — which is exactly the "counted in the
+ * headline, shown in no section" failure this module's validator history is
+ * already made of. `Object.hasOwn` rather than a bare lookup, for the same
+ * reason the pricing table uses it: a polluted prototype must not be able to
+ * supply a shape.
+ */
+export function normalizeRunShape(value: unknown): RunShape | null {
+  if (typeof value !== "string") return null;
+  if ((RUN_SHAPES as readonly string[]).includes(value)) return value as RunShape;
+  return Object.hasOwn(LEGACY_RUN_SHAPE, value) ? LEGACY_RUN_SHAPE[value] : null;
 }
 
 /**
@@ -273,11 +353,9 @@ export function buildUsageRunRecord(
  * Serialises one record as a JSONL line, **without `userId`**.
  *
  * The JSONL file lives under `notes-logs/`, inside a PUBLIC repo, in a
- * directory whose sibling `(C) COST.md` is committed on purpose. Review round
- * 1 caught this sentence claiming the file was gitignored when no rule
- * matched it — the existing `notes-logs/cost-test-log*` rule covers the old
- * flat transcripts, not `notes-logs/cost/runs.jsonl`. The rule exists now, but
- * this omission does not depend on it: a `.gitignore` is one edit from being
+ * directory whose sibling `(C) COST.md` is committed on purpose. It is
+ * gitignored — but **this omission deliberately does not depend on that**:
+ * a `.gitignore` is one edit from being
  * wrong again, and a user id in a committed file is not recoverable by
  * deleting it later. Two independent guards, and this is the one that holds
  * without anybody remembering it.
@@ -341,13 +419,12 @@ export function toJsonlLine(record: UsageRunRecord): string {
  * key. A column that does not correspond to a field is an excess-property
  * error in the same stroke.
  *
- * Review round 2 is why this exists rather than a hand-written row interface.
- * That version listed the columns independently, so the check it advertised
- * was really two steps: a new field produced NO error until someone also
- * remembered to add the column by hand, and only then did the mapping
- * function complain. One forgotten step and the field silently never reached
- * the database — which is precisely the drift the guard was introduced to
- * stop. Deriving the row type from the record through this map collapses it
+ * **Do not replace this with a hand-written row interface.** One that lists
+ * the columns independently makes the check two steps: a new field produces NO
+ * error until someone also remembers to add the column by hand, and only then
+ * does the mapping function complain. One forgotten step and the field
+ * silently never reaches the database. Deriving the row type from the record
+ * through this map collapses it
  * back to one step, and no step that depends on memory.
  *
  * What it does NOT catch, established by mutation rather than assumed: a

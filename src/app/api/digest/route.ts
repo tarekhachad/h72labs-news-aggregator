@@ -167,9 +167,9 @@ async function* runDigestPipeline(
       existingCardsFetchFailed = true;
       console.error("[digest] failed to load today's existing cards, proceeding without them:", err);
     }
-    // Now decidable: a failed fetch leaves warmNewDay and warmSameDay
+    // Now decidable: a failed fetch leaves firstOfDay and sameDayTopUp
     // genuinely indistinguishable, which is what `unknown` means here — not
-    // that nothing is known, but that the warm/warm split is not.
+    // that nothing is known, but that the first-of-day/top-up split is not.
     shape.runShape = deriveRunShape(sinceIso, existingCardsFetchFailed ? null : existingCards.length);
 
     // Cross-run duplicate check: on a second/third same-day run, a fresh
@@ -178,9 +178,9 @@ async function* runDigestPipeline(
     // after the since-cursor and forms its own cluster — the ingest filter
     // only excludes stale articles, it has no notion of "already covered."
     // Skipped when there's nothing to compare against, which is the real
-    // precondition here. This used to be expressed as `sinceIso !== null`,
-    // a proxy that only coincided with it while the cursor reset every
-    // midnight; now that the cursor carries across days (F.4.4), a new day's
+    // precondition here. Gate this on `existingCards`, NOT on `sinceIso !== null`
+    // — that is a proxy which only coincides with it while the cursor resets
+    // every midnight, and the cursor carries across days, so a new day's
     // first run has a non-null cursor and zero existing cards, and the proxy
     // would be wrong. filterAlreadyCovered no-ops on an empty list anyway —
     // this keeps that guarantee visible at the call site rather than
@@ -209,9 +209,9 @@ async function* runDigestPipeline(
 
     yield { stage: "triaging", clusterCount: survivingClusters.length };
     // Batched: one call per ~20 same-topic clusters rather than one per
-    // cluster. The per-cluster try/catch that used to live here moved
-    // inside triageClusters, which never rejects — with batching, a
-    // rejection escaping would discard a whole batch's clusters rather
+    // cluster. There is deliberately no per-cluster try/catch here: the
+    // guarantee lives inside triageClusters, which never rejects — with
+    // batching, a rejection escaping would discard a whole batch's clusters
     // than one, so that guarantee has to sit where the batch boundary is.
     //
     // Predicted from the same function that builds the batches, not a

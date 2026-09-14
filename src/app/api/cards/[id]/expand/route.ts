@@ -88,8 +88,8 @@ export async function POST(
     // Every digest-shaped field is null, and that is the honest value rather
     // than a placeholder: an expand has no articles, no clusters and no
     // ranking pass, so 0 would assert a measurement that was never taken.
-    // runShape is "unknown" for the same reason — an expand has no cold/warm
-    // dimension at all — which is why reports must segment by route before
+    // runShape is "unknown" for the same reason — an expand has no
+    // first-of-day/top-up dimension at all — which is why reports must segment by route before
     // they segment by shape, or these rows would pool with digests whose
     // shape genuinely could not be determined.
     //

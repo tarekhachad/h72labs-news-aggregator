@@ -25,7 +25,7 @@ function emptyContext(overrides: Partial<UsageRunContext> = {}): UsageRunContext
     cardId: null,
     outcome: "endedEarly",
     label: "digest ended early (error or cancelled)",
-    runShape: "cold",
+    runShape: "firstEver",
     topicCount: null,
     sourceCount: null,
     articleCount: null,
@@ -45,7 +45,7 @@ describe("deriveRunShape: adversarial", () => {
   it("treats an empty-string cursor as present, not as null", () => {
     // "" !== null, so per the doc comment this is a presence signal only —
     // the contents are never parsed or falsy-checked.
-    expect(deriveRunShape("", 0)).toBe("warmNewDay");
+    expect(deriveRunShape("", 0)).toBe("firstOfDay");
   });
 
   it("treats a negative existingCardCount as > 0 (defensive: should not crash or misclassify silently)", () => {
@@ -53,14 +53,14 @@ describe("deriveRunShape: adversarial", () => {
     // number with no runtime guard. -1 > 0 is false, so this exercises the
     // same branch as 0 — documenting actual behaviour under a malformed input
     // rather than assuming it is unreachable.
-    expect(deriveRunShape("2026-09-10T08:00:00Z", -1)).toBe("warmNewDay");
+    expect(deriveRunShape("2026-09-10T08:00:00Z", -1)).toBe("firstOfDay");
   });
 
   it("treats NaN existingCardCount as falling through to the zero-cards branch", () => {
-    // NaN > 0 is false in JS, so this silently lands on warmNewDay rather than
+    // NaN > 0 is false in JS, so this silently lands on firstOfDay rather than
     // raising — worth pinning explicitly since it's a surprising outcome for a
     // supposedly numeric count.
-    expect(deriveRunShape("2026-09-10T08:00:00Z", NaN)).toBe("warmNewDay");
+    expect(deriveRunShape("2026-09-10T08:00:00Z", NaN)).toBe("firstOfDay");
   });
 });
 

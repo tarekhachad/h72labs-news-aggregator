@@ -20,7 +20,7 @@ function run(overrides: Partial<PublicUsageRunRecord> = {}): PublicUsageRunRecor
     cardId: null,
     outcome: "complete",
     label: "digest complete",
-    runShape: "cold",
+    runShape: "firstEver",
     pricedAtIso: "2026-09-11T12:00:00.000Z",
     topicCount: 2,
     sourceCount: 3,
@@ -107,7 +107,7 @@ describe("buildCostReport: segmentation", () => {
     // different amounts, so a blended mean describes no real user while
     // looking authoritative. The field does not exist, so no renderer can
     // print one by accident.
-    const report = buildCostReport([run(), run({ runShape: "warmSameDay" })]);
+    const report = buildCostReport([run(), run({ runShape: "sameDayTopUp" })]);
 
     for (const key of Object.keys(report)) {
       expect(key).not.toMatch(/mean/i);
@@ -118,13 +118,13 @@ describe("buildCostReport: segmentation", () => {
     const report = buildCostReport([
       run({ totalBilledUsd: 0.4 }),
       run({ totalBilledUsd: 0.4 }),
-      run({ runShape: "warmSameDay", totalBilledUsd: 0.1 }),
-      run({ runShape: "warmSameDay", totalBilledUsd: 0.1 }),
+      run({ runShape: "sameDayTopUp", totalBilledUsd: 0.1 }),
+      run({ runShape: "sameDayTopUp", totalBilledUsd: 0.1 }),
     ]);
 
     expect(report.sections).toHaveLength(2);
-    const cold = report.sections.find((s) => s.runShape === "cold");
-    const warm = report.sections.find((s) => s.runShape === "warmSameDay");
+    const cold = report.sections.find((s) => s.runShape === "firstEver");
+    const warm = report.sections.find((s) => s.runShape === "sameDayTopUp");
     expect(cold!.billedUsd.mean).toBeCloseTo(0.4, 10);
     expect(warm!.billedUsd.mean).toBeCloseTo(0.1, 10);
   });
@@ -150,8 +150,8 @@ describe("buildCostReport: segmentation", () => {
     // noise would make every regeneration look like a change.
     const records = [
       run({ route: "expand", runShape: "unknown" }),
-      run({ runShape: "warmSameDay" }),
-      run({ runShape: "cold" }),
+      run({ runShape: "sameDayTopUp" }),
+      run({ runShape: "firstEver" }),
     ];
     const forward = buildCostReport(records);
     const reversed = buildCostReport([...records].reverse());
@@ -278,8 +278,8 @@ describe("buildCostReport: provenance", () => {
   });
 
   it("surfaces runs that span more than one rate card", () => {
-    // The 2026-09-11 correction took eleven days to notice. Figures from
-    // either side of one are not comparable without repricing.
+    // Figures from either side of a pricing correction are not comparable
+    // without repricing, and a correction can go unnoticed for days.
     const report = buildCostReport([
       run({ pricingVerifiedOn: "2026-08-15" }),
       run({ pricingVerifiedOn: "2026-09-11" }),
@@ -299,8 +299,8 @@ describe("the two renderers cannot drift apart", () => {
     [
       run({ totalBilledUsd: 0.4, totalListUsd: 0.4 }),
       run({ totalBilledUsd: 0.3, totalListUsd: 0.3, runId: "run-2" }),
-      run({ runShape: "warmSameDay", totalBilledUsd: 0.12, totalListUsd: 0.12 }),
-      run({ runShape: "warmSameDay", totalBilledUsd: 0.14, totalListUsd: 0.14 }),
+      run({ runShape: "sameDayTopUp", totalBilledUsd: 0.12, totalListUsd: 0.12 }),
+      run({ runShape: "sameDayTopUp", totalBilledUsd: 0.14, totalListUsd: 0.14 }),
       run({ route: "expand", runShape: "unknown", totalBilledUsd: 0.012, totalListUsd: 0.012 }),
       run({ isFloor: true, totalBilledUsd: 0.01 }),
     ],
@@ -474,8 +474,8 @@ describe("empty and degenerate inputs", () => {
 });
 
 describe("a record the report cannot place is skipped, never silently dropped", () => {
-  // Review round 1, high severity. The validator checked `typeof runShape ===
-  // "string"` while the grouping loop matched only the four real shapes, so a
+  // High severity. If the validator checks `typeof runShape ===
+  // "string"` while the grouping loop matches only the four real shapes, a
   // record carrying anything else counted toward the headline "N runs", the
   // floor count and the date range -- and appeared in no section. The page's
   // own total disagreed with the sum of what it showed, with nothing saying
@@ -496,8 +496,8 @@ describe("a record the report cannot place is skipped, never silently dropped", 
     // symptoms -- this is what a reader of the rendered page relies on.
     const { records, skipped } = parseUsageRunLines([
       JSON.stringify(run({ runShape: "lukewarm" as never })),
-      JSON.stringify(run({ runShape: "cold" })),
-      JSON.stringify(run({ runShape: "warmSameDay" })),
+      JSON.stringify(run({ runShape: "firstEver" })),
+      JSON.stringify(run({ runShape: "sameDayTopUp" })),
       JSON.stringify(run({ route: "expand", runShape: "unknown" })),
     ]);
     const report = buildCostReport(records, skipped);
@@ -511,7 +511,7 @@ describe("a record the report cannot place is skipped, never silently dropped", 
   it("accepts every shape the app can actually write", () => {
     // The other half: the validator must not reject a legitimate shape, or
     // real runs would vanish into the skipped count instead.
-    for (const runShape of ["cold", "warmNewDay", "warmSameDay", "unknown"] as const) {
+    for (const runShape of ["firstEver", "firstOfDay", "sameDayTopUp", "unknown"] as const) {
       const { records, skipped } = parseUsageRunLines([JSON.stringify(run({ runShape }))]);
       expect({ runShape, kept: records.length, skipped }).toEqual({ runShape, kept: 1, skipped: 0 });
     }
@@ -647,7 +647,7 @@ describe("record-derived strings cannot break the markdown", () => {
 });
 
 describe("the headline cannot disagree with the sections, whoever supplied the records", () => {
-  // Round 2. The first fix put the guard in `isUsableRecord`, which protects
+  // A guard in `isUsableRecord` alone protects only
   // the ONE caller that goes through the parser. `buildCostReport` is the
   // exported reusable core -- the script's own comment anticipates a second
   // reader sourcing records from Supabase -- and called directly it still
@@ -656,7 +656,7 @@ describe("the headline cannot disagree with the sections, whoever supplied the r
   it("excludes an unplaceable record from the total when called directly", () => {
     const report = buildCostReport([
       run({ runShape: "lukewarm" as never }),
-      run({ runShape: "cold" }),
+      run({ runShape: "firstEver" }),
     ]);
 
     const summed = report.sections.reduce((total, section) => total + section.totalRuns, 0);
@@ -670,7 +670,7 @@ describe("the headline cannot disagree with the sections, whoever supplied the r
     // move the floor count and the reported dates while appearing nowhere.
     const report = buildCostReport([
       run({ runShape: "lukewarm" as never, isFloor: true, pricedAtIso: "2020-01-01T00:00:00.000Z" }),
-      run({ runShape: "cold", pricedAtIso: "2026-09-11T12:00:00.000Z" }),
+      run({ runShape: "firstEver", pricedAtIso: "2026-09-11T12:00:00.000Z" }),
     ]);
 
     expect(report.floorRuns).toBe(0);
@@ -680,7 +680,7 @@ describe("the headline cannot disagree with the sections, whoever supplied the r
   it("says so in both outputs rather than dropping them silently", () => {
     const report = buildCostReport([
       run({ runShape: "lukewarm" as never }),
-      run({ runShape: "cold" }),
+      run({ runShape: "firstEver" }),
     ]);
 
     expect(renderCostMarkdown(report)).toContain("1 rejected as unusable");
@@ -717,9 +717,8 @@ describe("a dollar figure that cannot be real is refused, not rendered", () => {
   });
 
   it("excludes a negative dollar total even when buildCostReport is called directly", () => {
-    // REWRITTEN. This used to assert how a negative RENDERED, because a
-    // negative could reach a table cell through a direct caller. It cannot
-    // any more: one validator now runs on every path into the report, so a
+    // Asserts that a negative is REJECTED, not how it renders: one validator
+    // runs on every path into the report, so a
     // negative never reaches a renderer. That is the stronger guarantee, and
     // the weaker test had to go rather than sit alongside it.
     const report = buildCostReport([
@@ -747,10 +746,10 @@ describe("a dollar figure that cannot be real is refused, not rendered", () => {
   });
 
   it("excludes rather than throwing when a bad pricingVerifiedOn reaches buildCostReport directly", () => {
-    // This test used to pass a perfectly valid "2026-09-11" while claiming to
-    // cover the bad-value path, so it would have passed whether or not the bug
-    // existed. Caught in review. The value below is the one that actually
-    // crashed both renderers: mdInline and esc each call .replace() on it.
+    // Do not feed this a valid date like "2026-09-11" while claiming to cover
+    // the bad-value path — it would pass whether or not the bug existed. The
+    // value below is one that actually crashes both renderers: mdInline and
+    // esc each call .replace() on it.
     const report = buildCostReport([
       run({ pricingVerifiedOn: 20260911 as never }),
       run({ runId: "run-2" }),
@@ -786,10 +785,10 @@ describe("the table and the prose share one underflow threshold", () => {
 });
 
 describe("the headline-equals-sections invariant holds for ANY unusable field", () => {
-  // Written because this bug shape recurred across FIVE review rounds, each
-  // round's test proving only what that round had just fixed. The full history
-  // is narrated once, in `isUsableRecord`'s docstring in costReport.ts --
-  // deliberately not repeated here, since keeping a second count in a second
+  // This bug shape recurs, and a test that proves only the most recent fix
+  // does not stop it. The constraint
+  // is stated once, in `isUsableRecord`'s docstring in costReport.ts --
+  // deliberately not repeated here, since keeping a second copy in a second
   // place is exactly how the two versions of it drifted apart and had to be
   // corrected.
   //
@@ -813,7 +812,7 @@ describe("the headline-equals-sections invariant holds for ANY unusable field", 
   const unusable: { name: string; override: Partial<PublicUsageRunRecord> }[] = [
     { name: "unknown route", override: { route: "bogus-route" as never } },
     { name: "unknown runShape", override: { runShape: "lukewarm" as never } },
-    // Fields the single validator covers that the partition used to miss.
+    // Fields the single validator covers that a narrower partition misses.
     { name: "future schemaVersion", override: { schemaVersion: 2 as never } },
     { name: "non-boolean isFloor", override: { isFloor: "false" as never } },
     { name: "non-string pricingVerifiedOn", override: { pricingVerifiedOn: 20260911 as never } },
@@ -866,7 +865,7 @@ describe("the headline-equals-sections invariant holds for ANY unusable field", 
     // legitimate (route, runShape) combination must land in a section, or real
     // runs would vanish into the excluded count instead.
     const every = (["digest", "expand"] as const).flatMap((route) =>
-      (["cold", "warmNewDay", "warmSameDay", "unknown"] as const).map((runShape) =>
+      (["firstEver", "firstOfDay", "sameDayTopUp", "unknown"] as const).map((runShape) =>
         run({ route, runShape, runId: `${route}-${runShape}` })
       )
     );
@@ -976,7 +975,7 @@ describe("a corrupted timestamp cannot become a plausible date", () => {
 });
 
 describe("a count that cannot be real is dropped from its statistic", () => {
-  // Found in round 6. `cardsWritten` and `articleCount` are nullable, so they
+  // `cardsWritten` and `articleCount` are nullable, so they
   // are validated at point of use rather than by `isUsableRecord` -- and
   // `sampleStat` filtered on finite-ness without ever checking sign. A record
   // with `cardsWritten: -5` beside one with 8 rendered "Cards written | 1.5",

@@ -36,7 +36,7 @@ function makeRecord(overrides: Partial<UsageRunContext> = {}): UsageRunRecord {
     cardId: null,
     outcome: "complete",
     label: "digest complete",
-    runShape: "cold",
+    runShape: "firstEver",
     topicCount: 2,
     sourceCount: 3,
     articleCount: 40,
@@ -296,10 +296,10 @@ describe("defaultUsageSinks: NODE_ENV edge values", () => {
   // are inverted from what they were.
   //
   // Worth recording why, because this file originally pinned the bug. One of
-  // these cases used to be named "includes JSONL for 'test', the value vitest
-  // itself typically runs under" -- it asserted, correctly for the code at
-  // the time, that running the suite writes to the real cost file. Once the
-  // routes were wired, that stopped being a curiosity and became 322 lines of
+  // Beware naming a case "includes JSONL for 'test', the value vitest
+  // itself typically runs under" -- an assertion like that is correct about
+  // the code and still describes a real hazard: with the
+  // routes wired it stops being a curiosity and becomes hundreds of lines of
   // fabricated test runs sitting in the file the cost report computes its
   // averages from, plus a suite that needs a writable disk.
   //

@@ -47,7 +47,7 @@ function emptyContext(overrides: Partial<UsageRunContext> = {}): UsageRunContext
     cardId: null,
     outcome: "endedEarly",
     label: "digest ended early (error or cancelled)",
-    runShape: "cold",
+    runShape: "firstEver",
     topicCount: null,
     sourceCount: null,
     articleCount: null,
@@ -64,41 +64,41 @@ function emptyContext(overrides: Partial<UsageRunContext> = {}): UsageRunContext
 }
 
 describe("deriveRunShape", () => {
-  it("calls a run with no cursor and no existing cards cold", () => {
-    expect(deriveRunShape(null, 0)).toBe("cold");
+  it("calls a run with no cursor and no existing cards firstEver", () => {
+    expect(deriveRunShape(null, 0)).toBe("firstEver");
   });
 
-  it("calls a run with a cursor but no cards today warmNewDay", () => {
-    expect(deriveRunShape("2026-09-10T08:00:00Z", 0)).toBe("warmNewDay");
+  it("calls a run with a cursor but no cards today firstOfDay", () => {
+    expect(deriveRunShape("2026-09-10T08:00:00Z", 0)).toBe("firstOfDay");
   });
 
-  it("calls a run with a cursor and cards already saved today warmSameDay", () => {
-    expect(deriveRunShape("2026-09-11T08:00:00Z", 3)).toBe("warmSameDay");
+  it("calls a run with a cursor and cards already saved today sameDayTopUp", () => {
+    expect(deriveRunShape("2026-09-11T08:00:00Z", 3)).toBe("sameDayTopUp");
   });
 
   it("returns unknown when the existing-cards fetch failed and a cursor exists", () => {
-    // The count is genuinely unavailable, so warmNewDay vs warmSameDay -- the
+    // The count is genuinely unavailable, so firstOfDay vs sameDayTopUp -- the
     // split that decides whether dedup billed -- cannot be told apart.
     expect(deriveRunShape("2026-09-11T08:00:00Z", null)).toBe("unknown");
   });
 
-  it("still calls it cold when the fetch failed but no generation has ever run", () => {
+  it("still calls it firstEver when the fetch failed but no generation has ever run", () => {
     // A null cursor is decisive on its own: cards and the cursor advance in
     // the same transaction, so there is nothing the failed fetch could have
     // found. Degrading this to "unknown" would throw away a fact we hold.
-    expect(deriveRunShape(null, null)).toBe("cold");
+    expect(deriveRunShape(null, null)).toBe("firstEver");
   });
 
   it("returns unknown for the contradictory cards-without-a-cursor case", () => {
     // persist_generated_cards writes cards and advances the cursor atomically,
     // so this should be impossible. If it happens the run is genuinely mixed
-    // -- a cold full lookback that will still pay for dedup -- and belongs in
+    // -- a first-ever full lookback that will still pay for dedup -- and belongs in
     // no clean bucket rather than being forced into one.
     expect(deriveRunShape(null, 2)).toBe("unknown");
   });
 
   it("reads the cursor as a presence signal only, never parsing it", () => {
-    expect(deriveRunShape("not-a-timestamp", 0)).toBe("warmNewDay");
+    expect(deriveRunShape("not-a-timestamp", 0)).toBe("firstOfDay");
   });
 });
 
@@ -333,14 +333,14 @@ describe("toJsonlLine", () => {
     const summary = summarizeUsage([call("triage", "claude-haiku-4-5")], AT);
     const record = buildUsageRunRecord(
       summary,
-      emptyContext({ runShape: "warmSameDay", outcome: "complete", cardsWritten: 4 }),
+      emptyContext({ runShape: "sameDayTopUp", outcome: "complete", cardsWritten: 4 }),
       AT,
       "run-1"
     );
 
     const parsed = JSON.parse(toJsonlLine(record));
 
-    expect(parsed.runShape).toBe("warmSameDay");
+    expect(parsed.runShape).toBe("sameDayTopUp");
     expect(parsed.route).toBe("digest");
     expect(parsed.outcome).toBe("complete");
     expect(parsed.cardsWritten).toBe(4);
@@ -403,7 +403,7 @@ describe("toUsageRunRow", () => {
     expect(row.card_id).toBeNull();
     expect(row.priced_at).toBe("2026-09-11T12:00:00.000Z");
     expect(row.outcome).toBe("complete");
-    expect(row.run_shape).toBe("cold");
+    expect(row.run_shape).toBe("firstEver");
     expect(row.cards_written).toBe(2);
     expect(row.rank_applied).toBe(true);
     expect(row.total_calls).toBe(1);
@@ -452,12 +452,11 @@ describe("toUsageRunRow: every column carries its own field", () => {
   // record.x` thirty times, and pairing one column with a DIFFERENT field of
   // a compatible type type-checks cleanly -- `[COLUMN_OF.pricedAtIso]:
   // record.outcome` compiles, because RunOutcome is assignable to
-  // `string | null`. Found by mutating exactly that during review round 2,
-  // where tsc reported nothing.
+  // `string | null`, which tsc will not catch on its own.
   //
-  // The first version of this guard compared a REALISTIC record's values and
-  // claimed distinctness made a mispairing impossible to miss. Round 3 broke
-  // that claim twice independently: totalBilledUsd and totalListUsd both come
+  // **Do not build this guard from a REALISTIC record** on the assumption that
+  // distinct values make a mispairing impossible to miss: totalBilledUsd and
+  // totalListUsd both come
   // to 0.0015 for a promo-free call with no cache tokens, and schemaVersion,
   // topicCount and totalCalls were all 1. Swapping either pair compiled AND
   // passed.
