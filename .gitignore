@@ -14,10 +14,26 @@
 # with them. Untracked 2026-09-11 after a scan found 158 files / 2.8 MB of
 # third-party skill content — plus five symlinks into ~/.claude/skills/ that are
 # dead for anyone who clones — published in this PUBLIC repo.
-# `.claude/agents/` is deliberately NOT ignored: qa.md and code-reviewer.md are
-# ours, they encode this project's review process, and they belong in history.
-.claude/skills/
+#
+# REVERSED 2026-09-14: `.claude/agents/` was deliberately tracked on 2026-09-11
+# ("they encode this project's review process, and they belong in history").
+# That call is withdrawn — the whole of `.claude/` is now ignored, along with
+# `CLAUDE.md`, `notes-logs/` and `.agents/`, matching what the project template
+# and this project's own CLAUDE.md have always claimed the remote carries.
+# The agent definitions live in the vault at Projects/(PROJECT TEMPLATE)/ and
+# are copied per project, so git was never their home or their backup.
+.claude/
 skills-lock.json
+
+# Third-party design skills under the older `.agents/` path. Same rationale as
+# `.claude/skills/` above, and missed by the 2026-09-11 sweep: 12 files were
+# still published in this PUBLIC repo.
+.agents/
+
+# Project-scoped Claude Code context. Prime directive, roadmap state, cost
+# figures and working notes — written for this machine, not for a reader of the
+# code. The template has always said the remote does not carry it; it did.
+CLAUDE.md
 
 # Local MCP server config. Project scope exists to share servers with
 # collaborators; this is a solo build, so the file has no reader but this
@@ -56,11 +72,22 @@ npm-debug.log*
 #
 # Consequence accepted: the data behind a committed report is then local-only
 # and unbacked. The Supabase usage_runs table is the durable copy.
-notes-logs/cost/runs.jsonl
-notes-logs/cost/report.html
+#
+# WIDENED 2026-09-14: the whole of `notes-logs/` is now ignored, not just the
+# data files. project-log.md alone is ~53,000 words of working notes, and the
+# two (C) cost-diagnosis records are dated internal analysis. `(C) COST.md` is
+# the one deliberate exception — Tarek's call, kept tracked so `git diff` on it
+# is still how a cost regression gets noticed. Re-including one file under an
+# ignored directory needs the parent un-ignored first, hence the four lines.
+notes-logs/*
+!notes-logs/cost/
+notes-logs/cost/*
+!notes-logs/cost/(C) COST.md
 
 # Raw dev-server transcripts from cost measurement runs. These were captured
 # with `npm run dev | tee` — 667 KB of interleaved Next.js request logs with
 # the [usage] lines buried in them. Superseded by the structured cost pipeline;
 # kept out of git so measurement output never lands here as scrollback again.
+# (Redundant since notes-logs/* above, kept as the record of why they were
+# excluded in the first place.)
 notes-logs/cost-test-log*
