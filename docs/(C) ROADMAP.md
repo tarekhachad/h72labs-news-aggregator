@@ -425,6 +425,116 @@ The first real deployment: Vercel for the Next.js app, the existing hosted Supab
 
 - **Done when:** the app is live at a URL, a non-technical person can sign up and generate a digest without touching a terminal, spend is bounded by an enforced, tested cap per V2.0, **and every item under *Folded into V2.1's done-condition* below has shipped.** That last clause was added 2026-09-14 and it is not padding: those six items were each deferred on a premise deployment destroys — single user, local only, or first-run-of-day on a fresh account. Shipping a URL without them means inviting someone into a product that puts their digest on the wrong day, can permanently lock them out of their own account with no recovery path, and stacks 24 cards onto a topic page by evening while paying nearly full price for each.
 
+---
+
+#### How these sub-items are run
+
+_Added 2026-09-16, out of the capping session. Every sub-item below is sized to be its own **plan-mode round followed by its own build** — one item, one plan, one qa/code-reviewer loop per `CLAUDE.md` step 4, one commit point. Do not bundle two of them into one plan round. Each carries a **Plan-mode scope** line naming what that round has to settle, so the round can start without re-deriving it from this file._
+
+**Decided in the capping session (2026-09-16), so no plan round re-opens them:** Option B's key stays server-side (V2.0); the run timeout goes to 120s; top-ups cap at **3/day**; expands cap at **15/day**; email confirmation and a forgot-password flow are **in scope** for deployment; access is by **invite link Tarek generates himself**, not email invitation from the dashboard.
+
+**Sequencing note, and it is the reason V2.1.0 is first.** Deploying is separated from *admitting anyone*. With signups turned off at the Supabase dashboard, a live URL that only Tarek can log into costs nothing and risks nothing, and it surfaces the environment/build problems that are cheapest to fix before anything else is built on top. Every later item then lands on a real deployment instead of being verified locally and hoped for. **No invite link is sent to a single person until V2.1.9 passes.**
+
+#### V2.1.0 — Deploy dark: live URL, nobody admitted
+
+Point Vercel at this repo, wire the environment variables to the **existing hosted Supabase project** (it is already hosted and already holds real data — a fresh production project is a migration, not a deploy), and confirm the full pipeline runs in production under Tarek's own account. **Turn "Allow new users to sign up" OFF in the Supabase dashboard before the first deploy** — that one toggle is what makes this step safe, since the current `signUp` action has no gate of its own.
+
+Also clean up here: the throwaway measurement accounts (`cost-measurement-2026-09-11@h72labs.test` and the full-profile one) and any leftover `qa-pna-*` / `pna-tiers-test+*` test accounts, which need the dashboard rather than this machine.
+
+**The Anthropic key gets its own treatment here, not a copy-paste of the local one.** Mint a **separate production key in a dedicated Console workspace** (the same workspace that carries V2.1.2's monthly spend limit), so the laptop's key and production's can be rotated independently and a compromise of either does not reach the other. Add it to Vercel **marked as a sensitive/secret variable** — that setting is off by default, and it is what stops the value being readable afterwards by anyone with dashboard access.
+
+- **Plan-mode scope:** which environment variables production needs and where each comes from; the production Anthropic key and workspace, and confirming the sensitive flag is set on it; whether `maxDuration` at its current 60s is survivable for one verification run (V2.1.3 raises it properly); what the first production digest is verified against; the rollback if the pipeline fails in Vercel's runtime but not locally.
+- **Done when:** the app is live at a Vercel URL, Tarek can log in and generate a real digest in production, signups are confirmed impossible from the dashboard toggle, and the measurement/test accounts are gone.
+
+#### V2.1.1 — Invite-only access
+
+An `invites` table (token hash, label, expiry, single-use, consumed-by), RLS on with **no policies for authenticated users at all**, so it is unreachable from any session. A **before-user-created auth hook** validates and consumes the token as part of account creation — that is the enforcement boundary, and it holds even against a direct call to the auth endpoint, which is why an app-level check alone was rejected. The signup page gates on the token before rendering the form. A local `npm run invite -- "<label>"` script mints a row and prints the link.
+
+**The admin key this script needs stays on Tarek's machine and never enters Vercel** — a deliberate narrowing of the 2026-09-14 "no service-role key" decision rather than a reversal of it: the deployed app still holds no key that bypasses RLS.
+
+Note the interaction with V2.1.6: once email confirmation is on, the token is consumed at account creation, so an invitee who never confirms burns their link and Tarek re-issues.
+
+- **Plan-mode scope:** token shape and hashing; expiry (proposed 7 days) and single-use enforcement, including the race of two people opening one link at once; whether a link is generic or locked to one email address (**open decision — the only one left in this item**); what an invalid, expired, or spent link renders; where the hook lives and how it is deployed alongside `schema.sql`; how the invite script authenticates locally.
+- **Done when:** a fresh browser with a valid link can create exactly one account; the same link fails the second time; signup with no token, a forged token, or a direct API call to the auth endpoint all fail; and Tarek can mint a link in one command.
+
+#### V2.1.2 — Spend caps that actually bind
+
+The mechanism from the capping session. A **server-owned counters/ledger table with no authenticated write policies**, written only through database functions that move counts and dollars **upward**, so the subject of a cap cannot lower it. Generation **reserves a worst-case amount before the pipeline starts**, sized from the profile's breadth, and settles to the real figure afterwards — a run killed mid-flight therefore keeps its reservation and fails closed, which is the hole that post-hoc recording in `usage_runs` cannot close (see the log's 2026-09-14 night entry).
+
+Caps: a **per-user daily dollar budget** as the real bound, with **3 top-ups** and **15 expands** per day as guardrails above it; a **global daily dollar breaker** across all users; a **kill-switch environment variable** that stops generation with no redeploy; and an **Anthropic Console monthly spend limit on a workspace dedicated to production**, which is the only backstop enforced outside this codebase.
+
+`usage_runs` keeps its job — it **sizes** the caps and is never what enforces them.
+
+- **Plan-mode scope:** the table shape and which functions may write it; how a reservation is sized from topic/source counts (and what the 2026-09-15 cost run changed about that); the per-user daily budget number and the global daily number; reservation settlement, including a run that never returns; what the user is shown at each cap and when it resets; how the kill switch is read; and how each cap is **tested to actually block**, which V2.0's done-condition requires by name.
+- **Done when:** a user at their cap is refused generation with a clear message and a reset time; a killed run still consumes its reservation; the global breaker and kill switch are both demonstrated stopping generation; and the Console limit is set.
+
+#### V2.1.3 — Run duration and the generation mutex
+
+Raise `maxDuration` to **120s** (the 2026-09-11 full run took 56s against a 60s limit, and a kill skips the `finally` that records spend and advances the cursor). **`STALE_CLAIM_MS` must move with it** — it is 120s today, and leaving the two equal makes a live run's claim reclaimable exactly at the boundary, which is two pipelines and double spend for one user. Proposed 180s.
+
+This is also where the folded **per-digest-row mutex** item is fixed: claiming per *user* rather than per row, closing the midnight-rollover case where a new day's row lets a second pipeline start while the first is still running.
+
+- **Plan-mode scope:** the new durations and the invariant tying them together (and whether that invariant can be made to fire rather than be commented); per-user claiming without breaking the existing compare-and-swap; what happens to a claim held by a killed run; interaction with V2.1.2's reservations.
+- **Done when:** both durations are raised with the stale window provably longer than the timeout, a second concurrent generation for one user is refused across a day boundary, and the folded mutex item is struck from the list below.
+
+#### V2.1.4 — Per-day card cap, not per-run
+
+The folded `applyCardCap` item, and it is a spend item as much as a product one: the cap counts only *this run's* clusters, so three same-day runs can stack 24 cards on one topic, each written at nearly full price. With top-ups now capped at 3/day this is directly load-bearing on V2.1.2's arithmetic.
+
+- **Plan-mode scope:** counting against persisted cards for the day rather than the run; whether a later run may **replace** a weaker earlier card or only top up (a real product decision, not an implementation detail); whether a topic already at its daily cap should skip triage entirely, which is where the savings actually are; what this does to the front-page re-ranking pass.
+- **Done when:** a third same-day run cannot push a topic past its daily cap, and the measured cost of a top-up on a saturated profile is recorded.
+
+#### V2.1.5 — Close the write paths the cap depends on
+
+Move the cursor, the generation flag and the expanded-report write behind **SECURITY DEFINER functions with fixed semantics**, then drop the broad `update own digests` and `update own cards` policies. Today those policies let a session rewrite `date`, null `last_generated_at` (forcing the most expensive run shape every time), clear `generating`, and move a card between digests — each of which defeats a cap counted from those tables.
+
+Three smaller things belong in the same pass. **Rename `NEXT_PUBLIC_SUPABASE_URL`/`_PUBLISHABLE_KEY` to unprefixed names and delete the unused `src/lib/supabase/client.ts`**, so the key cannot enter a browser bundle by a later accident rather than by current luck. **Add `import "server-only"` to the five modules holding an Anthropic client** (`rank`, `triage`, `dedup`, `writeCard`, `cards`) — today nothing enforces that they stay server-side, and this file's own rule is that a constraint worth stating should fire rather than be commented: with the guard, importing one into a client component is a build error instead of a silent leak. And add the folded **`digests(user_id, last_generated_at)` index**, which the cursor query needs once the table holds more than one user.
+
+- **Plan-mode scope:** which writes become functions and their exact signatures; which policies can then be dropped without breaking a read path; whether `persist_generated_cards` moves from invoker to definer and what that changes about its ownership checks; the env-var rename's blast radius across `.env.local`, Vercel and `.env.example`; verifying no client component needs a browser Supabase client.
+- **Done when:** no authenticated session can write `digests` or `cards` directly, every existing flow still works, the key name carries no `NEXT_PUBLIC_` prefix anywhere, and the index exists.
+
+#### V2.1.6 — Email: confirmation and a forgot-password flow
+
+Both folded items, and both blocked on the same missing piece: Supabase's built-in email sender is rate-limited and explicitly not for production, so this starts with a real SMTP provider on a domain Tarek already owns. Then turn on email confirmation (the `/auth/callback` route already exists for it) and build the forgot-password and reset-password pages against `resetPasswordForEmail`.
+
+Without this, a tester who forgets their password is locked out until Tarek fixes it by hand, and a stolen session can permanently lock out the real owner — the reason this was folded into deployment in the first place.
+
+- **Plan-mode scope:** which provider and what DNS it needs; which sending domain; whether confirmation is required before onboarding or after; the reset flow's own pages and their rate limits; how a confirmation email interacts with a consumed invite token; what the emails actually say, since they are the first thing an invitee sees.
+- **Done when:** a new invitee receives a real confirmation email and can complete signup, and a user who forgets their password can reset it without Tarek touching anything.
+
+#### V2.1.7 — "Today" follows the reader, not UTC
+
+The folded timezone item. A digest's date is a UTC calendar day, so Tarek's own evening digest silently reclassifies as history after 8pm Atlanta time — and testers in Morocco make it worse, not better. Needs the viewer's timezone stored per user and threaded through both `todayDateString()` call sites, the history list, and the since-cursor's day semantics.
+
+- **Plan-mode scope:** detect versus store versus ask; what a traveling user should see; the interaction with V2.1.3's per-user mutex and with the since-cursor; what happens to digests already stored under UTC dates.
+- **Done when:** a digest generated at 9pm local still reads as today's for that user, verified in at least two timezones.
+
+#### V2.1.8 — Retry clusters lost to transient failures
+
+The last folded item, and **the weakest of the six** — recorded as a judgement rather than assumed: the trigger is a transient API failure landing on one cluster, and the cost is one missing story, permanently, because the cursor advances regardless. Worth putting to Tarek as a keep-or-defer call at the time rather than being quietly dropped or mechanically built.
+
+- **Plan-mode scope:** whether to track failed clusters for retry or advance the cursor only to the oldest surviving article; what either costs on the next run; and first of all, whether this ships before the invites go out at all.
+- **Done when:** either it ships and a transiently-failed cluster is retried on the next run, or it is explicitly deferred with Tarek's say-so and moved to Track B.
+
+#### V2.1.9 — Security pass, then open the door
+
+**Running the bundled `pre-launch-security-check` skill (`.claude/skills/pre-launch-security-check/SKILL.md`) is a required step of this item, not a suggestion** — run it against the **deployed** app rather than the local one, since this is the item that decides whether a link goes to another human being. It scales itself to what the app actually has, so it will pick up the auth/public-API/PII surface on its own; take its Step 5 report as the spine of this item's output.
+
+**Then probe by hand the things the skill does not reach.** These are project-specific and came out of the 2026-09-16 capping session by reading the code rather than testing it, which is exactly why they need a live probe:
+
+- **No authenticated session can write a capped table.** The skill checks data-layer authorization in general; this is the specific claim V2.1.2's cap rests on, and V2.1.5 is what makes it true. Probe each table the cap reads.
+- **Signup is impossible without a valid, unspent token** — including a direct call to the auth endpoint that bypasses the app entirely, which is the case V2.1.1's hook exists for.
+- **No secret is inlined into the browser bundle.** Distinct from the skill's committed-secrets sweep: this is Next.js copying any `NEXT_PUBLIC_`-prefixed variable into client JavaScript at build time, so it is a build-output question, not a git-history one. Check the built bundle after V2.1.5's rename.
+- **`src/app/api/digest/route.ts` streams raw `err.message` to the client** (the expand route instead logs server-side and returns a fixed string). Not a key leak — an Anthropic SDK error carries no key — but it is an open channel to the client that the next `throw` inherits silently. Match the expand route's pattern.
+- **`src/app/auth/actions.ts` puts Supabase's raw error text into a URL parameter**, which discloses whether an email already has an account. Minor while signup is invite-only, worth closing in the same pass.
+
+**Deliberately dropped from this list as duplicates of the skill, recorded so nobody re-adds them:** "every API route authenticates" (its Step 2 server-side-authorization check) and the committed-secrets/`.gitignore` sweep (its Step 2 items 1–2). Its rate-limiting check on expensive endpoints is answered by V2.1.2's caps — point it there rather than building a second mechanism.
+
+Optional here, not a blocker: point a `news.h72labs.com` subdomain at the deployment.
+
+- **Plan-mode scope:** which of the skill's findings block a launch versus get logged; how the hand-probes above are actually executed against a live deployment without a service-role key; the order invites go out in (one person first, then the rest).
+- **Done when:** the skill's report has nothing outstanding at medium severity or above, every hand-probe above has been run against the deployed app, and the first invite link is sent.
+
 ### V2.2 — Rewrite `README.md` as the product's front door
 
 _Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after deployment, since a deployed app's README leads with the live link and drops most of the local-setup burden._ Today it's still untouched `create-next-app` boilerplate: Next.js tutorial links, a Vercel deploy pitch, nothing about this product, and run instructions that omit Supabase and every required env var (so following them today produces a crash, not a running app). It should cover, for a reader with zero context:
