@@ -1,9 +1,23 @@
-import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+import path from "node:path";
+import { env, pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 
-// Loading the model is slow (first call downloads + initializes it), so it's
-// cached across calls within the same server instance instead of reloaded
-// per request. Shared by cluster.ts and dedup.ts so both use one loaded
-// instance instead of two.
+// The model is vendored under models/ and loaded from there, never fetched or
+// written at runtime. A deployed serverless function's filesystem is read-only
+// apart from /tmp, and this library's default cache directory lives inside
+// node_modules — so the stock configuration fails at the first embed call with
+// an unwritable-cache error, after a clean build.
+//
+// Remote models are disabled rather than left as a fallback: a missing or
+// misplaced vendored file then fails loudly here, instead of silently
+// downloading 23MB on every cold start and trying to cache it where it cannot.
+env.allowRemoteModels = false;
+env.allowLocalModels = true;
+env.useFSCache = false;
+env.localModelPath = path.join(process.cwd(), "models");
+
+// Loading the model is slow, so it's cached across calls within the same
+// server instance instead of reloaded per request. Shared by cluster.ts and
+// dedup.ts so both use one loaded instance instead of two.
 let embedderPromise: Promise<FeatureExtractionPipeline> | null = null;
 function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!embedderPromise) {
