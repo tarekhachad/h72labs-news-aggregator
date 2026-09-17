@@ -552,6 +552,19 @@ Optional here, not a blocker: point a `news.h72labs.com` subdomain at the deploy
 - **Plan-mode scope:** which of the skill's findings block a launch versus get logged; how the hand-probes above are actually executed against a live deployment without a service-role key; the order invites go out in (one person first, then the rest).
 - **Done when:** the skill's report has nothing outstanding at medium severity or above, every hand-probe above has been run against the deployed app, and the first invite link is sent.
 
+#### V2.1.11 (deferred) — The article-volume ceiling
+
+**Deferred by Tarek 2026-09-17: not scheduled inside V2.1. Revisit once every other V2.1 item is done and tested, as the last call before V2.2 begins.**
+
+The first successful production digest measured what V2.1.0 left unknown, on Hobby's 1 vCPU: **62s end to end and 785 MB peak of 2048 MB**, for a **5-topic** profile pulling 659 articles. Clustering alone was **38.3s and 680 MB** of that — two-thirds of the wall clock, and it is local CPU, not Claude.
+
+The concern is arithmetic rather than a defect: the full 13-topic profile pulled **1147–1280 articles** in local runs, roughly twice this, and clustering is the stage that scales with article count in *both* time and memory. At 2x it plausibly meets the 120s timeout and the memory ceiling together. Nothing currently bounds how many articles reach clustering — the 48-hour lookback and the feed list are the only limits, and neither is a ceiling.
+
+Note the interaction with V2.1.4: that run dropped **147 cards** at the per-topic cap, so most of what clustering and triage paid for was discarded afterwards. A bound applied earlier in the pipeline would cut cost and duration and memory at once, which is why these two belong in the same conversation.
+
+- **Plan-mode scope (when it comes up):** where a bound belongs — per topic at ingest, per run after clustering, or a lookback shortened when a profile is broad; what a user loses when their newest articles are cut, and whether the cut should favour recency, source diversity or topic balance; whether triage should be skipped for a topic already at its daily card cap (V2.1.4's question, same lever); and what the real numbers are at full profile size, which needs one measured 13-topic run (~\$0.45) rather than extrapolation from this one.
+- **Done when:** a full 13-topic profile generates inside the duration and memory ceilings with headroom, measured rather than reasoned, or the ceiling is raised deliberately with the cost of doing so recorded.
+
 ### V2.2 — Rewrite `README.md` as the product's front door
 
 _Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after deployment, since a deployed app's README leads with the live link and drops most of the local-setup burden._ Today it's still untouched `create-next-app` boilerplate: Next.js tutorial links, a Vercel deploy pitch, nothing about this product, and run instructions that omit Supabase and every required env var (so following them today produces a crash, not a running app). It should cover, for a reader with zero context:
