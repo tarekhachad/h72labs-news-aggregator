@@ -1,17 +1,19 @@
 import { z } from "zod";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateExpandedReport } from "@/lib/cards";
 import type { Card, Topic } from "@/types";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
-import { buildUsageRunRecord } from "@/lib/usageRecord";
+import { buildUsageRunRecord, type UsageRunRecord } from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
+import { reserveSpend, settleAmount, settleSpend, spendRefusalResponse } from "@/lib/spend";
 
 const CardId = z.string().uuid();
 
 // generateExpandedReport is a Claude call — same runtime/timeout reasoning
 // as /api/digest.
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(
   _req: Request,
@@ -50,6 +52,15 @@ export async function POST(
   if (card.expanded_report !== null && card.expanded_report !== undefined) {
     return Response.json({ expandedReport: card.expanded_report });
   }
+
+  // Reserved only on a cache miss, so a cached read never counts against a
+  // limit.
+  const reserved = await reserveSpend(supabase, "expand", {
+    ref: id,
+    keepAlive: (task) => after(task),
+  });
+  if (reserved.status !== "ok") return spendRefusalResponse("expand", reserved);
+  const { reservation } = reserved;
 
   // Only reached on a genuine cache miss, so exactly one Sonnet call is
   // expected here. Reported in a finally so the 502 path below still says
@@ -104,37 +115,46 @@ export async function POST(
     // response is returned, which would drop the record silently on exactly
     // the runs that cost money. If that latency ever matters, Next's
     // `after()` is the right tool and not a try/catch.
+    let record: UsageRunRecord | null = null;
     try {
-      await emitUsageRun(
-        defaultUsageSinks(supabase),
-        buildUsageRunRecord(
-          usage.summarize(),
-          {
-            userId: user.id,
-            route: "expand",
-            digestId: null,
-            cardId: id,
-            outcome: generated ? "complete" : "endedEarly",
-            label,
-            runShape: "unknown",
-            topicCount: null,
-            sourceCount: null,
-            articleCount: null,
-            clusterCount: null,
-            clustersAfterDedup: null,
-            notableCount: null,
-            cardsDroppedByCap: null,
-            cardsWritten: null,
-            cardsFailed: null,
-            rankApplied: null,
-            expectedCalls: { expand: 1 },
-          },
-          usage.at,
-          crypto.randomUUID()
-        )
+      record = buildUsageRunRecord(
+        usage.summarize(),
+        {
+          userId: user.id,
+          route: "expand",
+          digestId: null,
+          cardId: id,
+          outcome: generated ? "complete" : "endedEarly",
+          label,
+          runShape: "unknown",
+          topicCount: null,
+          sourceCount: null,
+          articleCount: null,
+          clusterCount: null,
+          clustersAfterDedup: null,
+          notableCount: null,
+          cardsDroppedByCap: null,
+          cardsWritten: null,
+          cardsFailed: null,
+          rankApplied: null,
+          expectedCalls: { expand: 1 },
+        },
+        usage.at,
+        crypto.randomUUID()
       );
     } catch (err) {
       console.error("[cards/expand] failed to build this run's cost record:", err);
+    }
+
+    // Settled before the record is written, the same order as the digest
+    // route. Never throws, and bounded by its own timeout.
+    await settleSpend(reservation, settleAmount(reservation.reservedUsd, record));
+    if (record !== null) {
+      try {
+        await emitUsageRun(defaultUsageSinks(supabase), record);
+      } catch (err) {
+        console.error("[cards/expand] failed to write this run's cost record:", err);
+      }
     }
   }
 

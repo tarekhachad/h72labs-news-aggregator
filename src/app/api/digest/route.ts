@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { ingestArticles } from "@/lib/ingest";
@@ -20,14 +21,29 @@ import type { Card, Source, Topic } from "@/types";
 import { applyCardCap, MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import type { UsageStage } from "@/lib/usage";
-import { buildUsageRunRecord, deriveRunShape, type RunShape } from "@/lib/usageRecord";
+import {
+  buildUsageRunRecord,
+  deriveRunShape,
+  type RunShape,
+  type UsageRunRecord,
+} from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
+import { toNdjsonStream } from "@/lib/ndjsonStream";
+import {
+  reserveSpend,
+  settleAmount,
+  settleSpend,
+  spendRefusalResponse,
+  type Reservation,
+} from "@/lib/spend";
 
 // The embedding model needs Node APIs (not available on the Edge runtime).
 export const runtime = "nodejs";
 // The pipeline makes several sequential Claude calls plus a local embedding
-// pass — well past the platform's default function timeout.
-export const maxDuration = 60;
+// pass — well past the platform's default function timeout. A full profile
+// has run 56s locally. STALE_CLAIM_MS in src/lib/digests.ts must stay longer
+// than this, or a live run's claim becomes reclaimable; a test enforces it.
+export const maxDuration = 120;
 
 // One line of this shape per pipeline stage, so the client can render real
 // progress instead of a single opaque "loading" state. The final line
@@ -72,7 +88,8 @@ async function* runDigestPipeline(
   userId: string,
   digestId: string,
   profile: { topics: Topic[]; preferredSources: Source[] },
-  sinceIso: string | null
+  sinceIso: string | null,
+  reservation: Reservation
 ): AsyncGenerator<DigestEvent> {
   // Cost accounting for this run. Scopes are entered around each awaited
   // stage below rather than once around this whole generator: context
@@ -385,102 +402,60 @@ async function* runDigestPipeline(
     // of generating again.
     const label = reachedDone ? "digest complete" : "digest ended early (error or cancelled)";
     usage.report({ label, expectedCalls });
-    await releaseDigestGeneration(supabase, digestId);
 
-    // DELIBERATELY LAST, and the order is a guarantee rather than a
-    // precaution.
-    //
-    // `usage.report` above is synchronous, so there is no suspension point
-    // between it and the release — nothing can interleave there. This line is
-    // different: it awaits a database insert (plus, in development only, a
-    // file write — see defaultUsageSinks). Put it BEFORE
-    // the release and a sink that never settles holds the release hostage,
-    // the response stream never closes, and the user is locked out of
-    // generating again until the stale-claim window (2 min) expires. A
-    // try/catch would not help — it catches a throw, and the failure here is
-    // a hang. Only running after the release makes that impossible, which is
-    // why the ordering is load-bearing and not stylistic.
-    //
-    // `emitUsageRun` is itself total: it never rejects and races each sink
-    // against a timeout. The try/catch is therefore not about the sinks —
-    // it covers `usage.summarize()` and `buildUsageRunRecord`, which run
-    // outside that guarantee. Instrumentation must not be able to turn a
-    // completed digest into a failed one.
+    // Built once, up front, because the settle below needs its total. The
+    // try/catch covers `usage.summarize()` and `buildUsageRunRecord`:
+    // instrumentation must not be able to turn a completed digest into a
+    // failed one. A null record keeps the full reservation.
+    let record: UsageRunRecord | null = null;
     try {
-      await emitUsageRun(
-        defaultUsageSinks(supabase),
-        buildUsageRunRecord(
-          usage.summarize(),
-          {
-            userId,
-            route: "digest",
-            digestId,
-            cardId: null,
-            outcome: reachedDone ? "complete" : "endedEarly",
-            // The exact string report() used, so a row and a log line from
-            // the same run can be matched up by eye.
-            label,
-            ...shape,
-            expectedCalls,
-          },
-          // The collector's own instant, not a fresh clock reading: the row
-          // has to be priced at the same moment the console summary was, or
-          // a run spanning a rate change would be recorded two ways.
-          usage.at,
-          crypto.randomUUID()
-        )
+      record = buildUsageRunRecord(
+        usage.summarize(),
+        {
+          userId,
+          route: "digest",
+          digestId,
+          cardId: null,
+          outcome: reachedDone ? "complete" : "endedEarly",
+          // The exact string report() used, so a row and a log line from
+          // the same run can be matched up by eye.
+          label,
+          ...shape,
+          expectedCalls,
+        },
+        // The collector's own instant, not a fresh clock reading: the row
+        // has to be priced at the same moment the console summary was, or
+        // a run spanning a rate change would be recorded two ways.
+        usage.at,
+        crypto.randomUUID()
       );
     } catch (err) {
       console.error("[digest] failed to build this run's cost record:", err);
     }
-  }
-}
 
-function toNdjsonStream(events: AsyncGenerator<DigestEvent>): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  return new ReadableStream({
-    async pull(controller) {
+    // Money first. settleSpend never throws and is bounded by its own
+    // timeout, so it cannot hold the release below hostage for longer than
+    // that bound.
+    await settleSpend(reservation, settleAmount(reservation.reservedUsd, record));
+    await releaseDigestGeneration(supabase, digestId);
+
+    // DELIBERATELY AFTER THE RELEASE, and the order is a guarantee rather
+    // than a precaution. This awaits a database insert (plus, in development
+    // only, a file write — see defaultUsageSinks). Put it BEFORE the release
+    // and a sink that never settles holds the release hostage, the response
+    // stream never closes, and the user is locked out of generating again
+    // until the stale-claim window expires. A try/catch would not help — the
+    // failure here is a hang. `emitUsageRun` is itself total: it never
+    // rejects and races each sink against a timeout. The try/catch covers
+    // building the sink list, which runs outside that guarantee.
+    if (record !== null) {
       try {
-        const { value, done } = await events.next();
-        if (done) {
-          controller.close();
-          return;
-        }
-        controller.enqueue(encoder.encode(JSON.stringify(value) + "\n"));
-        // runDigestPipeline never actually yields a "error" stage today —
-        // every failure propagates as a thrown exception, handled by the
-        // catch block below instead (whose own throw path already runs the
-        // generator's finally without needing events.return() here). This
-        // branch is kept for defensive symmetry in case a future change
-        // ever yields "error" directly.
-        if (value.stage === "done" || value.stage === "error") {
-          // The generator is still paused right at its final yield — it
-          // won't run its own finally block (which releases the
-          // generation-mutex claim) until resumed one more time. Force
-          // that resumption now, the same way cancel() below already does
-          // for early cancellation, instead of just closing the stream
-          // and leaving the generator (and its cleanup) suspended forever.
-          await events.return?.(undefined);
-          controller.close();
-        }
+        await emitUsageRun(defaultUsageSinks(supabase), record);
       } catch (err) {
-        console.error("[digest] pipeline failed:", err);
-        const message = err instanceof Error ? err.message : "Digest failed";
-        try {
-          controller.enqueue(encoder.encode(JSON.stringify({ stage: "error", message }) + "\n"));
-          controller.close();
-        } catch {
-          // Client already disconnected/canceled the stream — nothing left to tell it.
-        }
+        console.error("[digest] failed to write this run's cost record:", err);
       }
-    },
-    cancel() {
-      // Best-effort: stops the pipeline from starting its next stage once
-      // the client has gone away. A stage already in flight (e.g. a Claude
-      // call mid-request) still runs to completion — this isn't a hard abort.
-      events.return?.(undefined);
-    },
-  });
+    }
+  }
 }
 
 export async function POST() {
@@ -536,8 +511,28 @@ export async function POST() {
     );
   }
 
+  // After the claim, so a request refused with 409 above leaves no ledger
+  // row to undo. Sized from the topic count; the database computes the
+  // amount and checks every limit.
+  const reserved = await reserveSpend(supabase, "digest", {
+    topicCount: profile.topics.length,
+    ref: digestId,
+    keepAlive: (task) => after(task),
+  });
+  if (reserved.status !== "ok") {
+    await releaseDigestGeneration(supabase, digestId);
+    return spendRefusalResponse("digest", reserved);
+  }
+  const { reservation } = reserved;
+
   return new Response(
-    toNdjsonStream(runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor)),
+    toNdjsonStream(
+      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, reservation),
+      async () => {
+        await settleSpend(reservation, 0);
+        await releaseDigestGeneration(supabase, digestId);
+      }
+    ),
     { headers: { "Content-Type": "application/x-ndjson" } }
   );
 }

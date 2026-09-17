@@ -331,10 +331,10 @@ $$;
 -- no service-role client anywhere), so RLS can guarantee only that a row's
 -- user_id matches its author — it cannot validate the dollar figures. A user
 -- holding their own JWT can POST a row claiming total_billed_usd = 0 and
--- every policy below passes. V2.0's spend cap must therefore SIZE itself
--- from this table and ENFORCE against something the user cannot write
--- downward — a count of `digests` rows (insert-only, already unique
--- (user_id, date)). A cap that sums total_billed_usd is bypassable in one curl.
+-- every policy below passes. Spend caps therefore SIZE themselves from this
+-- table and ENFORCE against `spend_ledger` (bottom of this file), which no
+-- session can read or write. `digests` is not a safe count either: its UPDATE
+-- policy lets a user rewrite `date` and `last_generated_at`.
 --
 -- Append-only by construction: SELECT and INSERT policies only. With RLS
 -- enabled, policies are deny-by-default, so UPDATE and DELETE affect zero
@@ -579,3 +579,297 @@ $$;
 -- that, so only Supabase Auth can invoke the hook.
 revoke execute on function public.hook_require_invite(jsonb) from public, anon, authenticated;
 grant execute on function public.hook_require_invite(jsonb) to supabase_auth_admin;
+
+-- spend_config + spend_ledger + reserve_spend / settle_spend — spend caps.
+--
+-- Every Claude-spending request reserves a worst-case dollar amount here
+-- BEFORE any Claude call, and settles it to the real figure afterwards. A run
+-- killed mid-flight never settles, so it keeps its full reservation: a crash
+-- can never be free against the cap. That is what `usage_runs` cannot do,
+-- since its row is written from a `finally` a timeout kill skips.
+--
+-- Limits apply over a ROLLING 24 hours, not a calendar day, so there is no
+-- reset instant to spend across twice.
+--
+-- Neither table is reachable from any session: RLS on, no policies, every
+-- grant revoked. The only way in is the two functions below, which run as
+-- their owner (security definer).
+--
+-- Tuning and the kill switch are edits to the single `spend_config` row in
+-- the SQL editor, and take effect on the next request with no deploy:
+--   update public.spend_config set generation_enabled = false;
+
+create table public.spend_config (
+  id smallint primary key default 1 check (id = 1),
+  generation_enabled boolean not null default true,
+  -- numeric admits 'NaN', which compares greater than every number, so each
+  -- money column excludes it explicitly.
+  user_window_usd numeric(12,6) not null check (user_window_usd >= 0 and user_window_usd <> 'NaN'),
+  global_window_usd numeric(12,6) not null check (global_window_usd >= 0 and global_window_usd <> 'NaN'),
+  -- The first run plus top-ups.
+  max_digest_runs_per_window integer not null check (max_digest_runs_per_window >= 0),
+  max_expands_per_window integer not null check (max_expands_per_window >= 0),
+  digest_base_usd numeric(12,6) not null check (digest_base_usd > 0 and digest_base_usd <> 'NaN'),
+  digest_per_topic_usd numeric(12,6) not null check (digest_per_topic_usd >= 0 and digest_per_topic_usd <> 'NaN'),
+  digest_max_usd numeric(12,6) not null check (digest_max_usd > 0 and digest_max_usd <> 'NaN'),
+  -- The number of topics a profile can hold (TOPICS in src/types.ts). A topic
+  -- count sent to reserve_spend is clamped to it, so a direct caller cannot
+  -- size a reservation past what a real profile could produce.
+  digest_max_topics integer not null check (digest_max_topics >= 1),
+  -- Worst case: two Sonnet calls at max_tokens 4096 (the truncation retry).
+  expand_usd numeric(12,6) not null check (expand_usd > 0 and expand_usd <> 'NaN')
+);
+
+-- Sized from measured runs: a full 13-topic profile cost $0.47 first-of-day
+-- and $0.20 per top-up; an expand ~$0.0105.
+insert into public.spend_config (
+  id, generation_enabled, user_window_usd, global_window_usd,
+  max_digest_runs_per_window, max_expands_per_window,
+  digest_base_usd, digest_per_topic_usd, digest_max_usd, digest_max_topics, expand_usd
+) values (1, true, 2.00, 10.00, 4, 15, 0.05, 0.05, 0.70, 13, 0.12);
+
+create table public.spend_ledger (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null check (kind in ('digest', 'expand')),
+  reserved_usd numeric(12,6) not null check (reserved_usd > 0 and reserved_usd <> 'NaN'),
+  actual_usd numeric(12,6) check (actual_usd >= 0 and actual_usd <> 'NaN'),
+  status text not null default 'reserved' check (status in ('reserved', 'settled')),
+  -- sha256 of the settle token. The raw token only travels database -> app
+  -- server -> database, never to a browser.
+  settle_token_hash text not null,
+  -- The digest or card this was for. Informational only: never trusted.
+  ref_id uuid,
+  created_at timestamptz not null default now(),
+  settled_at timestamptz,
+  constraint spend_ledger_settled_has_actual
+    check ((status = 'settled') = (actual_usd is not null))
+);
+
+create index spend_ledger_user_created_idx on public.spend_ledger (user_id, created_at);
+create index spend_ledger_created_idx on public.spend_ledger (created_at);
+
+alter table public.spend_config enable row level security;
+alter table public.spend_ledger enable row level security;
+
+revoke all on table public.spend_config from anon, authenticated;
+revoke all on table public.spend_ledger from anon, authenticated;
+
+-- Returns {ok: true, reservation_id, settle_token, reserved_usd}, or
+-- {ok: false, reason, available_at} where reason is one of
+-- disabled | user_count | too_large | user_budget | global_budget.
+-- available_at is when the refused request would next fit, or null when
+-- waiting cannot help (disabled, too_large, a count cap of 0).
+--
+-- The amount is computed HERE from spend_config, never taken from the caller.
+-- A caller-supplied figure could be 'NaN', which would poison the global sum
+-- and refuse every user.
+--
+-- A row counts toward the run/expand COUNT while it is reserved, or settled
+-- above $0. A run that stopped before any Claude call settles at $0 and does
+-- not use up a top-up. Every row counts toward the DOLLAR sums at
+-- coalesce(actual, reserved).
+create or replace function public.reserve_spend(
+  p_kind text,
+  p_topic_count integer default null,
+  p_ref uuid default null
+)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_cfg public.spend_config%rowtype;
+  v_since timestamptz;
+  v_amount numeric;
+  v_max_count integer;
+  v_count integer;
+  v_user_total numeric;
+  v_global_total numeric;
+  v_available timestamptz;
+  v_token text;
+  v_id uuid;
+begin
+  if v_user is null then
+    raise exception 'reserve_spend requires a signed-in user';
+  end if;
+  if p_kind is null or p_kind not in ('digest', 'expand') then
+    raise exception 'reserve_spend: unknown kind';
+  end if;
+
+  -- The one lock. Every reservation queues here, so two concurrent requests
+  -- cannot both read the same totals and both slip under a limit. Under READ
+  -- COMMITTED each statement below takes a fresh snapshot after the lock, so
+  -- it sees the previous holder's committed insert.
+  select * into v_cfg from public.spend_config where id = 1 for update;
+  if not found then
+    raise exception 'reserve_spend: spend_config row missing';
+  end if;
+
+  if not v_cfg.generation_enabled then
+    return jsonb_build_object('ok', false, 'reason', 'disabled', 'available_at', null);
+  end if;
+
+  v_since := now() - interval '24 hours';
+
+  if p_kind = 'digest' then
+    v_max_count := v_cfg.max_digest_runs_per_window;
+    -- A missing count is sized as the largest profile.
+    v_amount := least(
+      v_cfg.digest_max_usd,
+      v_cfg.digest_base_usd
+        + v_cfg.digest_per_topic_usd
+          * least(greatest(coalesce(p_topic_count, v_cfg.digest_max_topics), 1), v_cfg.digest_max_topics)
+    );
+  else
+    v_max_count := v_cfg.max_expands_per_window;
+    v_amount := v_cfg.expand_usd;
+  end if;
+
+  select count(*) into v_count
+  from public.spend_ledger
+  where user_id = v_user
+    and kind = p_kind
+    and created_at > v_since
+    and (status = 'reserved' or actual_usd > 0);
+
+  if v_count >= v_max_count then
+    v_available := null;
+    if v_max_count > 0 then
+      -- Newest first, the row at position max is the one whose expiry brings
+      -- the count back to max - 1.
+      select created_at + interval '24 hours' into v_available
+      from public.spend_ledger
+      where user_id = v_user
+        and kind = p_kind
+        and created_at > v_since
+        and (status = 'reserved' or actual_usd > 0)
+      order by created_at desc, id desc
+      offset v_max_count - 1
+      limit 1;
+    end if;
+    return jsonb_build_object('ok', false, 'reason', 'user_count', 'available_at', v_available);
+  end if;
+
+  if v_amount > v_cfg.user_window_usd or v_amount > v_cfg.global_window_usd then
+    return jsonb_build_object('ok', false, 'reason', 'too_large', 'available_at', null);
+  end if;
+
+  select coalesce(sum(coalesce(actual_usd, reserved_usd)), 0) into v_user_total
+  from public.spend_ledger
+  where user_id = v_user
+    and created_at > v_since;
+
+  if v_user_total + v_amount > v_cfg.user_window_usd then
+    -- Oldest first, the earliest row whose expiry (together with every older
+    -- row's) frees enough room for this amount. A settle committing between
+    -- the total above and this query can make the answer a few seconds off,
+    -- which moves the time shown to the user, never the refusal itself.
+    select t.created_at + interval '24 hours' into v_available
+    from (
+      select created_at, id,
+        sum(coalesce(actual_usd, reserved_usd)) over (order by created_at, id) as dropped
+      from public.spend_ledger
+      where user_id = v_user
+        and created_at > v_since
+    ) t
+    where v_user_total - t.dropped + v_amount <= v_cfg.user_window_usd
+    order by t.created_at, t.id
+    limit 1;
+    return jsonb_build_object('ok', false, 'reason', 'user_budget', 'available_at', v_available);
+  end if;
+
+  select coalesce(sum(coalesce(actual_usd, reserved_usd)), 0) into v_global_total
+  from public.spend_ledger
+  where created_at > v_since;
+
+  if v_global_total + v_amount > v_cfg.global_window_usd then
+    select t.created_at + interval '24 hours' into v_available
+    from (
+      select created_at, id,
+        sum(coalesce(actual_usd, reserved_usd)) over (order by created_at, id) as dropped
+      from public.spend_ledger
+      where created_at > v_since
+    ) t
+    where v_global_total - t.dropped + v_amount <= v_cfg.global_window_usd
+    order by t.created_at, t.id
+    limit 1;
+    return jsonb_build_object('ok', false, 'reason', 'global_budget', 'available_at', v_available);
+  end if;
+
+  -- Two v4 UUIDs: 244 random bits from the core strong RNG, with no extension
+  -- dependency.
+  v_token := encode(uuid_send(gen_random_uuid()), 'hex') || encode(uuid_send(gen_random_uuid()), 'hex');
+
+  insert into public.spend_ledger (user_id, kind, reserved_usd, settle_token_hash, ref_id)
+  values (v_user, p_kind, v_amount, encode(sha256(convert_to(v_token, 'UTF8')), 'hex'), p_ref)
+  returning id into v_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'reservation_id', v_id,
+    'settle_token', v_token,
+    'reserved_usd', v_amount
+  );
+end;
+$$;
+
+-- Replaces a reservation with the real figure, once. The token is the only
+-- credential, deliberately: no login is checked, so a session that expired
+-- during a long run cannot strand the reservation at its worst-case amount.
+-- A caller can only hold the token of a reservation the app server made for
+-- them, or of one they made themselves by calling reserve_spend directly,
+-- which bought no Claude spend.
+--
+-- The actual is STORED at no more than the reservation. The token of a
+-- directly-created reservation is in the caller's hands, so any amount above
+-- it would let one account record more than reserve_spend ever admitted and
+-- push the global sum toward refusing every user. Every reservation was
+-- checked against the limits when it was made, so capping each settle at its
+-- own reservation keeps a user's recorded total within their window limit
+-- whatever order reserves and settles arrive in. A real run that costs more
+-- than its reservation is recorded at the reservation here; its true figure
+-- is in usage_runs, and the Anthropic Console limit is the hard stop.
+-- Returns false, and changes nothing, for a bad amount, a wrong token, or a
+-- reservation already settled.
+create or replace function public.settle_spend(
+  p_id uuid,
+  p_token text,
+  p_actual_usd numeric
+)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  -- The NaN test is belt and braces: numeric sorts NaN above every value, so
+  -- the upper bound rejects it too.
+  if p_id is null or p_token is null or p_actual_usd is null
+     or p_actual_usd = 'NaN' or p_actual_usd < 0 or p_actual_usd >= 1000000 then
+    return false;
+  end if;
+
+  update public.spend_ledger
+  set actual_usd = least(p_actual_usd, reserved_usd),
+      status = 'settled',
+      settled_at = now()
+  where id = p_id
+    and status = 'reserved'
+    and settle_token_hash = encode(sha256(convert_to(p_token, 'UTF8')), 'hex');
+
+  return found;
+end;
+$$;
+
+-- Functions in `public` are executable by PUBLIC, anon and authenticated by
+-- default. reserve_spend needs a signed-in user; settle_spend is anon-callable
+-- on purpose (see above).
+revoke execute on function public.reserve_spend(text, integer, uuid) from public, anon;
+grant execute on function public.reserve_spend(text, integer, uuid) to authenticated;
+revoke execute on function public.settle_spend(uuid, text, numeric) from public;
+grant execute on function public.settle_spend(uuid, text, numeric) to anon, authenticated;

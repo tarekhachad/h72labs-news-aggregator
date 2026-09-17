@@ -470,6 +470,17 @@ Caps: a **per-user daily dollar budget** as the real bound, with **3 top-ups** a
 - **Plan-mode scope:** the table shape and which functions may write it; how a reservation is sized from topic/source counts (and what the 2026-09-15 cost run changed about that); the per-user daily budget number and the global daily number; reservation settlement, including a run that never returns; what the user is shown at each cap and when it resets; how the kill switch is read; and how each cap is **tested to actually block**, which V2.0's done-condition requires by name.
 - **Done when:** a user at their cap is refused generation with a clear message and a reset time; a killed run still consumes its reservation; the global breaker and kill switch are both demonstrated stopping generation; and the Console limit is set.
 
+**Planned 2026-09-17 — what changed from the text above.** Four decisions from plan mode supersede parts of this item:
+
+- **Limits are a rolling 24 hours, not a calendar day.** \$2.00 per user and \$10.00 globally in any 24 hours, plus 4 digest runs (the first and 3 top-ups) and 15 expands. A calendar day lets one user spend a full day's limit just before the reset and another just after. A rolling window has no reset moment, and it makes the caps independent of V2.1.7's day definition. A refusal names the exact time the next request would fit.
+- **The kill switch is a database setting, not an environment variable.** Vercel only applies an env change to a new deployment, so "no redeploy" was not achievable with an env var. `spend_config.generation_enabled` is read under the same lock as every reservation and takes effect on the next request. The budget numbers live in the same row.
+- **Settling needs no login.** The settle token is the credential, so a session that expires during a run cannot strand the worst-case reservation.
+- **A stream cancelled before it starts settles at \$0 and releases the claim.**
+- **Keep `global_window_usd` at or above invitees × \$2.** Below that, one account can use up the shared headroom and pause everyone.
+- **Console monthly limit: \$50.**
+
+V2.1.3's duration half (`maxDuration` 120s, `STALE_CLAIM_MS` 180s, and a test that fails if the claim window stops outlasting the timeout) ships inside this item.
+
 #### V2.1.3 — Run duration and the generation mutex
 
 Raise `maxDuration` to **120s** (the 2026-09-11 full run took 56s against a 60s limit, and a kill skips the `finally` that records spend and advances the cursor). **`STALE_CLAIM_MS` must move with it** — it is 120s today, and leaving the two equal makes a live run's claim reclaimable exactly at the boundary, which is two pipelines and double spend for one user. Proposed 180s.
@@ -478,6 +489,8 @@ This is also where the folded **per-digest-row mutex** item is fixed: claiming p
 
 - **Plan-mode scope:** the new durations and the invariant tying them together (and whether that invariant can be made to fire rather than be commented); per-user claiming without breaking the existing compare-and-swap; what happens to a claim held by a killed run; interaction with V2.1.2's reservations.
 - **Done when:** both durations are raised with the stale window provably longer than the timeout, a second concurrent generation for one user is refused across a day boundary, and the folded mutex item is struck from the list below.
+
+**Moved 2026-09-17:** the duration half (both durations and their enforced invariant) shipped inside V2.1.2, so a full-profile run near the old 60s limit would not be killed and keep its whole reservation. What remains here is per-user claiming across a day boundary.
 
 #### V2.1.4 — Per-day card cap, not per-run
 
@@ -510,6 +523,8 @@ The folded timezone item. A digest's date is a UTC calendar day, so Tarek's own 
 
 - **Plan-mode scope:** detect versus store versus ask; what a traveling user should see; the interaction with V2.1.3's per-user mutex and with the since-cursor; what happens to digests already stored under UTC dates.
 - **Done when:** a digest generated at 9pm local still reads as today's for that user, verified in at least two timezones.
+
+**Note 2026-09-17:** spend caps count a rolling 24 hours (V2.1.2), so changing what "today" means here does not touch any limit.
 
 #### V2.1.8 — Retry clusters lost to transient failures
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Card } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
+import { expandErrorMessage } from "@/lib/spendMessage";
 
 /**
  * Renders one story card: the always-visible short summary, the lazy
@@ -44,7 +45,7 @@ export function CardItem({
     setReportError(null);
     try {
       const res = await fetch(`/api/cards/${card.id}/expand`, { method: "POST" });
-      if (!res.ok) throw new Error("Couldn't load the full report — try again.");
+      if (!res.ok) throw new Error(await expandErrorMessage(res));
       const data = (await res.json()) as { expandedReport: string };
       setReport(data.expandedReport);
     } catch (e) {

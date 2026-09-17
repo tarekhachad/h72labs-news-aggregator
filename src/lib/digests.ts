@@ -455,11 +455,11 @@ export async function saveGeneratedCards(
 
 // How long a "generating" claim is honored before it's considered stale and
 // reclaimable — comfortably longer than the digest route's own
-// maxDuration (60s), so a genuinely in-flight generation is never falsely
+// maxDuration (120s), so a genuinely in-flight generation is never falsely
 // reclaimed, but a claim left behind by a hard function-timeout kill (which
 // can skip a JS `finally` block entirely) self-heals instead of wedging a
 // digest permanently.
-const STALE_CLAIM_MS = 2 * 60 * 1000;
+export const STALE_CLAIM_MS = 3 * 60 * 1000;
 
 /**
  * Atomically claims this digest for generation, so two concurrent requests

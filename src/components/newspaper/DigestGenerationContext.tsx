@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useRef, useState } from "react"
 import type { Card } from "@/types";
 import { applyRankUpdates, type RankUpdate } from "@/lib/rankUpdates";
 import { ENTRANCE_DURATION_SECONDS, ENTRANCE_STAGGER_SECONDS } from "@/lib/entranceTiming";
+import { errorMessageFromResponse } from "@/lib/spendMessage";
 
 // Mirrors the DigestEvent["stage"] union the API streams — kept as plain
 // strings here since the client doesn't need the payload types, just the
@@ -148,8 +149,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
       try {
         const res = await fetch("/api/digest", { method: "POST" });
         if (!res.ok || !res.body) {
-          const message = await res.text().catch(() => "");
-          throw new Error(message || `Request failed (${res.status})`);
+          throw new Error(await errorMessageFromResponse(res, `Request failed (${res.status})`));
         }
 
         const reader = res.body.getReader();

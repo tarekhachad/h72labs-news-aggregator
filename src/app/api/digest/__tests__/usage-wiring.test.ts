@@ -35,6 +35,20 @@ const mocks = vi.hoisted(() => ({
   getTodaysCardSummaries: vi.fn(),
 }));
 
+// Spend caps are not under test here: every reservation is granted and every
+// settle succeeds. spend-cap-wiring.test.ts covers them.
+vi.mock("@/lib/spend", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/spend")>("@/lib/spend");
+  return {
+    ...actual,
+    reserveSpend: vi.fn(async () => ({
+      status: "ok",
+      reservation: { id: "reservation-id", token: "settle-token", reservedUsd: 0.7 },
+    })),
+    settleSpend: vi.fn(async () => true),
+  };
+});
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: mocks.getUser } })),
 }));

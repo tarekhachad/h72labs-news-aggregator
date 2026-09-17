@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "motion/react";
 import type { Card } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
+import { expandErrorMessage } from "@/lib/spendMessage";
 import type { GridTier } from "@/lib/gridTiers";
 import type { GridPosition } from "@/lib/packGrid";
 import { cn } from "@/lib/utils";
@@ -211,7 +212,7 @@ export function NewsCard({
     setReportError(null);
     try {
       const res = await fetch(`/api/cards/${card.id}/expand`, { method: "POST" });
-      if (!res.ok) throw new Error("Couldn't load the full report — try again.");
+      if (!res.ok) throw new Error(await expandErrorMessage(res));
       const data = (await res.json()) as { expandedReport: string };
       setReport(data.expandedReport);
     } catch (e) {

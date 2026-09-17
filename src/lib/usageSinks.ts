@@ -27,7 +27,7 @@
  * a hard requirement, not defensiveness. It is called from the digest
  * route's `finally`, and a call there that never settles would block the
  * stream from closing and lock the user out of generating again until the
- * stale-claim window (2 min) expires. A `try/catch` handles a throw; only a
+ * stale-claim window (3 min) expires. A `try/catch` handles a throw; only a
  * timeout handles a hang.
  */
 
