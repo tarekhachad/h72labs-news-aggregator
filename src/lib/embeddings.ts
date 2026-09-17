@@ -56,14 +56,30 @@ async function reportBackend(): Promise<void> {
 // up catastrophically — this crashed a real machine. Chunking into bounded
 // batches caps peak memory to one chunk's worth, regardless of how much text
 // a caller ends up embedding in total.
-const EMBED_BATCH_SIZE = 64;
+const EMBED_BATCH_SIZE = 32;
+
+// A caller's text is not trusted to be short. Attention memory grows with
+// batch_size x longest_sequence^2, so one unbounded item decides the cost of
+// its whole batch: a 48,191-character feed item killed a 2048 MB production
+// instance five seconds into clustering. Callers bound their own text (see
+// SNIPPET_CHARS_FOR_CLUSTERING in cluster.ts and SNIPPET_CHARS_PER_ARTICLE in
+// dedup.ts); this is the backstop that makes a future caller forgetting to
+// harmless, and it sits above every caller's own limit so it never silently
+// changes what they meant to embed.
+//
+// The model reads about 512 tokens, so a 2000-character cut removes text it
+// would have ignored: a truncated long article's vector is cosine 0.991 to
+// the full text's, against a 0.65 clustering threshold.
+const MAX_EMBED_CHARS = 2000;
 
 export async function embed(texts: string[]): Promise<number[][]> {
   const embedder = await getEmbedder();
   const vectors: number[][] = [];
 
   for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
-    const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
+    const batch = texts
+      .slice(i, i + EMBED_BATCH_SIZE)
+      .map((text) => (text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text));
     const output = await embedder(batch, { pooling: "mean", normalize: true });
     const [rows, cols] = output.dims;
     const data = output.data as Float32Array;
