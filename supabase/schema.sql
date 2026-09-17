@@ -451,3 +451,131 @@ create policy "insert own usage runs"
   with check (auth.uid() = user_id);
 
 -- Deliberately no update and no delete policy. Their absence is the design.
+
+-- invites + hook_require_invite — invite-only signup.
+--
+-- THE HOOK IS THE GATE, NOT THE APP. Supabase's /auth/v1/signup endpoint is
+-- callable directly with the publishable key, so a check in the signup server
+-- action can be skipped entirely. The before-user-created hook below runs
+-- inside Supabase Auth for every signup path (email/password, OAuth, magic
+-- link, anonymous, the dashboard's "Invite user"). Admin user creation (the
+-- dashboard's "Add user", or the secret key) does not trigger it, and that is
+-- the manual override.
+--
+-- Enabling it is a dashboard step, not SQL: Authentication -> Hooks -> Before
+-- User Created -> Postgres -> public.hook_require_invite. Enable the hook
+-- BEFORE turning "Allow new users to sign up" on — from that moment the hook
+-- is the only thing standing between the internet and account creation.
+--
+-- Invites are minted by `npm run invite` using the secret key, which bypasses
+-- RLS; that is the only insert path. No session — anon or authenticated —
+-- can read or write this table: no policies for either role, and every grant
+-- revoked, so even a future policy added by mistake has nothing to unlock.
+--
+-- Only the sha256 of a token is stored. The raw token exists in the printed
+-- link and nowhere else, so a read of this table cannot mint a working link.
+
+create table public.invites (
+  id uuid primary key default gen_random_uuid(),
+  token_hash text not null unique,
+  -- Supabase Auth lowercases the signup email before the hook sees it, so the
+  -- hook compares with plain equality. The check makes a mixed-case insert
+  -- fail loudly instead of minting an invite that can never match.
+  email text not null check (email = lower(email)),
+  label text not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  -- No FK: the hook runs before the auth.users row exists, and GoTrue has
+  -- already assigned the id it is about to insert.
+  consumed_by uuid,
+  created_at timestamptz not null default now()
+);
+
+alter table public.invites enable row level security;
+
+revoke all on table public.invites from anon, authenticated;
+
+grant usage on schema public to supabase_auth_admin;
+grant select, update on table public.invites to supabase_auth_admin;
+
+create policy "auth admin reads invites"
+  on public.invites for select
+  to supabase_auth_admin
+  using (true);
+
+create policy "auth admin consumes invites"
+  on public.invites for update
+  to supabase_auth_admin
+  using (true)
+  with check (true);
+
+-- Receives GoTrue's hook payload; `invite_token` arrives in user_metadata
+-- because the signup action passes it as signUp's options.data.
+--
+-- Two properties of how GoTrue runs this hook shape the body:
+-- - It runs in its OWN transaction, committed before the user row is
+--   inserted. So a write here persists even when the function then returns
+--   an error object — the token is consumed only on the path that allows the
+--   signup. And if the user insert fails afterwards (a same-email race, a
+--   database fault), the invite stays spent; Tarek mints another.
+-- - An exception raised here makes GoTrue reject the signup, so the hook
+--   fails closed.
+--
+-- Concurrency needs no explicit lock: two signups with one token both target
+-- the same row in the UPDATE. The second blocks until the first commits,
+-- re-evaluates `consumed_at is null` against the committed row, matches
+-- nothing, and is rejected.
+--
+-- Invoker rights (Supabase's guidance for auth hooks: security definer would
+-- run this as `postgres`). Empty search_path, so every name is qualified.
+create or replace function public.hook_require_invite(event jsonb)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_token text := event->'user'->'user_metadata'->>'invite_token';
+  v_email text := lower(event->'user'->>'email');
+  v_user_id uuid := (event->'user'->>'id')::uuid;
+  v_hash text;
+begin
+  if v_token is null or v_token = '' then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 403, 'message', 'invite_required'));
+  end if;
+
+  -- Must match hashInviteToken() in src/lib/invite.ts byte for byte.
+  v_hash := encode(sha256(convert_to(v_token, 'UTF8')), 'hex');
+
+  update public.invites
+  set consumed_at = now(),
+      consumed_by = v_user_id
+  where token_hash = v_hash
+    and consumed_at is null
+    and expires_at > now()
+    and email = v_email;
+
+  if found then
+    return '{}'::jsonb;
+  end if;
+
+  -- The consume failed. Tell apart only the case the invitee can fix: a live
+  -- invite used with the wrong address, which leaves the link unspent. This
+  -- distinction is visible only to someone already holding a real token.
+  perform 1
+  from public.invites
+  where token_hash = v_hash
+    and consumed_at is null
+    and expires_at > now();
+
+  if found then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 403, 'message', 'invite_email_mismatch'));
+  end if;
+
+  return jsonb_build_object('error', jsonb_build_object('http_code', 403, 'message', 'invite_invalid'));
+end;
+$$;
+
+-- Functions in `public` are callable over /rest/v1/rpc by default. Revoke
+-- that, so only Supabase Auth can invoke the hook.
+revoke execute on function public.hook_require_invite(jsonb) from public, anon, authenticated;
+grant execute on function public.hook_require_invite(jsonb) to supabase_auth_admin;

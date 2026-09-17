@@ -8,6 +8,7 @@
     "start": "next start",
     "test": "vitest run",
     "cost-report": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/cost-report.mts",
+    "invite": "node --env-file=.env.admin --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/invite.mts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },

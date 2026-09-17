@@ -314,6 +314,8 @@ _Opened 2026-08-12, after Tarek reversed the "close v1 undeployed and hand frien
 
 ### V2 SETUP — trial Matt Pocock's engineering skills (do this before V2 code, not during)
 
+> **CLOSED 2026-09-16 — dropped by Tarek at the start of V2.1.1.** Raised again as instructed; declined. The 2026-09-15 assessment stood: `grill-with-docs`' artifact largely duplicates `(C) GLOSSARY.md`, and the other two added little to a project already running a four-tier review loop and 746 tests. Kept below as the record of what was considered — do not raise it again.
+>
 > **Raised 2026-08-26, during h72labs-website's tooling review. Tarek's explicit instruction: surface this unprompted when V2 work opens, even if he has forgotten it.**
 
 [`mattpocock/skills`](https://github.com/mattpocock/skills) — "Skills for Real Engineers," MIT, 237,830★, actively maintained (last push 2026-08-24). 29 skills across engineering / productivity / misc. Its thesis: as agents accelerate coding, engineering fundamentals matter *more*, not less. It targets four failure modes — misalignment (agent builds the wrong thing), verbosity (no shared project vocabulary), non-functional code (weak feedback loops), and architectural decay (velocity without design discipline).
