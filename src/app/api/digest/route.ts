@@ -29,6 +29,7 @@ import {
 } from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 import { toNdjsonStream } from "@/lib/ndjsonStream";
+import { memoryMark } from "@/lib/runtimeMemory";
 import {
   reserveSpend,
   settleAmount,
@@ -161,12 +162,20 @@ async function* runDigestPipeline(
   // any other early return from a generator).
   try {
     yield { stage: "ingesting" };
+    memoryMark("before ingest", { topics: profile.topics.length, sources: profile.preferredSources.length });
     const articles = await ingestArticles(profile.topics, profile.preferredSources, sinceIso);
     shape.articleCount = articles.length;
+    // longestText is here because it is the one input to clustering with no
+    // bound at all: a single feed item has arrived at 48,191 characters.
+    memoryMark("after ingest", {
+      articles: articles.length,
+      longestText: articles.reduce((max, a) => Math.max(max, `${a.title}. ${a.snippet}`.length), 0),
+    });
 
     yield { stage: "clustering", articleCount: articles.length };
     const clusters = await clusterArticles(articles);
     shape.clusterCount = clusters.length;
+    memoryMark("after cluster", { clusters: clusters.length });
 
     // Today's already-persisted cards (empty on a first run, since nothing's
     // saved yet) — fetched once and reused by two independent consumers
@@ -243,6 +252,7 @@ async function* runDigestPipeline(
     const outcomes = await withUsageCollector(usage, () =>
       triageClusters(survivingClusters)
     );
+    memoryMark("after triage", { clusters: survivingClusters.length });
     const triaged = survivingClusters.map((cluster, i) => ({
       cluster,
       notable: outcomes[i].notable,
@@ -280,6 +290,7 @@ async function* runDigestPipeline(
     // is what lets the feed pick out the latest run and badge its cards as
     // New, in both this live response and on every later reload.
     const generatedAt = new Date().toISOString();
+    memoryMark("after writeCard", { written: written.length });
 
     const cards: Card[] = [];
     for (const result of written) {

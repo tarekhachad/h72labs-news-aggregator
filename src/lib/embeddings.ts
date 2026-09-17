@@ -21,12 +21,31 @@ env.localModelPath = path.join(process.cwd(), "models");
 let embedderPromise: Promise<FeatureExtractionPipeline> | null = null;
 function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!embedderPromise) {
-    embedderPromise = pipeline(
-      "feature-extraction",
-      "Xenova/all-MiniLM-L6-v2"
+    embedderPromise = reportBackend().then(() =>
+      pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2")
     );
   }
   return embedderPromise;
+}
+
+/**
+ * Says once per instance which runtime will execute the model. This library
+ * treats onnxruntime-node as optional and falls back to a WebAssembly build
+ * when the native binding will not load — silently, and with very different
+ * memory behaviour, since a WASM heap grows to fit a whole batch and never
+ * returns it. A deployed run was killed for exceeding 2048 MB while the same
+ * work peaks near 150 MB locally on the native runtime, so which backend is
+ * live is the first thing worth knowing and nothing currently reports it.
+ */
+async function reportBackend(): Promise<void> {
+  try {
+    const ort = (await import("onnxruntime-node")) as { version?: string };
+    console.log(`[mem] onnx backend=native onnxruntime-node version=${ort.version ?? "unknown"}`);
+  } catch (err) {
+    console.log(
+      `[mem] onnx backend=wasm fallback — onnxruntime-node did not load: ${err instanceof Error ? err.message : "unknown error"}`
+    );
+  }
 }
 
 // A transformer model pads every sequence in a batch to match the longest
