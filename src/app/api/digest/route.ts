@@ -13,10 +13,13 @@ import {
   upsertDigestForToday,
   getLatestGeneratedAtForUser,
   saveGeneratedCards,
-  claimDigestForGeneration,
-  releaseDigestGeneration,
   getTodaysCardSummaries,
 } from "@/lib/digests";
+import {
+  claimGenerationForUser,
+  releaseGenerationClaim,
+  type GenerationClaim,
+} from "@/lib/generationClaim";
 import type { Card, Source, Topic } from "@/types";
 import { applyCardCap, MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
@@ -29,11 +32,11 @@ import {
 } from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 import { toNdjsonStream } from "@/lib/ndjsonStream";
+import { settleThenRelease, settleAbandonedRun } from "@/lib/runCleanup";
 import { memoryMark } from "@/lib/runtimeMemory";
 import {
   reserveSpend,
   settleAmount,
-  settleSpend,
   spendRefusalResponse,
   type Reservation,
 } from "@/lib/spend";
@@ -42,8 +45,10 @@ import {
 export const runtime = "nodejs";
 // The pipeline makes several sequential Claude calls plus a local embedding
 // pass — well past the platform's default function timeout. A full profile
-// has run 56s locally. STALE_CLAIM_MS in src/lib/digests.ts must stay longer
-// than this, or a live run's claim becomes reclaimable; a test enforces it.
+// has run 56s locally. The generation claim's staleness window must stay
+// longer than this, or a live run's claim becomes reclaimable — both
+// STALE_CLAIM_MS in src/lib/generationClaim.ts and the floor inside
+// claim_generation in supabase/schema.sql; a test enforces both.
 export const maxDuration = 120;
 
 // One line of this shape per pipeline stage, so the client can render real
@@ -90,7 +95,8 @@ async function* runDigestPipeline(
   digestId: string,
   profile: { topics: Topic[]; preferredSources: Source[] },
   sinceIso: string | null,
-  reservation: Reservation
+  reservation: Reservation,
+  claim: GenerationClaim
 ): AsyncGenerator<DigestEvent> {
   // Cost accounting for this run. Scopes are entered around each awaited
   // stage below rather than once around this whole generator: context
@@ -155,8 +161,9 @@ async function* runDigestPipeline(
     rankApplied: null,
   };
 
-  // The whole body is wrapped so the generation claim (see claimDigestForGeneration
-  // in the POST handler below) is always released on every exit path —
+  // The whole body is wrapped so the generation claim (see
+  // claimGenerationForUser in the POST handler below) is always released on
+  // every exit path —
   // normal completion, a thrown error, or early cancellation (toNdjsonStream's
   // cancel() calls events.return?.(), which runs this finally block same as
   // any other early return from a generator).
@@ -444,11 +451,12 @@ async function* runDigestPipeline(
       console.error("[digest] failed to build this run's cost record:", err);
     }
 
-    // Money first. settleSpend never throws and is bounded by its own
-    // timeout, so it cannot hold the release below hostage for longer than
-    // that bound.
-    await settleSpend(reservation, settleAmount(reservation.reservedUsd, record));
-    await releaseDigestGeneration(supabase, digestId);
+    await settleThenRelease(
+      supabase,
+      reservation,
+      claim,
+      settleAmount(reservation.reservedUsd, record)
+    );
 
     // DELIBERATELY AFTER THE RELEASE, and the order is a guarantee rather
     // than a precaution. This awaits a database insert (plus, in development
@@ -493,6 +501,22 @@ export async function POST() {
     return new Response("Onboarding incomplete", { status: 400 });
   }
 
+  // Mutual exclusion, taken before anything is written, so a request refused
+  // here leaves behind neither a digest row nor a ledger row. The claim is
+  // per USER, not per digest row: keyed per row, a UTC midnight rollover
+  // mints a new day's digest and lets a second pipeline start for the same
+  // user while the first is still running — two ingests, duplicate cards and
+  // two worst-case spend reservations. Released in runDigestPipeline's
+  // finally block once this run actually finishes (success, error, or
+  // cancellation).
+  const claim = await claimGenerationForUser(supabase);
+  if (claim === null) {
+    return new Response(
+      "A digest is already being generated for you — try again in a moment.",
+      { status: 409 }
+    );
+  }
+
   // The since-cursor is server-owned (digests.last_generated_at), not a
   // client-supplied value — this also makes "one digest per user per day,
   // appended to across multiple runs" an enforced fact instead of a client
@@ -504,22 +528,23 @@ export async function POST() {
   // other's result — the row upsertDigestForToday may create always has a
   // null last_generated_at, which the cursor query filters out — so they
   // issue concurrently rather than costing two serial round trips.
-  const [{ digestId }, sinceCursor] = await Promise.all([
-    upsertDigestForToday(supabase, user.id),
-    getLatestGeneratedAtForUser(supabase, user.id),
-  ]);
-
-  // Mutual exclusion: without this, a double-click or two open tabs could
-  // both reach this point with the same digestId/since-cursor and both
-  // run the full pipeline, producing duplicate cards and doubling Claude
-  // spend for the same window. Released in runDigestPipeline's finally
-  // block once this run actually finishes (success, error, or cancellation).
-  const claimed = await claimDigestForGeneration(supabase, digestId);
-  if (!claimed) {
-    return new Response(
-      "A digest is already being generated for today — try again in a moment.",
-      { status: 409 }
-    );
+  //
+  // Wrapped because the claim is already held by this point: anything that
+  // throws between taking it and the pipeline assuming ownership of it has to
+  // hand it back, or a transient database error locks the user out of
+  // generating until the staleness window expires.
+  let digestId: string;
+  let sinceCursor: string | null;
+  try {
+    const [upserted, cursor] = await Promise.all([
+      upsertDigestForToday(supabase, user.id),
+      getLatestGeneratedAtForUser(supabase, user.id),
+    ]);
+    digestId = upserted.digestId;
+    sinceCursor = cursor;
+  } catch (err) {
+    await releaseGenerationClaim(supabase, claim);
+    throw err;
   }
 
   // After the claim, so a request refused with 409 above leaves no ledger
@@ -531,17 +556,16 @@ export async function POST() {
     keepAlive: (task) => after(task),
   });
   if (reserved.status !== "ok") {
-    await releaseDigestGeneration(supabase, digestId);
+    await releaseGenerationClaim(supabase, claim);
     return spendRefusalResponse("digest", reserved);
   }
   const { reservation } = reserved;
 
   return new Response(
     toNdjsonStream(
-      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, reservation),
+      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, reservation, claim),
       async () => {
-        await settleSpend(reservation, 0);
-        await releaseDigestGeneration(supabase, digestId);
+        await settleAbandonedRun(supabase, reservation, claim);
       }
     ),
     { headers: { "Content-Type": "application/x-ndjson" } }

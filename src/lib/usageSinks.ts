@@ -142,7 +142,7 @@ export function defaultUsageSinks(supabase: SupabaseClient): UsageSink[] {
  * billed for two more seconds of wall clock.
  *
  * The failure it is designed against is specific: this is awaited in the
- * digest route's `finally`, AFTER `releaseDigestGeneration`. The ordering is
+ * digest route's `finally`, AFTER the generation claim is released. The ordering is
  * the first line of defence and the timeout is the second, because ordering
  * alone stops a hang from stranding the mutex but not from stranding the
  * response stream.

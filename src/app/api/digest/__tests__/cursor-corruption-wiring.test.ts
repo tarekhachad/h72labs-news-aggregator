@@ -34,8 +34,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
 }));
 
@@ -105,10 +105,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// Stands in for the claim's ownership token. This file only checks that the
+// release happens, not which token it carries; spend-cap-wiring.test.ts and
+// cursor-wiring.test.ts are where the token itself is asserted.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 
 const NOW = "2026-08-13T12:00:00.000Z";
 const HOURS = 60 * 60 * 1000;
@@ -159,8 +167,8 @@ beforeEach(() => {
   );
   mocks.writeCard.mockResolvedValue(undefined);
   mocks.rankFrontPage.mockResolvedValue([]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
 });

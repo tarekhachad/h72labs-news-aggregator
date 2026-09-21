@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
   getUserProfile: vi.fn(),
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   rpc: vi.fn(),
   after: vi.fn(),
 }));
@@ -27,9 +27,17 @@ vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// The claim's ownership token, threaded from claimGenerationForUser to
+// releaseGenerationClaim. A release presenting any other token would release
+// nothing, so asserting on this value is asserting the route threads it.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 
 // A controllable stand-in for the never-settling reserve_spend call — see
 // expand-keepalive-wiring.test.ts for why this can't just be a Promise that
@@ -47,8 +55,8 @@ beforeEach(() => {
   mocks.getUserProfile.mockResolvedValue({ topics: ["Tech/AI"], preferredSources: ["BBC"] });
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
   mocks.getLatestGeneratedAtForUser.mockResolvedValue(null);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -72,7 +80,7 @@ describe("digest route: keepAlive wiring to next/server's after()", () => {
 
     expect(res.status).toBe(429);
     expect(mocks.after).not.toHaveBeenCalled();
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledWith(expect.anything(), "digest-1");
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), { claimId: CLAIM_ID });
   });
 
   it("calls after() with the cleanup task when reserve_spend times out, and the task resolves once the late call settles", async () => {

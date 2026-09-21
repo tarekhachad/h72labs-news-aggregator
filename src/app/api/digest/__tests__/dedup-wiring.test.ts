@@ -26,8 +26,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
 }));
 
@@ -92,10 +92,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// Stands in for the claim's ownership token. This file only checks that the
+// release happens, not which token it carries; spend-cap-wiring.test.ts and
+// cursor-wiring.test.ts are where the token itself is asserted.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 
 const FAKE_CLUSTERS: Cluster[] = [
   {
@@ -134,8 +142,8 @@ beforeEach(() => {
   // Empty candidate pool by default (no existing cards, no notable clusters
   // in this suite's trivial setup) -- irrelevant to what these tests assert.
   mocks.rankFrontPage.mockResolvedValue([]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
   // A returning user by default -- the cursor no longer decides whether
@@ -221,7 +229,7 @@ describe("digest route: dedup step wiring on first run vs. later runs", () => {
 
     await runPost();
 
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -248,7 +256,7 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
 
     // The generation-mutex claim must still be released even on this
     // caught-internally failure path.
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("completes the digest using original clusters when filterAlreadyCovered throws (e.g. an embedding failure)", async () => {
@@ -271,6 +279,6 @@ describe("digest route: dedup step failure falls back to un-deduplicated cluster
     // Despite the throw, the original un-deduplicated clusters must still
     // reach triage.
     expect(mocks.triageClusters).toHaveBeenCalledWith(FAKE_CLUSTERS);
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 });

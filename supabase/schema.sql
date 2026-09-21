@@ -100,15 +100,11 @@ create table public.digests (
   -- in SQL precisely because Postgres sorts them first under DESC, so a
   -- freshly created row would otherwise win the ordering.
   last_generated_at timestamptz,
-  -- Mutual exclusion for concurrent generation requests (double-click, two
-  -- open tabs) — claimed via an atomic compare-and-swap UPDATE (see
-  -- claimDigestForGeneration in src/lib/digests.ts) before the pipeline
-  -- runs, so two concurrent requests can't both ingest/write/persist the
-  -- same window and double Claude spend + duplicate cards. generation_started_at
-  -- lets a claim be reclaimed if it's gone stale (the process died before
-  -- clearing the flag, e.g. a hard function-timeout kill) rather than
-  -- wedging a digest permanently — see the staleness window in the same
-  -- claim function.
+  -- Dead columns. The generation mutex is public.generation_claims, keyed on
+  -- the user rather than on one day's digest row — see that table at the end
+  -- of this file for why per-row claiming was wrong. These two are retained
+  -- only because dropping a column cannot be undone; nothing reads or writes
+  -- them, which `grep -rn generating src/` confirms in one command.
   generating boolean not null default false,
   generation_started_at timestamptz,
   created_at timestamptz not null default now(),
@@ -873,3 +869,118 @@ revoke execute on function public.reserve_spend(text, integer, uuid) from public
 grant execute on function public.reserve_spend(text, integer, uuid) to authenticated;
 revoke execute on function public.settle_spend(uuid, text, numeric) from public;
 grant execute on function public.settle_spend(uuid, text, numeric) to anon, authenticated;
+
+-- generation_claims + claim_generation / release_generation — the generation
+-- mutex.
+--
+-- Exactly one digest generation per USER at a time. The claim is keyed on
+-- user_id, never on a digest row: keyed per row, a UTC midnight rollover
+-- mints a new day's digest and lets a second pipeline start while the first
+-- is still running, which is two ingests, duplicate cards and two worst-case
+-- spend reservations for one user.
+--
+-- Neither the table nor its state is reachable from any session: RLS on, no
+-- policies, every grant revoked. The only way in is the two functions below,
+-- which run as their owner (security definer). That is load-bearing rather
+-- than conventional here — the staleness window is what protects a live run,
+-- so the party it binds must not be able to choose it.
+create table public.generation_claims (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  -- The ownership token, returned by claim_generation and required to
+  -- release. A run whose claim was reclaimed as stale holds a token that is
+  -- no longer here, so its late release deletes nothing rather than freeing
+  -- the claim that replaced it.
+  claim_id uuid not null unique,
+  -- Set by the function, not by a column default, so the staleness
+  -- comparison can never read a timestamp the caller supplied.
+  claimed_at timestamptz not null
+);
+
+-- Stated explicitly rather than left to a project-level default, so a
+-- rebuild from this file alone is still locked down.
+alter table public.generation_claims enable row level security;
+
+revoke all on table public.generation_claims from anon, authenticated;
+
+-- Returns the new claim's token, or null when a live claim is already held.
+--
+-- p_stale_ms is how long a claim is honored before it can be reclaimed, and
+-- it is clamped at both ends. Below the floor, a caller could reclaim a
+-- window still belonging to a run that is genuinely in flight; above the
+-- ceiling, a caller could wedge their own account until it expired. The floor
+-- must stay longer than the digest route's maxDuration, or a live run's claim
+-- becomes reclaimable while that run is still going — a test reads the floor
+-- out of this file and fails if the two ever cross.
+drop function if exists public.claim_generation(integer, uuid);
+drop function if exists public.claim_generation(integer);
+create or replace function public.claim_generation(p_stale_ms integer default null)
+returns uuid
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_floor_ms constant integer := 180000;
+  v_ceiling_ms constant integer := 3600000;
+  v_ms integer := least(greatest(coalesce(p_stale_ms, 0), v_floor_ms), v_ceiling_ms);
+  v_claim uuid;
+begin
+  if v_user is null then
+    raise exception 'claim_generation requires a signed-in user';
+  end if;
+
+  -- The whole mutex, in one statement. ON CONFLICT DO UPDATE takes the
+  -- conflicting row's lock and re-evaluates this WHERE against the latest
+  -- committed version of it, so under genuine overlap the loser sees the
+  -- winner's fresh claimed_at, updates nothing, and RETURNING yields no row.
+  -- Deliberately no explicit lock: a lock on any shared row would serialize
+  -- every user's claim behind every other user's for no benefit.
+  insert into public.generation_claims (user_id, claim_id, claimed_at)
+  values (v_user, gen_random_uuid(), now())
+  on conflict (user_id) do update
+    set claim_id = excluded.claim_id,
+        claimed_at = excluded.claimed_at
+    where public.generation_claims.claimed_at < now() - (v_ms * interval '1 millisecond')
+  returning claim_id into v_claim;
+
+  return v_claim;
+end;
+$$;
+
+-- Returns true when this token held the claim and it was released, false when
+-- it did not — a token whose claim was already reclaimed as stale releases
+-- nothing, which is what stops a zombie run from freeing its successor's
+-- claim.
+--
+-- The token is the only credential: no auth.uid() check, and anon may call
+-- it. Release runs in the same finally block as the spend settle, so a
+-- session that expired during a long run must still be able to let the claim
+-- go.
+drop function if exists public.release_generation(uuid);
+create or replace function public.release_generation(p_claim_id uuid)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if p_claim_id is null then
+    return false;
+  end if;
+
+  delete from public.generation_claims where claim_id = p_claim_id;
+
+  return found;
+end;
+$$;
+
+-- Functions in `public` are executable by PUBLIC, anon and authenticated by
+-- default. claim_generation needs a signed-in user; release_generation is
+-- anon-callable on purpose (see above).
+revoke execute on function public.claim_generation(integer) from public, anon;
+grant execute on function public.claim_generation(integer) to authenticated;
+revoke execute on function public.release_generation(uuid) from public;
+grant execute on function public.release_generation(uuid) to anon, authenticated;

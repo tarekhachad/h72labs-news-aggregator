@@ -44,8 +44,26 @@ One row per **calendar date per user** (`(user_id, date)` is unique) — not one
 | `date` | The calendar date this digest belongs to (drives the calendar-history view) |
 | `requested_topic` | Null for the default daily digest; set to the topic name for an ad-hoc request (Phase 4) |
 | `last_generated_at` | Null until this digest's first successful generation run finishes; from then on, the cutoff the next run's ingest step filters "since" — this is what makes repeated same-day clicks append only new stories instead of re-fetching everything |
-| `generating` | Mutual-exclusion flag — atomically claimed (compare-and-swap `UPDATE`) before a generation run starts, so a double-click or two open tabs can't both run the pipeline for the same digest and double the Claude spend + duplicate cards |
-| `generation_started_at` | When the current claim (if any) was made — a claim older than a couple minutes is treated as stale and reclaimable, so a run that died before clearing `generating` (e.g. a hard function-timeout kill) self-heals instead of wedging the digest permanently |
+| `generating` | **Dead.** Was the mutual-exclusion flag; the mutex is now `generation_claims` (below), keyed on the user rather than on one day's row. Read and written by nothing — kept only because dropping a column cannot be undone |
+| `generation_started_at` | **Dead**, alongside `generating`. Any value still in this column is a leftover timestamp from the last run that claimed the row before the mutex moved |
+
+## `generation_claims`
+
+At most one digest generation per **user** at a time. One row per user while a generation is in flight, and no row at all otherwise.
+
+Keyed on `user_id` because that is the thing that has to be exclusive. The previous design put the flag on `digests`, which is keyed `(user_id, date)` — so when UTC midnight passed mid-run, a second request computed a new day, got a brand-new row, claimed it, and one user ended up with two pipelines running: duplicate cards, overlapping ingest windows, and two worst-case spend reservations.
+
+Unreachable from any session: RLS is on with **no policies** and every grant revoked. The only way in is `claim_generation` and `release_generation`, which run as their owner. That matters rather than being mere convention — the staleness window is what protects a run that is still going, so the party it binds must not be able to choose it.
+
+| Field | What it holds |
+|---|---|
+| `user_id` | Primary key, and the whole point: one claim per user. Cascades on account deletion |
+| `claim_id` | The ownership token, minted by `claim_generation` and required by `release_generation`. A run whose claim was reclaimed as stale holds a token that is no longer here, so its late release deletes nothing instead of freeing the claim that replaced it |
+| `claimed_at` | When the claim was taken. Set by the function, never by a column default, so the staleness comparison cannot read a timestamp a caller supplied |
+
+`claim_generation(p_stale_ms)` returns a new token, or null when a live claim is already held. It takes the whole mutex in one statement — `insert ... on conflict (user_id) do update ... where <stale> returning claim_id` — so under genuine overlap the loser re-evaluates against the winner's committed row, updates nothing, and gets no row back. `p_stale_ms` is clamped between 180000 and 3600000: below the floor a caller could steal a claim from a run still in flight, above the ceiling a caller could wedge their own account until it expired. The floor must stay longer than the digest route's `maxDuration`, and a test reads it out of `schema.sql` to make sure it does.
+
+`release_generation(p_claim_id)` deletes the row only if the token still matches, returning whether it did. It is anon-callable on purpose, for the same reason `settle_spend` is: release runs in the same `finally` that settles the spend reservation, so a session that expired during a long run must still be able to let the claim go.
 
 ## `cards`
 

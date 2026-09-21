@@ -23,8 +23,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
 }));
 
@@ -62,10 +62,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// Stands in for the claim's ownership token. This file only checks that the
+// release happens, not which token it carries; spend-cap-wiring.test.ts and
+// cursor-wiring.test.ts are where the token itself is asserted.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 
 function cluster(topic: Topic, title: string): Cluster {
   return {
@@ -115,8 +123,8 @@ beforeEach(() => {
     cardFor(c, severity)
   );
   mocks.rankFrontPage.mockResolvedValue([]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
   mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
@@ -235,7 +243,7 @@ describe("digest route: triage outcome alignment (F.4.5)", () => {
     expect(lines.some((l) => l.stage === "error")).toBe(false);
     expect(lines[lines.length - 1].stage).toBe("done");
     expect(mocks.writeCard).not.toHaveBeenCalled();
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a healthy cluster's card when another cluster failed closed", async () => {
@@ -279,7 +287,7 @@ describe("digest route: defense-in-depth against a triageClusters contract viola
     expect(mocks.writeCard).not.toHaveBeenCalled();
     // The mutex must still be released even on this unexpected path --
     // otherwise the user would be permanently locked out of generating.
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a clean error event rather than misreading a short outcome array as the wrong clusters' verdicts", async () => {
@@ -296,6 +304,6 @@ describe("digest route: defense-in-depth against a triageClusters contract viola
     const lines = await runPostLines();
 
     expect(lines[lines.length - 1].stage).toBe("error");
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 });

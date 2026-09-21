@@ -23,8 +23,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
 }));
 
@@ -89,10 +89,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// The claim's ownership token, threaded from claimGenerationForUser to
+// releaseGenerationClaim. A release presenting any other token would release
+// nothing, so asserting on this value is asserting the route threads it.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 
 const FAKE_CLUSTERS: Cluster[] = [
   {
@@ -127,8 +135,8 @@ beforeEach(() => {
   );
   mocks.writeCard.mockResolvedValue(undefined);
   mocks.rankFrontPage.mockResolvedValue([]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
   mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
@@ -191,7 +199,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     );
   });
 
-  it("never starts the pipeline (no claim, no ingest) when getLatestGeneratedAtForUser throws", async () => {
+  it("releases the claim and never starts the pipeline when getLatestGeneratedAtForUser throws", async () => {
     mocks.getLatestGeneratedAtForUser.mockRejectedValue(
       new Error("connection reset"),
     );
@@ -199,43 +207,53 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     const { POST } = await import("@/app/api/digest/route");
     await expect(POST()).rejects.toThrow("connection reset");
 
-    expect(mocks.claimDigestForGeneration).not.toHaveBeenCalled();
+    // The claim is taken BEFORE this lookup, so the error path has to hand it
+    // back. Without that, one transient database error locks the user out of
+    // generating for the whole staleness window -- a far worse outcome than
+    // the failed request itself.
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), {
+      claimId: CLAIM_ID,
+    });
     expect(mocks.ingestArticles).not.toHaveBeenCalled();
-    // No claim was ever taken, so there's nothing to release -- asserting
-    // this guards against a future refactor accidentally calling release
-    // unconditionally and masking a leaked claim elsewhere.
-    expect(mocks.releaseDigestGeneration).not.toHaveBeenCalled();
   });
 
-  it("still fetches the cursor even when this run turns out to be a no-op (claim already held)", async () => {
-    // Regression guard: if a future refactor reordered these calls to only
-    // fetch the cursor after a successful claim, that would be a behavior
-    // change (and a wasted round trip either way) worth a test noticing.
-    mocks.claimDigestForGeneration.mockResolvedValue(false);
+  it("reads and writes nothing at all when the claim is already held", async () => {
+    // The claim is the first thing POST does, so a refused request never
+    // creates today's digest row and never spends a round trip on the cursor.
+    // That is the whole point of claiming before touching anything: a 409
+    // leaves no trace.
+    mocks.claimGenerationForUser.mockResolvedValue(null);
 
     const { POST } = await import("@/app/api/digest/route");
     const res = await POST();
 
     expect(res.status).toBe(409);
-    expect(mocks.getLatestGeneratedAtForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.upsertDigestForToday).not.toHaveBeenCalled();
+    expect(mocks.getLatestGeneratedAtForUser).not.toHaveBeenCalled();
     expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    // Nothing was claimed, so nothing may be released -- a release here would
+    // be clearing the claim that refused this request, which belongs to the
+    // run still using it.
+    expect(mocks.releaseGenerationClaim).not.toHaveBeenCalled();
   });
 
-  // The fix under test in this round: upsertDigestForToday and
-  // getLatestGeneratedAtForUser now issue via Promise.all rather than one
-  // sequential `await` after another. The tests below drive that concurrent
-  // wiring directly rather than just re-checking the values that come out
-  // the other end (already covered above).
+  // upsertDigestForToday and getLatestGeneratedAtForUser issue via
+  // Promise.all rather than one sequential `await` after another. The tests
+  // below drive that concurrent wiring directly rather than just re-checking
+  // the values that come out the other end (already covered above).
 
-  it("never starts the pipeline (no claim, no ingest, no release) when upsertDigestForToday throws -- the mirror case of getLatestGeneratedAtForUser throwing", async () => {
+  it("releases the claim when upsertDigestForToday throws -- the mirror case of getLatestGeneratedAtForUser throwing", async () => {
     mocks.upsertDigestForToday.mockRejectedValue(new Error("insert failed"));
 
     const { POST } = await import("@/app/api/digest/route");
     await expect(POST()).rejects.toThrow("insert failed");
 
-    expect(mocks.claimDigestForGeneration).not.toHaveBeenCalled();
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), {
+      claimId: CLAIM_ID,
+    });
     expect(mocks.ingestArticles).not.toHaveBeenCalled();
-    expect(mocks.releaseDigestGeneration).not.toHaveBeenCalled();
   });
 
   it("calls upsertDigestForToday and getLatestGeneratedAtForUser concurrently, not one after the other", async () => {
@@ -280,9 +298,11 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     // can produce.
     expect(mocks.upsertDigestForToday).toHaveBeenCalledTimes(1);
     expect(mocks.getLatestGeneratedAtForUser).toHaveBeenCalledTimes(1);
-    // And the claim must NOT have been taken yet -- it waits on BOTH
-    // promises, not just whichever settles first.
-    expect(mocks.claimDigestForGeneration).not.toHaveBeenCalled();
+    // The claim was taken before either of these was issued -- it no longer
+    // depends on the digest row, so it gates them rather than waiting on
+    // them. Asserted here so the reorder can't silently regress back to
+    // claiming a row that a midnight rollover would make the wrong row.
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledTimes(1);
 
     // Settled in the opposite order to the array, so nothing here depends on
     // which of the two finishes first.
@@ -290,13 +310,13 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     resolveUpsert({ digestId: "digest-1" });
     await postPromise;
 
-    expect(mocks.claimDigestForGeneration).toHaveBeenCalledWith(
-      expect.anything(),
-      "digest-1",
-    );
+    // No digest id, and that absence is the fix: the claim is keyed on the
+    // user inside the database, so there is no row for a day boundary to
+    // change underneath it.
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledWith(expect.anything());
   });
 
-  it("surfaces upsertDigestForToday's rejection (not getLatestGeneratedAtForUser's) when both reject, and still takes no claim", async () => {
+  it("surfaces upsertDigestForToday's rejection (not getLatestGeneratedAtForUser's) when both reject, and still releases the claim", async () => {
     // Documents actual Promise.all behavior for two already-rejected
     // promises built from `[upsertDigestForToday(...), getLatestGeneratedAtForUser(...)]`
     // in that order: the array's first element's rejection is the one that
@@ -312,7 +332,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     const { POST } = await import("@/app/api/digest/route");
     await expect(POST()).rejects.toThrow("upsert failed");
 
-    expect(mocks.claimDigestForGeneration).not.toHaveBeenCalled();
-    expect(mocks.releaseDigestGeneration).not.toHaveBeenCalled();
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 });

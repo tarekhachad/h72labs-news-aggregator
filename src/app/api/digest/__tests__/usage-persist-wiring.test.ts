@@ -9,8 +9,8 @@ import type { UsageRunRecord } from "@/lib/usageRecord";
 // What makes this file's existence non-negotiable: the emit is awaited inside
 // the generator's finally block, alongside the release of the generation
 // mutex. Get the order wrong, or let a sink hang in front of the release, and
-// a user is locked out of generating again until the stale-claim window (2
-// min) expires -- for no reason other than instrumentation. That failure is
+// a user is locked out of generating again until the stale-claim window
+// expires -- for no reason other than instrumentation. That failure is
 // invisible in the happy path and invisible in the types. Only an ordering
 // test catches it.
 //
@@ -31,8 +31,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
   defaultUsageSinks: vi.fn(),
 }));
@@ -68,10 +68,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// Stands in for the claim's ownership token. This file only checks that the
+// release happens, not which token it carries; spend-cap-wiring.test.ts and
+// cursor-wiring.test.ts are where the token itself is asserted.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 // Only the sink LIST is swapped. emitUsageRun stays real -- see the header.
 vi.mock("@/lib/usageSinks", async () => {
   const actual = await vi.importActual<typeof import("@/lib/usageSinks")>("@/lib/usageSinks");
@@ -146,8 +154,8 @@ beforeEach(() => {
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([EXISTING_CARD_SUMMARY]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockImplementation(async () => {
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockImplementation(async () => {
     order.push("release");
   });
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
@@ -350,8 +358,12 @@ describe("digest route: a run that ends early records what it never learned as n
 
 describe("digest route: recording a run can never strand the generation mutex", () => {
   // The whole reason this file exists. Each of these asserts the mutex was
-  // released EXACTLY once -- not zero times (the user is locked out) and not
-  // twice (a second release could clear a claim a later run had taken).
+  // released EXACTLY once. At least once is the user not being locked out for
+  // the staleness window. Exactly once is the evidence the generator's finally
+  // ran one time and one time only -- the same thing the single settle and the
+  // single record in this file are evidence of. A double release is no longer
+  // dangerous in itself, because a release only matches the token that
+  // currently holds the claim, but a finally that runs twice is.
 
   it("releases the mutex before the record is emitted at all", async () => {
     await runPostToCompletion();
@@ -359,7 +371,7 @@ describe("digest route: recording a run can never strand the generation mutex", 
     // Ordering is the guarantee. A try/catch cannot substitute for it,
     // because the failure this defends against is a hang, not a throw.
     expect(order).toEqual(["release", "emit"]);
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("releases the mutex exactly once when a sink REJECTS", async () => {
@@ -371,7 +383,7 @@ describe("digest route: recording a run can never strand the generation mutex", 
 
     await runPostToCompletion();
 
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("still returns a complete, usable response when a sink rejects", async () => {
@@ -406,12 +418,12 @@ describe("digest route: recording a run can never strand the generation mutex", 
     // parked on the hanging sink, so the stream cannot close yet.
     const drained = res.text();
 
-    await vi.waitFor(() => expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1));
 
     // Let the test exit cleanly rather than leaving work pending.
     letSinkFinish();
     await drained;
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 
   it("releases the mutex exactly once when building the record itself throws", async () => {
@@ -424,6 +436,6 @@ describe("digest route: recording a run can never strand the generation mutex", 
 
     await runPostToCompletion();
 
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
   });
 });

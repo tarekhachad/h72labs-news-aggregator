@@ -33,8 +33,8 @@ const mocks = vi.hoisted(() => ({
   upsertDigestForToday: vi.fn(),
   getLatestGeneratedAtForUser: vi.fn(),
   saveGeneratedCards: vi.fn(),
-  claimDigestForGeneration: vi.fn(),
-  releaseDigestGeneration: vi.fn(),
+  claimGenerationForUser: vi.fn(),
+  releaseGenerationClaim: vi.fn(),
   getTodaysCardSummaries: vi.fn(),
   defaultUsageSinks: vi.fn(),
 }));
@@ -70,10 +70,18 @@ vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday,
   getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards,
-  claimDigestForGeneration: mocks.claimDigestForGeneration,
-  releaseDigestGeneration: mocks.releaseDigestGeneration,
   getTodaysCardSummaries: mocks.getTodaysCardSummaries,
 }));
+
+vi.mock("@/lib/generationClaim", () => ({
+  claimGenerationForUser: mocks.claimGenerationForUser,
+  releaseGenerationClaim: mocks.releaseGenerationClaim,
+}));
+
+// Stands in for the claim's ownership token. This file only checks that the
+// release happens, not which token it carries; spend-cap-wiring.test.ts and
+// cursor-wiring.test.ts are where the token itself is asserted.
+const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
 vi.mock("@/lib/usageSinks", async () => {
   const actual = await vi.importActual<typeof import("@/lib/usageSinks")>("@/lib/usageSinks");
   return { ...actual, defaultUsageSinks: mocks.defaultUsageSinks };
@@ -136,8 +144,8 @@ beforeEach(() => {
   });
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
-  mocks.claimDigestForGeneration.mockResolvedValue(true);
-  mocks.releaseDigestGeneration.mockResolvedValue(undefined);
+  mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
+  mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-1" });
   mocks.getLatestGeneratedAtForUser.mockResolvedValue(null);
@@ -212,11 +220,11 @@ describe("digest route: cancelling mid-stage races pull() and cancel() on the sa
     resolveIngest([]);
 
     await cancelPromise;
-    await vi.waitFor(() => expect(mocks.releaseDigestGeneration).toHaveBeenCalled());
+    await vi.waitFor(() => expect(mocks.releaseGenerationClaim).toHaveBeenCalled());
     // Give any stray extra async work a chance to surface before asserting.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(mocks.releaseDigestGeneration).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
     expect(emitted).toHaveLength(1);
   });
 });
