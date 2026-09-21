@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CARDS_PER_TOPIC, applyCardCap } from "@/lib/cardCap";
+import {
+  FIRST_RUN_CARDS_PER_TOPIC,
+  applyCardCap,
+  type CardCapOptions,
+} from "@/lib/cardCap";
 import type { Cluster, Topic } from "@/types";
+
+// Every case in this file is the day's first run against an empty digest;
+// the tier and ceiling are covered in cardCap.tiered.test.ts.
+const FIRST_RUN: CardCapOptions = { runShape: "firstOfDay", existingCards: [] };
 
 function item(topic: Topic, severity: number, title = "t") {
   const cluster: Cluster = {
@@ -29,12 +37,12 @@ function group(topic: Topic, n: number, topSeverity = 5) {
 describe("applyCardCap", () => {
   it("keeps everything when a topic is under the cap", () => {
     const input = group("Tech/AI", 3);
-    expect(applyCardCap(input).kept).toEqual(input);
+    expect(applyCardCap(input, FIRST_RUN).kept).toEqual(input);
   });
 
   it("keeps everything when a topic is exactly at the cap", () => {
-    const input = group("Tech/AI", MAX_CARDS_PER_TOPIC);
-    expect(applyCardCap(input).kept).toEqual(input);
+    const input = group("Tech/AI", FIRST_RUN_CARDS_PER_TOPIC);
+    expect(applyCardCap(input, FIRST_RUN).kept).toEqual(input);
   });
 
   it("keeps the highest-severity clusters when a topic is over the cap", () => {
@@ -45,9 +53,9 @@ describe("applyCardCap", () => {
       item("Tech/AI", 5, "high"),
       ...group("Tech/AI", 10, 4),
     ];
-    const { kept } = applyCardCap(input);
+    const { kept } = applyCardCap(input, FIRST_RUN);
 
-    expect(kept).toHaveLength(MAX_CARDS_PER_TOPIC);
+    expect(kept).toHaveLength(FIRST_RUN_CARDS_PER_TOPIC);
     expect(kept.map((k) => k.severity).sort((a, b) => b - a)).toEqual([5, 4, 3, 2, 1, 1, 1, 1]);
     expect(kept).toContainEqual(input[1]);
   });
@@ -62,7 +70,7 @@ describe("applyCardCap", () => {
       item("Tech/AI", 3, "third"),
       ...group("Tech/AI", 9, 4),
     ];
-    const { kept } = applyCardCap(input);
+    const { kept } = applyCardCap(input, FIRST_RUN);
     const positions = kept.map((k) => input.indexOf(k));
 
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -71,7 +79,7 @@ describe("applyCardCap", () => {
   it("does not mutate or reorder the input array", () => {
     const input = [...group("Tech/AI", 12, 5)];
     const snapshot = [...input];
-    applyCardCap(input);
+    applyCardCap(input, FIRST_RUN);
     expect(input).toEqual(snapshot);
   });
 
@@ -81,12 +89,12 @@ describe("applyCardCap", () => {
       ...group("Morocco", 2, 5),
       ...group("Geopolitics", 20, 5),
     ];
-    const { kept } = applyCardCap(input);
+    const { kept } = applyCardCap(input, FIRST_RUN);
     const perTopic = (topic: Topic) => kept.filter((k) => k.cluster.topic === topic).length;
 
-    expect(perTopic("Tech/AI")).toBe(MAX_CARDS_PER_TOPIC);
+    expect(perTopic("Tech/AI")).toBe(FIRST_RUN_CARDS_PER_TOPIC);
     expect(perTopic("Morocco")).toBe(2);
-    expect(perTopic("Geopolitics")).toBe(MAX_CARDS_PER_TOPIC);
+    expect(perTopic("Geopolitics")).toBe(FIRST_RUN_CARDS_PER_TOPIC);
   });
 
   // The "minimum 4 per topic" intent is a ceiling-side target, never a
@@ -95,11 +103,11 @@ describe("applyCardCap", () => {
   // quota" and pay to write a story it already rejected.
   it("never invents cards for a topic that came up thin", () => {
     const input = group("World Finance", 2, 3);
-    expect(applyCardCap(input).kept).toHaveLength(2);
+    expect(applyCardCap(input, FIRST_RUN).kept).toHaveLength(2);
   });
 
   it("handles an empty list", () => {
-    expect(applyCardCap([]).kept).toEqual([]);
+    expect(applyCardCap([], FIRST_RUN).kept).toEqual([]);
   });
 
   // Selection is tracked by index, not object identity, precisely so this
@@ -112,19 +120,19 @@ describe("applyCardCap", () => {
     const dup = item("Tech/AI", 5, "dup");
     const input = [dup, ...group("Tech/AI", 8, 5), dup];
 
-    const { kept, cuts } = applyCardCap(input);
+    const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
     // Exactly the cap, not merely "no more than": 10 slots over a cap of 8
     // is fully determined, and an under-selecting fix (say, one that
     // collapsed both dup slots and returned 7) would slip past a
     // less-than-or-equal assertion.
-    expect(kept).toHaveLength(MAX_CARDS_PER_TOPIC);
-    expect(cuts[0].dropped).toBe(input.length - MAX_CARDS_PER_TOPIC);
+    expect(kept).toHaveLength(FIRST_RUN_CARDS_PER_TOPIC);
+    expect(cuts[0].dropped).toBe(input.length - FIRST_RUN_CARDS_PER_TOPIC);
   });
 
   it("reports a cut consistent with what it actually kept", () => {
     const input = [...group("Tech/AI", 11, 5), ...group("Morocco", 20, 5)];
-    const { kept, cuts } = applyCardCap(input);
+    const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
     // The two halves of the return value must describe the same operation:
     // total − dropped = kept, per topic. They're computed together so they
@@ -136,23 +144,25 @@ describe("applyCardCap", () => {
     expect(cuts.reduce((n, c) => n + c.dropped, 0)).toBe(input.length - kept.length);
   });
 
-  it("breaks ties at the boundary by input order, deterministically", () => {
-    // 10 clusters all at severity 3 — the first 8 win, every time.
+  it("falls back to input order only when severity AND corroboration are equal", () => {
+    // 10 clusters all at severity 3, and `group` builds one article each, so
+    // corroboration cannot separate them either — the first 8 win, every
+    // time. Corroboration's own effect is covered in cardCap.tiered.test.ts.
     const input = group("Tech/AI", 10, 3).map((i) => ({ ...i, severity: 3 }));
-    const { kept } = applyCardCap(input);
-    expect(kept).toEqual(input.slice(0, MAX_CARDS_PER_TOPIC));
+    const { kept } = applyCardCap(input, FIRST_RUN);
+    expect(kept).toEqual(input.slice(0, FIRST_RUN_CARDS_PER_TOPIC));
   });
 });
 
 describe("applyCardCap cuts", () => {
   it("reports nothing when no topic was over the cap", () => {
     const input = group("Tech/AI", 3);
-    expect(applyCardCap(input).cuts).toEqual([]);
+    expect(applyCardCap(input, FIRST_RUN).cuts).toEqual([]);
   });
 
   it("reports the topic, counts, and the severities that were cut", () => {
     const input = [...group("Tech/AI", 10, 5), ...group("Morocco", 2, 5)];
-    const { cuts } = applyCardCap(input);
+    const { cuts } = applyCardCap(input, FIRST_RUN);
 
     expect(cuts).toHaveLength(1);
     expect(cuts[0].topic).toBe("Tech/AI");

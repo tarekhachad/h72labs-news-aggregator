@@ -62,7 +62,7 @@ Steps 1–2 cost nothing. **Step 3 (triage) is the largest single cost, not step
 ## Accounts & auth
 
 Real signup/login from v1 (not a hardcoded single user) — handled by a managed auth provider (see Tech Stack) rather than hand-built, so password/session security isn't something built from scratch. On signup, a user picks:
-- **Topics of interest** — curated multi-select from a fixed list, **no hard cap on how many** (`profile.ts` enforces only `.min(1)`; Tarek's own profile runs 9). What bounds a digest is the per-topic card cap of 8, not the topic count. This said "up to 5" until 2026-08-14 — a number nothing ever enforced, and every cost measurement was taken at 9 topics. Free-text topic entry stays a v2 idea, deferred: it needs its own step to interpret arbitrary text into a source query, real added complexity for not much MVP value.
+- **Topics of interest** — curated multi-select from a fixed list, **no hard cap on how many** (`profile.ts` enforces only `.min(1)`; Tarek's own profile runs 9). What bounds a digest is the per-topic card cap, not the topic count: 8 per topic on the day's first run, 2 on each later same-day run, and never more than 14 per topic in one digest. This said "up to 5" until 2026-08-14 — a number nothing ever enforced, and every cost measurement was taken at 9 topics. Free-text topic entry stays a v2 idea, deferred: it needs its own step to interpret arbitrary text into a source query, real added complexity for not much MVP value.
 - **Preferred sources** — same pattern, curated multi-select (NYT, WaPo, Reuters, BBC, etc.), used as the weighting signal described above.
 
 ---

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CARDS_PER_TOPIC, applyCardCap, type TriagedCluster } from "@/lib/cardCap";
+import {
+  FIRST_RUN_CARDS_PER_TOPIC,
+  applyCardCap,
+  type CardCapOptions,
+  type TriagedCluster,
+} from "@/lib/cardCap";
+import type { RunShape } from "@/lib/usageRecord";
 import type { Cluster, Topic } from "@/types";
+
+const FIRST_RUN: CardCapOptions = { runShape: "firstOfDay", existingCards: [] };
 
 // Independent audit of applyCardCap, written to a different standard than
 // cardCap.test.ts: it re-derives the expected output by hand for each case
@@ -40,9 +48,9 @@ describe("applyCardCap — duplicate references, hand-derived", () => {
     const dup = item("Tech/AI", 5, "dup");
     const input = [dup, ...group("Tech/AI", 8, 5), dup];
 
-    const { kept, cuts } = applyCardCap(input);
+    const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
-    expect(kept).toHaveLength(MAX_CARDS_PER_TOPIC); // exact, not <=
+    expect(kept).toHaveLength(FIRST_RUN_CARDS_PER_TOPIC); // exact, not <=
     expect(cuts).toHaveLength(1);
     expect(cuts[0].total).toBe(10);
     expect(cuts[0].dropped).toBe(2);
@@ -85,7 +93,7 @@ describe("applyCardCap — duplicate references, hand-derived", () => {
     // exactly one of them must drop too — the lowest-index-order tie among
     // the sev-4 group, i.e. "h" (idx8) — on top of "a" (idx0, sev 1) which
     // was never in contention. Total dropped: "a" and "h".
-    const { kept } = applyCardCap(input);
+    const { kept } = applyCardCap(input, FIRST_RUN);
 
     const keptTitles = kept.map((k) => k.cluster.articles[0].title);
     expect(keptTitles).toEqual(["dup", "b", "c", "d", "e", "f", "g", "dup"]);
@@ -99,9 +107,9 @@ describe("applyCardCap — duplicate references, hand-derived", () => {
   it("triple duplicate reference: cap still holds exactly and cuts stay internally consistent", () => {
     const dup = item("Tech/AI", 3, "dup");
     const input = [dup, dup, dup, ...group("Tech/AI", 9, 3)]; // 12 total, all sev<=3
-    const { kept, cuts } = applyCardCap(input);
+    const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
-    expect(kept.length).toBe(MAX_CARDS_PER_TOPIC);
+    expect(kept.length).toBe(FIRST_RUN_CARDS_PER_TOPIC);
     expect(cuts[0].total).toBe(12);
     expect(cuts[0].dropped).toBe(4);
     expect(cuts[0].total - cuts[0].dropped).toBe(kept.length);
@@ -110,14 +118,13 @@ describe("applyCardCap — duplicate references, hand-derived", () => {
   it("duplicate reference in a topic that never exceeds the cap is untouched (no artificial drop)", () => {
     const dup = item("Tech/AI", 5, "dup");
     const input = [dup, item("Tech/AI", 2, "x"), dup]; // 3 slots, cap 8 — under cap
-    const { kept, cuts } = applyCardCap(input);
+    const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
     expect(kept).toEqual(input);
     expect(cuts).toEqual([]);
     expect(kept.filter((k) => k === dup).length).toBe(2);
   });
 });
-
 describe("applyCardCap — fuzzed invariants", () => {
   function seededRandom(seed: number) {
     let s = seed;
@@ -128,8 +135,29 @@ describe("applyCardCap — fuzzed invariants", () => {
   }
 
   const TOPICS: Topic[] = ["Tech/AI", "Morocco", "Geopolitics"];
+  const RUN_SHAPES: RunShape[] = ["firstEver", "firstOfDay", "sameDayTopUp", "unknown"];
 
-  it("holds across randomized inputs with duplicate references and duplicate severities", () => {
+  /**
+   * Like the file's own `item`, but with a variable number of source articles
+   * so the corroboration tie-break is genuinely exercised rather than
+   * trivially satisfied by every cluster having exactly one.
+   */
+  function multiItem(topic: Topic, severity: number, articleCount: number, title: string): TriagedCluster {
+    const cluster: Cluster = {
+      topic,
+      articles: Array.from({ length: articleCount }, (_, a) => ({
+        title: `${title}-${a}`,
+        snippet: "snippet",
+        url: `https://example.com/${title}-${a}`,
+        source: "BBC",
+        topic,
+        publishedAt: "2026-07-31T12:00:00Z",
+      })),
+    };
+    return { cluster, severity };
+  }
+
+  it("holds across randomized inputs, run shapes and existing-card counts", () => {
     const rand = seededRandom(42);
 
     for (let trial = 0; trial < 200; trial++) {
@@ -137,7 +165,7 @@ describe("applyCardCap — fuzzed invariants", () => {
       const pools: Record<string, TriagedCluster[]> = {};
       for (const t of TOPICS) {
         pools[t] = Array.from({ length: poolSize }, (_, i) =>
-          item(t, 1 + Math.floor(rand() * 5), `${t}-${i}`)
+          multiItem(t, 1 + Math.floor(rand() * 5), 1 + Math.floor(rand() * 4), `${t}-${i}`)
         );
       }
 
@@ -148,8 +176,35 @@ describe("applyCardCap — fuzzed invariants", () => {
         return pool[Math.floor(rand() * pool.length)]; // may repeat references
       });
 
+      // The allowance inputs are fuzzed too, not just the selection: the run
+      // shape picks the per-run allowance, and the existing counts decide
+      // whether the ceiling narrows it. One trial in five uses null, the
+      // failed-lookup case, where the ceiling cannot apply at all.
+      const runShape = RUN_SHAPES[Math.floor(rand() * RUN_SHAPES.length)];
+      const lookupFailed = rand() < 0.2;
+      const existingCounts = new Map<Topic, number>();
+      for (const t of TOPICS) existingCounts.set(t, Math.floor(rand() * 16));
+      const existingCards = lookupFailed
+        ? null
+        : TOPICS.flatMap((t) =>
+            Array.from({ length: existingCounts.get(t) ?? 0 }, () => ({ topic: t }))
+          );
+      const options: CardCapOptions = { runShape, existingCards };
+
+      // Re-derived here from the documented tiers rather than by calling the
+      // module's own perRunAllowanceFor/topicAllowance: an oracle that calls
+      // the function under test cannot detect a bug inside it, which is the
+      // one thing this adversarial file exists to do. The literals restate
+      // the constants deliberately, so changing them fails this file and
+      // forces it to be read.
+      const perRun = runShape === "firstEver" || runShape === "firstOfDay" ? 8 : 2;
+      const allowanceFor = (t: Topic) => {
+        if (lookupFailed) return perRun;
+        return Math.max(0, Math.min(perRun, 14 - (existingCounts.get(t) ?? 0)));
+      };
+
       const inputSnapshot = [...input];
-      const { kept, cuts } = applyCardCap(input);
+      const { kept, cuts } = applyCardCap(input, options);
 
       // 1. Input never mutated.
       expect(input).toEqual(inputSnapshot);
@@ -168,47 +223,52 @@ describe("applyCardCap — fuzzed invariants", () => {
         cursor = found;
       }
 
-      // 3. Per-topic cap never exceeded, and never fabricated beyond input count.
+      // 3. Each topic keeps exactly its allowance, or everything it had if
+      // that was less. An exact equality, so an under-selecting bug fails
+      // here rather than slipping past a `<=`.
       for (const t of TOPICS) {
         const totalForTopic = input.filter((x) => x.cluster.topic === t).length;
         const keptForTopic = kept.filter((x) => x.cluster.topic === t).length;
-        expect(keptForTopic).toBeLessThanOrEqual(MAX_CARDS_PER_TOPIC);
         expect(keptForTopic).toBeLessThanOrEqual(totalForTopic);
-        expect(keptForTopic).toBe(Math.min(totalForTopic, MAX_CARDS_PER_TOPIC));
+        expect(keptForTopic).toBe(Math.min(totalForTopic, allowanceFor(t)));
       }
 
-      // 4. cuts <-> kept internal consistency, and cuts only for topics over cap.
+      // 4. cuts <-> kept consistency, and a cut exists exactly when a topic
+      // had more than its allowance — which now includes the allowance-zero
+      // case, where everything that topic offered is dropped.
       for (const cut of cuts) {
         const keptForTopic = kept.filter((x) => x.cluster.topic === cut.topic).length;
         expect(cut.total - cut.dropped).toBe(keptForTopic);
-        expect(cut.total).toBeGreaterThan(MAX_CARDS_PER_TOPIC);
+        expect(cut.allowance).toBe(allowanceFor(cut.topic));
+        expect(cut.total).toBeGreaterThan(cut.allowance);
         expect(cut.severities).toHaveLength(cut.dropped);
       }
       const cutTopics = new Set(cuts.map((c) => c.topic));
       for (const t of TOPICS) {
         const totalForTopic = input.filter((x) => x.cluster.topic === t).length;
-        if (totalForTopic > MAX_CARDS_PER_TOPIC) expect(cutTopics.has(t)).toBe(true);
-        else expect(cutTopics.has(t)).toBe(false);
+        expect(cutTopics.has(t)).toBe(totalForTopic > allowanceFor(t));
       }
 
       // 5. Global count identity.
       const totalDropped = cuts.reduce((s, c) => s + c.dropped, 0);
       expect(input.length - totalDropped).toBe(kept.length);
 
-      // 6. Every kept item's severity is >= every dropped-and-same-topic item's
-      // severity minus none (i.e. kept set for a capped topic is exactly the
-      // top-MAX by severity, ties by original index) — verify by recomputing
-      // independently per topic.
+      // 6. The kept set for a capped topic is exactly the top-allowance by
+      // severity, then corroboration, then input order — recomputed here
+      // independently of the implementation.
       for (const t of TOPICS) {
         const topicIndices = input
           .map((x, i) => ({ x, i }))
           .filter(({ x }) => x.cluster.topic === t)
           .map(({ i }) => i);
-        if (topicIndices.length <= MAX_CARDS_PER_TOPIC) continue;
+        const allowance = allowanceFor(t);
+        if (topicIndices.length <= allowance) continue;
         const rankedDesc = [...topicIndices].sort(
-          (a, b) => input[b].severity - input[a].severity
+          (a, b) =>
+            input[b].severity - input[a].severity ||
+            input[b].cluster.articles.length - input[a].cluster.articles.length
         );
-        const expectedKeptIndices = new Set(rankedDesc.slice(0, MAX_CARDS_PER_TOPIC));
+        const expectedKeptIndices = new Set(rankedDesc.slice(0, allowance));
         const actualKeptIndices = new Set<number>();
         // Recover which input indices ended up in `kept` for this topic by
         // walking both arrays in lockstep respecting possible duplicate refs.

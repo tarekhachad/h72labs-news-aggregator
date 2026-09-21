@@ -21,7 +21,7 @@ import {
   type GenerationClaim,
 } from "@/lib/generationClaim";
 import type { Card, Source, Topic } from "@/types";
-import { applyCardCap, MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
+import { applyCardCap } from "@/lib/cardCap";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import type { UsageStage } from "@/lib/usage";
 import {
@@ -270,7 +270,12 @@ async function* runDigestPipeline(
     // straight off notableCount, and the cost summary compares calls made
     // against that same number — capping after either would make one of
     // them lie.
-    const { kept: notableClusters, cuts } = applyCardCap(triaged.filter((t) => t.notable));
+    const { kept: notableClusters, cuts } = applyCardCap(triaged.filter((t) => t.notable), {
+      runShape: shape.runShape,
+      // Null, not an empty array, when the lookup failed: the allowance must
+      // not read a broken read as an empty digest.
+      existingCards: existingCardsFetchFailed ? null : existingCards,
+    });
     // AFTER the cap, matching what writeCard is actually asked to produce —
     // the same number the client is shown and the same one expectedCalls
     // compares against. Recording the pre-cap figure here would make the row
@@ -279,7 +284,7 @@ async function* runDigestPipeline(
     shape.cardsDroppedByCap = cuts.reduce((sum, cut) => sum + cut.dropped, 0);
     for (const cut of cuts) {
       console.log(
-        `[digest] ${cut.topic}: kept ${MAX_CARDS_PER_TOPIC} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
+        `[digest] ${cut.topic}: kept ${cut.allowance} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
       );
     }
 

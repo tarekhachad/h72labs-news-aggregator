@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
+import { FIRST_RUN_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import type { Card, Cluster, Topic } from "@/types";
 
 // Drives the REAL route POST handler through the NDJSON stream, same
@@ -132,6 +132,10 @@ beforeEach(() => {
   });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
+  // Pass-through: the route only calls dedup when the digest already has
+  // cards, so this matters to the top-up cases below and not to the
+  // first-run ones above.
+  mocks.filterAlreadyCovered.mockImplementation(async (clusters: Cluster[]) => clusters);
   mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
   mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
@@ -176,12 +180,12 @@ function setupTopic(topic: Topic, n: number) {
 }
 
 describe("digest route: per-topic card cap", () => {
-  it("writes at most MAX_CARDS_PER_TOPIC cards for one topic", async () => {
+  it("writes at most FIRST_RUN_CARDS_PER_TOPIC cards for one topic", async () => {
     setupTopic("Tech/AI", 12);
 
     await runPostLines();
 
-    expect(mocks.writeCard).toHaveBeenCalledTimes(MAX_CARDS_PER_TOPIC);
+    expect(mocks.writeCard).toHaveBeenCalledTimes(FIRST_RUN_CARDS_PER_TOPIC);
   });
 
   it("caps before the writing event, so the client's progress text is honest", async () => {
@@ -192,7 +196,7 @@ describe("digest route: per-topic card cap", () => {
 
     // Not 12 — the number the UI renders as "Writing N cards…" must be what
     // actually gets written.
-    expect(writing.notableCount).toBe(MAX_CARDS_PER_TOPIC);
+    expect(writing.notableCount).toBe(FIRST_RUN_CARDS_PER_TOPIC);
   });
 
   it("caps before expectedCalls, so the cost summary reports no false shortfall", async () => {
@@ -242,6 +246,9 @@ describe("digest route: per-topic card cap", () => {
     );
     expect(line).toContain("Tech/AI");
     expect(line).toContain("dropped 4");
+    // The kept count comes from the cut, not from a constant. Printed from a
+    // constant it would read "kept 8" on a top-up that kept 2.
+    expect(line).toContain(`kept ${FIRST_RUN_CARDS_PER_TOPIC} of 12`);
   });
 
   it("leaves a topic under the cap completely untouched", async () => {
@@ -276,11 +283,108 @@ describe("digest route: per-topic card cap", () => {
       (c) => (c[0] as Cluster).topic,
     );
     expect(written.filter((t) => t === "Tech/AI")).toHaveLength(
-      MAX_CARDS_PER_TOPIC,
+      FIRST_RUN_CARDS_PER_TOPIC,
     );
     expect(written.filter((t) => t === "Morocco")).toHaveLength(
-      MAX_CARDS_PER_TOPIC,
+      FIRST_RUN_CARDS_PER_TOPIC,
     );
+  });
+
+  // Everything above is the day's first run: getTodaysCardSummaries is mocked
+  // to [] in beforeEach, which makes deriveRunShape say firstOfDay. The tests
+  // below are the other run shapes.
+
+  it("adds only the top-up allowance to a topic that already has cards today", async () => {
+    setupTopic("Tech/AI", 12);
+    mocks.getTodaysCardSummaries.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => ({
+        id: `existing-${i}`,
+        topic: "Tech/AI" as Topic,
+        shortSummary: "already covered",
+        severity: 3,
+      })),
+    );
+
+    const lines = await runPostLines();
+
+    expect(mocks.writeCard).toHaveBeenCalledTimes(2);
+    expect(lines.find((l) => l.stage === "writing")!.notableCount).toBe(2);
+    expect(logLines.find((l) => l.includes("kept"))).toContain("kept 2 of 12");
+    expect(mocks.saveGeneratedCards.mock.calls[0][2] as Card[]).toHaveLength(2);
+  });
+
+  it("applies the top-up allowance to every topic, not only the ones with cards", async () => {
+    const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
+    const b = Array.from({ length: 12 }, (_, i) => cluster("Morocco", `b-${i}`));
+    mocks.clusterArticles.mockResolvedValue([...a, ...b]);
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+      cs.map(() => ({ notable: true, severity: 3 })),
+    );
+    // Only Tech/AI has cards today; Morocco is still empty.
+    mocks.getTodaysCardSummaries.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => ({
+        id: `existing-${i}`,
+        topic: "Tech/AI" as Topic,
+        shortSummary: "already covered",
+        severity: 3,
+      })),
+    );
+
+    await runPostLines();
+
+    const written = mocks.writeCard.mock.calls.map((c) => (c[0] as Cluster).topic);
+    expect(written.filter((t) => t === "Tech/AI")).toHaveLength(2);
+    expect(written.filter((t) => t === "Morocco")).toHaveLength(2);
+  });
+
+  it("narrows to the ceiling's headroom for a topic near it", async () => {
+    setupTopic("Tech/AI", 12);
+    mocks.getTodaysCardSummaries.mockResolvedValue(
+      Array.from({ length: 13 }, (_, i) => ({
+        id: `existing-${i}`,
+        topic: "Tech/AI" as Topic,
+        shortSummary: "already covered",
+        severity: 3,
+      })),
+    );
+
+    await runPostLines();
+
+    expect(mocks.writeCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the top-up allowance when the day's cards cannot be read", async () => {
+    setupTopic("Tech/AI", 12);
+    mocks.getTodaysCardSummaries.mockRejectedValue(new Error("connection reset"));
+
+    const lines = await runPostLines();
+
+    // Fail closed on spend: an unreadable digest might already be at the
+    // ceiling, so this run gets the top-up allowance rather than the full 8.
+    expect(mocks.writeCard).toHaveBeenCalledTimes(2);
+    expect(lines[lines.length - 1].stage).toBe("done");
+  });
+
+  it("keeps the rank result aligned to this run's cards on a top-up", async () => {
+    setupTopic("Tech/AI", 12);
+    const existingCards = Array.from({ length: 8 }, (_, i) => ({
+      id: `existing-${i}`,
+      topic: "Tech/AI" as Topic,
+      shortSummary: "already covered",
+      severity: 3,
+    }));
+    mocks.getTodaysCardSummaries.mockResolvedValue(existingCards);
+    // One rank per candidate: the 8 existing cards then this run's 2.
+    mocks.rankFrontPage.mockResolvedValue([null, null, null, null, null, null, null, 1, 2, 3]);
+
+    await runPostLines();
+
+    // The cap shortens the second segment on nearly every top-up, so the
+    // offset the route applies has to follow the kept count, not the
+    // pre-cap count.
+    const persisted = mocks.saveGeneratedCards.mock.calls[0][2] as Card[];
+    expect(persisted).toHaveLength(2);
+    expect(persisted.map((c) => c.frontPageRank)).toEqual([2, 3]);
   });
 
   it("still reaches done and persists only the capped set", async () => {
@@ -291,6 +395,6 @@ describe("digest route: per-topic card cap", () => {
     expect(lines.some((l) => l.stage === "error")).toBe(false);
     expect(lines[lines.length - 1].stage).toBe("done");
     const persisted = mocks.saveGeneratedCards.mock.calls[0][2] as Card[];
-    expect(persisted).toHaveLength(MAX_CARDS_PER_TOPIC);
+    expect(persisted).toHaveLength(FIRST_RUN_CARDS_PER_TOPIC);
   });
 });

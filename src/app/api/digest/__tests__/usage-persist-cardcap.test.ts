@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { MAX_CARDS_PER_TOPIC } from "@/lib/cardCap";
+import { FIRST_RUN_CARDS_PER_TOPIC } from "@/lib/cardCap";
 import type { Card, Cluster, Topic } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
 
@@ -138,6 +138,9 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
+  // Pass-through: dedup only runs once the digest has cards, so this is
+  // needed by the top-up case and inert for the first-run ones.
+  mocks.filterAlreadyCovered.mockImplementation(async (clusters: Cluster[]) => clusters);
   mocks.claimGenerationForUser.mockResolvedValue({ claimId: CLAIM_ID });
   mocks.releaseGenerationClaim.mockResolvedValue(undefined);
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
@@ -186,9 +189,46 @@ describe("digest route: cardsDroppedByCap and notableCount are the actual cap ar
 
     expect(emitted).toHaveLength(1);
     const record = emitted[0];
-    expect(record.notableCount).toBe(2 * MAX_CARDS_PER_TOPIC); // 16: post-cap, what writeCard was asked for
+    expect(record.notableCount).toBe(2 * FIRST_RUN_CARDS_PER_TOPIC); // 16: post-cap, what writeCard was asked for
     expect(record.cardsDroppedByCap).toBe(4 + 12); // 16: sum of what each topic actually lost
-    expect(record.cardsWritten).toBe(2 * MAX_CARDS_PER_TOPIC);
+    expect(record.cardsWritten).toBe(2 * FIRST_RUN_CARDS_PER_TOPIC);
+  });
+
+  it("records the tiered arithmetic on a top-up, where the allowance differs from the first run's", async () => {
+    // The same shape as the first test, on a top-up. Topic A has 8 cards
+    // already and 12 new clusters -> keeps 2, drops 10. Topic B has none and
+    // 20 clusters -> keeps 2, drops 18. Different amounts again, so the sum
+    // (28) can't be confused with the count of cut topics (2) or with
+    // notableCount (4). This is the row the cost measurement gets read
+    // against, so the arithmetic has to be pinned here and not only in the
+    // unit tests.
+    mocks.getUserProfile.mockResolvedValue({
+      topics: ["Tech/AI", "Morocco"],
+      preferredSources: ["BBC"],
+    });
+    mocks.getTodaysCardSummaries.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => ({
+        id: `existing-${i}`,
+        topic: "Tech/AI" as Topic,
+        shortSummary: "already covered",
+        severity: 3,
+      }))
+    );
+    const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
+    const b = Array.from({ length: 20 }, (_, i) => cluster("Morocco", `b-${i}`));
+    mocks.clusterArticles.mockResolvedValue([...a, ...b]);
+    mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
+      cs.map(() => ({ notable: true, severity: 3 }))
+    );
+
+    await runPostToCompletion();
+
+    expect(emitted).toHaveLength(1);
+    const record = emitted[0];
+    expect(record.runShape).toBe("sameDayTopUp");
+    expect(record.notableCount).toBe(4);
+    expect(record.cardsDroppedByCap).toBe(10 + 18);
+    expect(record.cardsWritten).toBe(4);
   });
 
   it("records cardsDroppedByCap as 0 -- a real measurement, not null -- when nothing was cut", async () => {

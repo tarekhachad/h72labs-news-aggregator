@@ -594,6 +594,24 @@ Drawn from **Deferred work — grouped and sequenced** below, in a dedicated pla
 
 _Rewritten 2026-09-14. This paragraph used to name twelve items as though it enumerated the list. The list held twenty-nine, so thirteen of them — including every code-correctness finding — appeared in no sequencing anywhere in this file._
 
+#### V2.3.x (deferred) — Triage is half the bill, and the card cap cannot touch it
+
+**Deferred by Tarek 2026-09-21, out of V2.1.4's scope.** V2.1.4 tiered the per-topic card cap, which bounds `writeCard`; it cannot reduce triage, because triage runs *before* the cap and has already been paid for on every cluster the cap discards. Triage is the largest stage and the levers for it are a different design, recorded here with the arithmetic so none of it is re-derived.
+
+Baseline, from the 2026-09-17 production run: **triage \$0.1177 of \$0.231078 (51%)** across ~30 batched Haiku calls of ~2,298 input tokens each, ~700 of which is fixed prompt. 559 clusters were judged to keep 38 cards. Triage cost is invariant to verdicts — a reject bills the same as a pass — and scales with *clusters*, not cards.
+
+Levers, largest first:
+
+- **Route triage through the Batch API by pre-generating on a schedule — about −50%, and the same on `writeCard` and ranking.** The Batch API is half price but asynchronous, so it cannot be used inside a 62-second interactive request. A newspaper is printed before its readers wake up; generating the daily digest on a schedule rather than on a button press would make the whole pipeline eligible, taking triage to roughly \$0.059 and halving the digest. The largest lever and the biggest change — it interacts with V2.1.7's definition of "today", and it changes the product's interaction model, so it is a product decision as much as a cost one.
+- **Pre-select candidates before triage — up to −79% of triage (~\$0.093, 40% of the digest).** Embeddings are already computed for clustering, so a local signal (cluster size, recency, source diversity) is free. Triaging only ~3x the per-topic allowance instead of every cluster would cut it to about \$0.024. The real risk is that the proxy is not notability: a single-source scoop could be the day's biggest story and would be cut before anything judged it. Shares its lever with V2.1.11, so they belong in one conversation.
+- **Shorten the per-article snippet clip below 200 characters — about −16% of triage.** The snippet is roughly 77% of the variable tokens. Needs the same real-model quality check V2.1.3 ran on the clustering clip, comparing verdicts rather than asserting they hold.
+- **Raise the triage batch from 20 clusters to 40 — about −9% of triage.** Halves the call count to ~15 and with it the fixed-prompt share. Output is unchanged at one verdict per cluster. The existing split-retry ladder absorbs the added truncation risk.
+
+**Two levers rejected with arithmetic. Do not revisit without new numbers:**
+
+- **Prompt caching.** Haiku 4.5's minimum cacheable prefix is **4,096 tokens**, against a fixed prompt of ~700. Reaching it needs ~3,400 tokens of padding; one cache write at 1.25x plus 29 reads at 0.1x costs about \$0.017 against the ~\$0.021 paid today. That is **~\$0.004 a run, 3.4% of triage**, in exchange for paying to send filler. The cache minimum is not monotonic across model generations, so re-check it if the triage model ever changes — on a 512-token-minimum model this lever becomes live.
+- **Capping the articles sent per cluster.** The 2026-09-17 run had 659 articles in 559 clusters — a mean of **1.18 articles per cluster**. Multi-article clusters are rare and there is almost nothing to trim.
+
 ---
 
 ## Deferred work — grouped and sequenced
@@ -623,7 +641,7 @@ _Rewritten 2026-09-14. This paragraph used to name twelve items as though it enu
 
 **Sequencing is load-bearing here:** the source-preference redesign changes what the onboarding form *is* (topics to a minimum of 3, sources optional and acting as a ranking signal rather than a hard filter), so it must land **before** the 21st.dev refresh rebuilds those screens — otherwise the multi-select UI gets built twice.
 
-- **The per-topic card cap breaks severity ties on input order rather than merit** (recorded at the Final Phase's close, 2026-08-15; **lifted into this list 2026-09-14** — it had existed only inside that phase's `✅ Done` blockquote, so the one place it was written was a section marked closed). `applyCardCap` selects 8 cards per topic by severity, and ties are resolved by position in the input array rather than by anything about the stories. Root `CLAUDE.md` names this as one of two known open v1.1 items. It predates batching and is a scale-resolution problem at heart: a 5-point severity scale cannot rank 30 candidates for 8 slots. Interacts directly with the per-run-versus-per-day cap entry folded into V2.1 above — decide both together, since one changes what the cap is applied to and the other changes how it chooses.
+- ~~**The per-topic card cap breaks severity ties on input order rather than merit**~~ — **CLOSED 2026-09-21, shipped in V2.1.4.** Ties now break on how many sources corroborate the story (the same signal that routes a card to Sonnet rather than Haiku), then on input order. The scale-resolution complaint stands — a 5-point severity scale still cannot rank 30 candidates — but a tie is no longer decided by arrival order alone.
 
 - **Make preferred-source selection optional, and non-restrictive when set** (raised by Tarek during Phase 3 manual testing, 2026-07-31): currently both topics and sources are mandatory at onboarding — `src/lib/profile.ts`'s zod schema requires `.min(1)` on each. Proposed change: bump the topic minimum to 3 (topics stay mandatory — they're what defines the digest), but make source selection fully optional. A user with zero preferred sources would get a digest pulled from all available sources for their chosen topics, unrestricted. If a user *does* pick preferred sources (at onboarding or later via `/profile`), that selection should act as a soft ranking signal, not a hard filter — priority/boost toward those sources, but a highly relevant story from an unselected source should still be able to make the digest. That last part is a real pipeline change, not just a form-validation tweak: today source selection is used as a hard filter at ingestion (only fetch RSS from selected sources), so "boost, don't restrict" would need the ingestion step to pull more broadly and push the source preference into triage/ranking instead. Worth scoping properly as its own phase when it comes up — needs a decision on where the boost is applied (ingestion breadth vs. triage prompt vs. a post-triage ranking pass) before touching code.
 

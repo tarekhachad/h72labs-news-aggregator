@@ -15,7 +15,7 @@ Managed almost entirely by Supabase Auth (handles email, password/session securi
 
 ## `user_topics`
 
-A user's selected topics of interest (curated multi-select, at least 1 and no upper bound — the per-topic card cap of 8 is what bounds a digest, not the topic count. See Phase 2 of the roadmap).
+A user's selected topics of interest (curated multi-select, at least 1 and no upper bound — the per-topic card cap is what bounds a digest, not the topic count — 8 per topic on the day's first run, 2 on each later same-day run, capped at 14 per topic per digest. See Phase 2 of the roadmap).
 
 | Field | What it holds |
 |---|---|
