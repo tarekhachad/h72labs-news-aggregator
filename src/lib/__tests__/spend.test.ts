@@ -37,8 +37,8 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
     errors.push(args.map(String).join(" "));
   });
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable");
+  vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+  vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "publishable");
   mocks.createClient.mockReturnValue({ rpc: mocks.settleRpc });
   mocks.settleRpc.mockResolvedValue({ data: true, error: null });
 });
@@ -271,7 +271,7 @@ describe("settleSpend", () => {
   });
 
   it("returns false when the environment is missing", async () => {
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    vi.stubEnv("SUPABASE_URL", "");
     expect(await settleSpend(RESERVATION, 0.21)).toBe(false);
     expect(mocks.settleRpc).not.toHaveBeenCalled();
   });

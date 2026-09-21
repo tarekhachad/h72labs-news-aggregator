@@ -8,6 +8,15 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // The five modules holding an Anthropic client `import "server-only"`,
+      // a marker package whose main entry throws the moment it is imported.
+      // Next resolves it under the "react-server" export condition, where it
+      // is an empty module; vitest resolves the default entry instead, so
+      // without this every test touching one of those modules dies on import.
+      // Aliased to the package's own empty entry rather than to a stub of our
+      // own, so what runs under test is the file React ships for exactly this
+      // purpose.
+      "server-only": path.resolve(__dirname, "./node_modules/server-only/empty.js"),
     },
   },
   test: {

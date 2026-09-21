@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   maybeSingle: vi.fn(),
-  updateIs: vi.fn(),
+  setExpandedReport: vi.fn(),
   generateExpandedReport: vi.fn(),
   defaultUsageSinks: vi.fn(),
 }));
@@ -39,9 +39,9 @@ vi.mock("@/lib/spend", async () => {
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: mocks.getUser },
+    rpc: mocks.setExpandedReport,
     from: () => ({
       select: () => ({ eq: () => ({ maybeSingle: mocks.maybeSingle }) }),
-      update: () => ({ eq: () => ({ is: mocks.updateIs }) }),
     }),
   })),
 }));
@@ -96,7 +96,7 @@ beforeEach(() => {
     },
   ]);
   mocks.maybeSingle.mockResolvedValue({ data: CARD_ROW, error: null });
-  mocks.updateIs.mockResolvedValue({ error: null });
+  mocks.setExpandedReport.mockResolvedValue({ data: true, error: null });
   mocks.generateExpandedReport.mockImplementation(async () => {
     await recordCall("expand", "claude-sonnet-5", async () => ({ usage: usage(2000) }));
     return "a full report";

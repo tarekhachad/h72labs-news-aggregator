@@ -3,8 +3,6 @@ import type { Card, Digest, Topic } from "@/types";
 import { getBookmarkedCardIds } from "@/lib/bookmarks";
 import { plausibleCursorLimitIso } from "@/lib/cursor";
 
-const UNIQUE_VIOLATION = "23505";
-
 export interface CardRow {
   id: string;
   topic: string;
@@ -357,42 +355,30 @@ export async function getLatestGeneratedAtForUser(
  * the user, not of today's row (see getLatestGeneratedAtForUser). A freshly
  * created row's own last_generated_at is always null, and treating that as
  * "nothing to filter since" is what produced cross-day duplicate cards.
+ *
+ * The row is created by ensure_digest_for_today rather than by an insert from
+ * here: `insert own digests` no longer exists, so this is the only write path
+ * left. The function also resolves the concurrent-request race in one
+ * statement (ON CONFLICT DO UPDATE ... RETURNING), which is why the
+ * select-then-insert-then-retry-on-unique-violation this used to be is gone.
+ *
+ * It takes no user id: the function reads auth.uid() itself, so the row it
+ * returns always belongs to the session making the call. A caller-supplied id
+ * would be a parameter the database has to distrust anyway.
  */
 export async function upsertDigestForToday(
-  supabase: SupabaseClient,
-  userId: string
+  supabase: SupabaseClient
 ): Promise<{ digestId: string }> {
-  const date = todayDateString();
+  const { data, error } = await supabase.rpc("ensure_digest_for_today", {
+    p_date: todayDateString(),
+  });
 
-  const { data: existing, error: selectError } = await supabase
-    .from("digests")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("date", date)
-    .maybeSingle();
-
-  if (selectError) throw new Error(`upsertDigestForToday: ${selectError.message}`);
-  if (existing) {
-    return { digestId: existing.id };
+  if (error) throw new Error(`upsertDigestForToday: ${error.message}`);
+  if (typeof data !== "string" || data.length === 0) {
+    throw new Error("upsertDigestForToday: ensure_digest_for_today returned no digest id");
   }
 
-  const id = crypto.randomUUID();
-  const { error: insertError } = await supabase
-    .from("digests")
-    .insert({ id, user_id: userId, date });
-
-  if (insertError) {
-    // A concurrent request (e.g. a double-click) already created today's
-    // row between the select above and this insert — the unique
-    // (user_id, date) constraint caught it. Re-select instead of failing
-    // the whole digest request over a race that already resolved itself.
-    if (insertError.code === UNIQUE_VIOLATION) {
-      return upsertDigestForToday(supabase, userId);
-    }
-    throw new Error(`upsertDigestForToday: failed to create digest: ${insertError.message}`);
-  }
-
-  return { digestId: id };
+  return { digestId: data };
 }
 
 /**

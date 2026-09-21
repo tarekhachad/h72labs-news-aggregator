@@ -542,7 +542,7 @@ export async function POST() {
   let sinceCursor: string | null;
   try {
     const [upserted, cursor] = await Promise.all([
-      upsertDigestForToday(supabase, user.id),
+      upsertDigestForToday(supabase),
       getLatestGeneratedAtForUser(supabase, user.id),
     ]);
     digestId = upserted.digestId;

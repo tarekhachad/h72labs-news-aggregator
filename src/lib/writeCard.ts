@@ -1,3 +1,7 @@
+// Holds a module-scope Anthropic client, so this file must never reach a
+// browser bundle. Importing it from a client component is now a build error
+// rather than a silent key leak.
+import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";

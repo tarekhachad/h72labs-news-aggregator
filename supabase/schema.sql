@@ -61,11 +61,14 @@ create policy "delete own sources"
 -- Phase 3 schema: digests + cards + bookmarks.
 --
 -- Design notes:
--- - digests.id/cards.id are client-generated UUIDs (crypto.randomUUID()),
---   not `default gen_random_uuid()` — the pipeline builds the whole cards
+-- - cards.id is a client-generated UUID (crypto.randomUUID()), not
+--   `default gen_random_uuid()` — the pipeline builds the whole cards
 --   array in memory before any DB write, and assigning ids up front makes
 --   the in-memory Card -> persisted row -> NDJSON-response mapping
 --   trivially certain, with no reliance on insert/RETURNING order.
+--   digests.id is minted by ensure_digest_for_today instead: there is no
+--   in-memory object to match it to, and an id chosen by the caller buys
+--   nothing.
 -- - digests has a unique (user_id, date) constraint: one digest per user
 --   per calendar day, appended to across multiple generation runs that
 --   day rather than duplicated. last_generated_at is the server-owned
@@ -73,10 +76,10 @@ create policy "delete own sources"
 --   client-localStorage cursor).
 -- - cards has no direct user_id column — ownership is via digest_id ->
 --   digests.user_id, so its RLS policies check ownership indirectly.
--- - cards is the one table with an UPDATE policy (scoped to the owning
---   user, same as select) because expanded_report is written lazily,
---   after the row already exists — not a stylistic inconsistency with
---   the insert/delete-only pattern above, just a different write shape.
+-- - digests and cards carry SELECT policies only. Every write to either
+--   goes through a security definer function, because the spend caps are
+--   counted from these two tables and the subject of a cap must not be
+--   able to rewrite the numbers it is counted from.
 -- - bookmarks has no update policy (add/remove only, same as
 --   user_topics/user_preferred_sources) and no direct content — a card
 --   already persists permanently via cards, so bookmarking just links a
@@ -117,14 +120,10 @@ create policy "select own digests"
   on public.digests for select
   using (auth.uid() = user_id);
 
-create policy "insert own digests"
-  on public.digests for insert
-  with check (auth.uid() = user_id);
-
-create policy "update own digests"
-  on public.digests for update
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+-- No insert or update policy. Writes go through ensure_digest_for_today and
+-- persist_generated_cards (security definer, below); the policies that used
+-- to allow a direct write are dropped further down this file, with the
+-- reasoning there.
 
 create table public.cards (
   id uuid primary key,
@@ -179,14 +178,9 @@ create policy "select own cards"
   on public.cards for select
   using (digest_id in (select id from public.digests where user_id = auth.uid()));
 
-create policy "insert own cards"
-  on public.cards for insert
-  with check (digest_id in (select id from public.digests where user_id = auth.uid()));
-
-create policy "update own cards"
-  on public.cards for update
-  using (digest_id in (select id from public.digests where user_id = auth.uid()))
-  with check (digest_id in (select id from public.digests where user_id = auth.uid()));
+-- No insert or update policy, same as digests above: persist_generated_cards
+-- writes new cards and ranks, set_expanded_report writes the full report, and
+-- both run as their owner.
 
 -- Phase 5.5 migration — MUST be run by hand as its own statement.
 -- Editing the `create table public.cards (...)` block above to add these
@@ -237,9 +231,15 @@ create policy "delete own bookmarks"
 -- real gaps: if the process died mid-sequence, the digest could end up
 -- with new cards but a stale cursor (causing the next run to re-ingest the
 -- same window and insert a near-duplicate batch), or with the rank
--- inconsistency described above. security invoker (the default, stated
--- explicitly) keeps this scoped by the caller's own RLS — this app has no
--- service-role usage anywhere, and this function doesn't introduce one.
+-- inconsistency described above.
+--
+-- security definer, and it has to be: `insert own cards` and `update own
+-- digests` are gone, so under invoker rights this function could no longer
+-- write anything. What RLS used to guarantee is now stated in the body --
+-- the caller must own p_digest_id, and p_generated_at must be close to now.
+-- Execute is revoked from public and anon at the bottom of this block;
+-- without that revoke, converting to definer would hand every anonymous
+-- caller a writable path into cards.
 --
 -- The drop below is required, not defensive boilerplate: Postgres
 -- identifies a function by its parameter type signature, so `create or
@@ -267,9 +267,38 @@ create or replace function public.persist_generated_cards(
   p_existing_rank_updates jsonb default '[]'::jsonb
 ) returns void
 language plpgsql
-security invoker
+security definer
+set search_path = ''
 as $$
+declare
+  v_user uuid := auth.uid();
 begin
+  if v_user is null then
+    raise exception 'persist_generated_cards requires a signed-in user';
+  end if;
+
+  -- Ownership. This function runs as its owner and `cards` has no insert
+  -- policy, so no RLS check stands behind this one: it is the only thing
+  -- between a caller and another user's digest.
+  if not exists (
+    select 1 from public.digests d
+    where d.id = p_digest_id and d.user_id = v_user
+  ) then
+    raise exception 'persist_generated_cards: digest does not belong to the caller';
+  end if;
+
+  -- The cursor may only move to roughly now. Without this, a direct caller
+  -- could send an old timestamp with an empty p_cards and walk their own
+  -- since-cursor backwards, which forces the next run into the cold 48h
+  -- lookback and the firstEver card allowance -- the most expensive shape the
+  -- pipeline has, and precisely what dropping `update own digests` is for.
+  -- The route's maxDuration is 120s, so a real run's timestamp is at most ~2
+  -- minutes old by the time it arrives here.
+  if p_generated_at is null
+     or p_generated_at < now() - interval '10 minutes'
+     or p_generated_at > now() + interval '1 minute' then
+    raise exception 'persist_generated_cards: p_generated_at is outside the accepted window';
+  end if;
   -- created_at is set explicitly to p_generated_at (not left to its own
   -- `default now()`) so every card in this run shares the exact same value
   -- as digests.last_generated_at below, byte-for-byte — that's what the
@@ -300,13 +329,13 @@ begin
   -- rank set directly in the insert above instead). An empty array here
   -- (ranking failed, or there was nothing new to rank this run) makes this
   -- a correct no-op — no rows match jsonb_array_elements('[]'). The
-  -- digest_id guard isn't load-bearing today (the caller only ever builds
-  -- p_existing_rank_updates from this same digest's own cards), but this
-  -- function exists specifically to close correctness windows rather than
-  -- rely on caller discipline — without it, a future bug upstream that fed
-  -- in a stale/wrong id list would silently update a *different* digest's
-  -- card with no error, since RLS only checks card ownership, not which
-  -- digest it belongs to.
+  -- digest_id guard is the ownership check for this statement. The caller
+  -- only ever builds p_existing_rank_updates from this same digest's own
+  -- cards, but nothing outside this function enforces that any more: under
+  -- definer rights a bare `c.id = ...` would update ANY user's card, not
+  -- merely a different digest of the caller's own. Pairing it with the
+  -- p_digest_id ownership check above is what keeps this statement inside
+  -- the caller's own data.
   update public.cards as c
   set front_page_rank = (u->>'frontPageRank')::smallint
   from jsonb_array_elements(p_existing_rank_updates) as u
@@ -319,6 +348,152 @@ begin
 end;
 $$;
 
+-- ensure_digest_for_today — the only way an authenticated session can create a
+-- digest row, now that `insert own digests` is gone.
+--
+-- user_id is auth.uid(), never a parameter, so a caller cannot mint a row
+-- under someone else's account.
+--
+-- p_date stays a parameter rather than becoming current_date: V2.1.7 makes
+-- "today" follow the reader's timezone rather than UTC, and a hardcoded
+-- current_date here would have to be rewritten then. It is bounded to within
+-- one day of the server's date instead, which admits every real timezone (the
+-- widest offset in use is UTC+14) and refuses anything further out.
+--
+-- ON CONFLICT DO UPDATE rather than DO NOTHING because DO NOTHING returns no
+-- row on conflict, which would need a second round trip to read the existing
+-- id. Setting date to the value it already has is a no-op write that still
+-- RETURNINGs the row. That is what replaces the select-then-insert-then-
+-- retry-on-unique-violation dance this used to be in TypeScript: the race
+-- between two concurrent requests for the same day is now resolved by
+-- Postgres rather than by re-reading after a failed insert.
+create or replace function public.ensure_digest_for_today(p_date date)
+returns uuid
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_id uuid;
+begin
+  if v_user is null then
+    raise exception 'ensure_digest_for_today requires a signed-in user';
+  end if;
+
+  if p_date is null
+     or p_date < current_date - 1
+     or p_date > current_date + 1 then
+    raise exception 'ensure_digest_for_today: p_date is not within a day of the server date';
+  end if;
+
+  insert into public.digests (id, user_id, date)
+  values (gen_random_uuid(), v_user, p_date)
+  on conflict (user_id, date) do update
+    set date = excluded.date
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- set_expanded_report — the lazy write of a card's full report, now that
+-- `update own cards` is gone.
+--
+-- Two conditions, both of which the dropped policy used to cover between
+-- itself and the route's own filter:
+--   - the card's digest belongs to the caller;
+--   - expanded_report is still null, so the first writer wins. Two
+--     near-simultaneous expands of one card each generate their own valid
+--     report; without this the second would overwrite the first and the
+--     cached text would flap between two good answers depending on timing.
+--
+-- Returns whether a row was written. The caller treats false as "someone else
+-- got there first", not as an error — the user already has their report in
+-- the response either way.
+create or replace function public.set_expanded_report(p_card_id uuid, p_report text)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+begin
+  if v_user is null then
+    raise exception 'set_expanded_report requires a signed-in user';
+  end if;
+
+  -- An empty report is refused rather than stored: the column is the cache,
+  -- and writing '' or null into it would satisfy the is-null guard forever
+  -- after while leaving nothing to serve.
+  if p_report is null or length(p_report) = 0 then
+    return false;
+  end if;
+
+  update public.cards as c
+  set expanded_report = p_report
+  where c.id = p_card_id
+    and c.expanded_report is null
+    and exists (
+      select 1 from public.digests d
+      where d.id = c.digest_id and d.user_id = v_user
+    );
+
+  return found;
+end;
+$$;
+
+-- Functions in `public` are executable by PUBLIC, anon and authenticated by
+-- default. All three of these write to digests or cards under definer rights,
+-- so the default grant is exactly the hole this item exists to close: without
+-- these revokes, dropping the RLS write policies below would move the write
+-- path from "any authenticated session" to "anyone at all".
+revoke execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb) from public, anon;
+grant execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb) to authenticated;
+revoke execute on function public.ensure_digest_for_today(date) from public, anon;
+grant execute on function public.ensure_digest_for_today(date) to authenticated;
+revoke execute on function public.set_expanded_report(uuid, text) from public, anon;
+grant execute on function public.set_expanded_report(uuid, text) to authenticated;
+
+-- The lockdown itself: with the three functions above in place, no direct
+-- write to digests or cards is needed by any code path, so the policies that
+-- allowed one are dropped.
+--
+-- What they allowed, and why each mattered rather than being untidy: a
+-- session could null digests.last_generated_at, rewrite digests.date, move a
+-- card to another digest by rewriting cards.digest_id, and reassign
+-- front_page_rank. The first two inputs are what deriveRunShape reads to
+-- decide V2.1.4's per-topic card allowance -- null the cursor AND empty the
+-- day's card count and every run classifies as firstEver, which is the full
+-- 8-card allowance plus a cold 48h lookback, repeatable up to the 4-run
+-- guardrail. The spend caps are counted from these tables; the subject of a
+-- cap must not be able to write the numbers it is counted from.
+--
+-- `drop policy if exists` rather than simply deleting the create statements:
+-- this file is applied by hand to a live database, so a policy has to be
+-- removed from production explicitly. Re-running the file is a no-op.
+--
+-- Both `select own ...` policies stay. Every read path needs them, including
+-- two that traverse the foreign key (the history list's cards(count) embed,
+-- and saved cards' bookmarks -> cards -> digests(date) embed).
+drop policy if exists "insert own digests" on public.digests;
+drop policy if exists "update own digests" on public.digests;
+drop policy if exists "insert own cards" on public.cards;
+drop policy if exists "update own cards" on public.cards;
+
+-- getLatestGeneratedAtForUser runs this exact shape on every generation, and
+-- it is the query the since-cursor depends on. Partial for the same reason
+-- usage_runs_user_priced_at_idx is: last_generated_at is nullable and
+-- Postgres orders DESC as NULLS FIRST, so the query filters nulls out in SQL
+-- and the predicate is therefore implied by every caller that can use this
+-- index.
+create index if not exists digests_user_last_generated_idx
+  on public.digests (user_id, last_generated_at desc)
+  where last_generated_at is not null;
+
 -- usage_runs — one row per Claude-spending run (a digest generation or a
 -- card expand), written from the route's own finally block.
 --
@@ -329,21 +504,20 @@ $$;
 -- holding their own JWT can POST a row claiming total_billed_usd = 0 and
 -- every policy below passes. Spend caps therefore SIZE themselves from this
 -- table and ENFORCE against `spend_ledger` (bottom of this file), which no
--- session can read or write. `digests` is not a safe count either: its UPDATE
--- policy lets a user rewrite `date` and `last_generated_at`.
+-- session can read or write.
 --
 -- Append-only by construction: SELECT and INSERT policies only. With RLS
 -- enabled, policies are deny-by-default, so UPDATE and DELETE affect zero
 -- rows for the authenticated role — the subject of a row-counting cap cannot
 -- reset it.
 --
--- This is the STRICTEST table in the file, and no other one shares its shape.
--- `digests` and `cards` both carry UPDATE policies, and need them (the
--- generation mutex, the lazily-written expanded_report, front_page_rank
--- reassignment). `bookmarks`, `user_topics` and `user_preferred_sources` are
+-- Among the tables a session can write at all, this is the strictest shape.
+-- `bookmarks`, `user_topics` and `user_preferred_sources` are
 -- select+insert+DELETE, since preferences are saved by replacing the whole
--- set. Only this table forbids both, because it is the only one whose rows
--- are evidence about the person who writes them.
+-- set. This one forbids both, because it is the only writable table whose
+-- rows are evidence about the person who writes them. `digests` and `cards`
+-- are stricter still and in a different way: a session cannot write them at
+-- all, only read them.
 --
 -- Two holes this does NOT close: deleting the auth user cascades these rows
 -- away, and creating a second account resets any per-user count. Invite-only
@@ -984,3 +1158,64 @@ revoke execute on function public.claim_generation(integer) from public, anon;
 grant execute on function public.claim_generation(integer) to authenticated;
 revoke execute on function public.release_generation(uuid) from public;
 grant execute on function public.release_generation(uuid) to anon, authenticated;
+
+-- ensure_rls — a DDL-time net that enables row level security on any new
+-- table in `public`.
+--
+-- This block documents something that was already live in the database and
+-- absent from this file, which is the only reason it is written down here at
+-- all: a schema file nobody can trust to be complete is worse than no schema
+-- file. It was found by reading production's catalogs directly, not the code.
+--
+-- The trade-off, stated rather than discovered later: it is a genuine safety
+-- net, and it is also the one thing in this file that makes this file
+-- non-authoritative. A future table created without its own `enable row level
+-- security` line will be protected anyway, so reading this file no longer
+-- tells you the whole RLS story. Every table above still carries that line
+-- explicitly, which is why the trigger's position at the bottom of the file
+-- does not matter to a rebuild -- it exists for tables added later.
+--
+-- It swallows its own failures into the log rather than aborting the DDL that
+-- triggered it. Creating an event trigger needs elevated rights, so this
+-- block is a no-op against a database that already has it.
+create or replace function public.rls_auto_enable()
+returns event_trigger
+language plpgsql
+security definer
+set search_path = 'pg_catalog'
+as $$
+declare
+  cmd record;
+begin
+  for cmd in
+    select *
+    from pg_event_trigger_ddl_commands()
+    where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+      and object_type in ('table', 'partitioned table')
+  loop
+    if cmd.schema_name is not null and cmd.schema_name in ('public') and cmd.schema_name not in ('pg_catalog', 'information_schema') and cmd.schema_name not like 'pg_toast%' and cmd.schema_name not like 'pg_temp%' then
+      begin
+        execute format('alter table if exists %s enable row level security', cmd.object_identity);
+        raise log 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+      exception
+        when others then
+          raise log 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+      end;
+    else
+      raise log 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+    end if;
+  end loop;
+end;
+$$;
+
+-- `create event trigger` has no IF NOT EXISTS, and this one already exists in
+-- production.
+do $$
+begin
+  if not exists (select 1 from pg_event_trigger where evtname = 'ensure_rls') then
+    create event trigger ensure_rls
+      on ddl_command_end
+      execute function public.rls_auto_enable();
+  end if;
+end;
+$$;

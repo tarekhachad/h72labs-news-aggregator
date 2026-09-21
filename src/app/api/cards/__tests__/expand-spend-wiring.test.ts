@@ -8,7 +8,7 @@ import type { Reservation } from "@/lib/spend";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   maybeSingle: vi.fn(),
-  updateIs: vi.fn(),
+  setExpandedReport: vi.fn(),
   generateExpandedReport: vi.fn(),
   defaultUsageSinks: vi.fn(),
   reserveSpend: vi.fn(),
@@ -18,9 +18,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: mocks.getUser },
+    rpc: mocks.setExpandedReport,
     from: () => ({
       select: () => ({ eq: () => ({ maybeSingle: mocks.maybeSingle }) }),
-      update: () => ({ eq: () => ({ is: mocks.updateIs }) }),
     }),
   })),
 }));
@@ -56,7 +56,7 @@ beforeEach(() => {
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
   mocks.maybeSingle.mockResolvedValue({ data: CARD_ROW, error: null });
-  mocks.updateIs.mockResolvedValue({ error: null });
+  mocks.setExpandedReport.mockResolvedValue({ data: true, error: null });
   mocks.defaultUsageSinks.mockReturnValue([
     async () => {
       order.push("emit");

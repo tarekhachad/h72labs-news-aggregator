@@ -28,15 +28,23 @@ interface Row {
 }
 
 /**
- * Covers exactly the query shapes upsertDigestForToday and
- * getLatestGeneratedAtForUser issue against `digests`. Filters are applied as
- * real predicates over a shared, mutable row array rather than as canned
- * per-call responses, so an insert from one call is visible to the next.
+ * Covers what upsertDigestForToday and getLatestGeneratedAtForUser actually
+ * ask of `digests`: the read shapes the cursor query issues, and the
+ * ensure_digest_for_today RPC that is now the only way a row gets created.
+ * Both run against a shared, mutable row array rather than canned per-call
+ * responses, so a row created by one call is visible to the next.
+ *
+ * The RPC fake reproduces the contract upsertDigestForToday depends on and
+ * nothing more: one id per (user, date), the same id on a second call for the
+ * same day. It deliberately does NOT model the function's p_date bound or its
+ * auth.uid() check — those live in SQL, and a fake asserting them would only
+ * be checking itself. The schema-shape test covers that they are written; the
+ * live probe covers that they hold.
  *
  * It models no generation state at all, which is the point: the mutex no
  * longer lives on this table.
  */
-function makeFakeDigestsTable(rows: Row[]) {
+function makeFakeDigestsTable(rows: Row[], userId = "user-1") {
   class Query implements PromiseLike<{ data: unknown; error: null }> {
     private filters: ((r: Row) => boolean)[] = [];
     private ordered: Row[] | undefined;
@@ -95,20 +103,27 @@ function makeFakeDigestsTable(rows: Row[]) {
     }
   }
 
+  let minted = 0;
+
   return {
     from: vi.fn((table: string) => {
       if (table !== "digests") throw new Error(`fake digests: unexpected table ${table}`);
       return {
         select: vi.fn((_cols: string) => new Query()),
-        insert: vi.fn((row: Partial<Row>) => {
-          const exists = rows.some((r) => r.user_id === row.user_id && r.date === row.date);
-          if (exists) {
-            return Promise.resolve({ error: { code: "23505", message: "duplicate key" } });
-          }
-          rows.push({ last_generated_at: null, ...row } as Row);
-          return Promise.resolve({ error: null });
-        }),
       };
+    }),
+    rpc: vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      if (fn !== "ensure_digest_for_today") {
+        throw new Error(`fake digests: unexpected function ${fn}`);
+      }
+      const date = args.p_date as string;
+      const existing = rows.find((r) => r.user_id === userId && r.date === date);
+      if (existing) return { data: existing.id, error: null };
+
+      minted += 1;
+      const id = `digest-${minted}`;
+      rows.push({ id, user_id: userId, date, last_generated_at: null });
+      return { data: id, error: null };
     }),
   };
 }
@@ -181,13 +196,13 @@ describe("day boundary: the generation claim is per user, not per digest row", (
     vi.setSystemTime(new Date("2026-08-13T23:59:30.000Z"));
     const claimA = await claimGenerationForUser(claims as never);
     expect(claimA).not.toBeNull();
-    const { digestId: idA } = await upsertDigestForToday(digests as never, "user-1");
+    const { digestId: idA } = await upsertDigestForToday(digests as never);
 
     vi.setSystemTime(new Date("2026-08-14T00:00:05.000Z"));
 
     // Request B still gets a brand-new row for the new day, and that is
     // correct — asserted so the fix is not mistaken for "one row forever".
-    const { digestId: idB } = await upsertDigestForToday(digests as never, "user-1");
+    const { digestId: idB } = await upsertDigestForToday(digests as never);
     expect(idB).not.toBe(idA);
     expect(rows.find((r) => r.date === "2026-08-14")?.id).toBe(idB);
 
@@ -249,7 +264,7 @@ describe("day boundary: the generation claim is per user, not per digest row", (
     const digests = makeFakeDigestsTable(rows);
 
     vi.setSystemTime(new Date("2026-08-13T23:59:30.000Z"));
-    await upsertDigestForToday(digests as never, "user-1");
+    await upsertDigestForToday(digests as never);
 
     // last_generated_at is written once, at the very end of a successful run,
     // so an in-flight run contributes nothing to the cursor. That is why the
