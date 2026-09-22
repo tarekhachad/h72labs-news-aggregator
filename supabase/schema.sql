@@ -103,13 +103,6 @@ create table public.digests (
   -- in SQL precisely because Postgres sorts them first under DESC, so a
   -- freshly created row would otherwise win the ordering.
   last_generated_at timestamptz,
-  -- Dead columns. The generation mutex is public.generation_claims, keyed on
-  -- the user rather than on one day's digest row — see that table at the end
-  -- of this file for why per-row claiming was wrong. These two are retained
-  -- only because dropping a column cannot be undone; nothing reads or writes
-  -- them, which `grep -rn generating src/` confirms in one command.
-  generating boolean not null default false,
-  generation_started_at timestamptz,
   created_at timestamptz not null default now(),
   unique (user_id, date)
 );
@@ -483,6 +476,24 @@ drop policy if exists "insert own digests" on public.digests;
 drop policy if exists "update own digests" on public.digests;
 drop policy if exists "insert own cards" on public.cards;
 drop policy if exists "update own cards" on public.cards;
+
+-- The old per-digest-row generation flag. The mutex is public.generation_claims,
+-- keyed on the user rather than on one day's digest row — see that table at the
+-- end of this file for why per-row claiming was wrong. Dropped rather than left
+-- as dead columns: they sit on this table looking exactly like a working mutex,
+-- and the next person to wire a check to them gets back the per-row bug.
+-- Same reason as the policies above for using `if exists` — this file is applied
+-- by hand to a live database, so absence from the CREATE TABLE is not removal.
+alter table public.digests
+  drop column if exists generating,
+  drop column if exists generation_started_at;
+
+-- Superseded by persist_generated_cards, which folds the rank update into the
+-- same transaction as the insert. It was live in the database and referenced
+-- nowhere in this file or in src/. `security invoker`, so it was never an
+-- escalation and became inert the moment `update own cards` was dropped above —
+-- removed as dead callable surface, not as a fix.
+drop function if exists public.update_front_page_ranks(jsonb);
 
 -- getLatestGeneratedAtForUser runs this exact shape on every generation, and
 -- it is the query the since-cursor depends on. Partial for the same reason

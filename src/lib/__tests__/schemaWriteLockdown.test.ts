@@ -144,6 +144,35 @@ describe("schema.sql: no session can write digests or cards directly", () => {
   });
 });
 
+describe("schema.sql: the superseded generation flag is gone", () => {
+  const digestsTable = schemaSql.slice(
+    schemaSql.indexOf("create table public.digests ("),
+    schemaSql.indexOf(");", schemaSql.indexOf("create table public.digests ("))
+  );
+
+  it("locates the digests table definition it then checks", () => {
+    expect(digestsTable).toContain("last_generated_at timestamptz");
+  });
+
+  it.each(["generating", "generation_started_at"])("does not declare %s", (column) => {
+    // These looked exactly like a working mutex while they sat on this table.
+    // The real one is public.generation_claims, keyed on the user — a check
+    // wired to a column here would resurrect the per-digest-row bug.
+    expect(digestsTable).not.toContain(column);
+  });
+
+  it("drops both columns from a database that already has them", () => {
+    // Same reason as the policy drops: absence from the CREATE TABLE removes
+    // nothing from a live database this file is applied to by hand.
+    expect(schemaSql).toContain("drop column if exists generating");
+    expect(schemaSql).toContain("drop column if exists generation_started_at");
+  });
+
+  it("drops the superseded rank-update function", () => {
+    expect(schemaSql).toContain("drop function if exists public.update_front_page_ranks(jsonb);");
+  });
+});
+
 describe("schema.sql: the since-cursor query has an index", () => {
   it("indexes (user_id, last_generated_at) with the null predicate the query implies", () => {
     const match = schemaSql.match(
