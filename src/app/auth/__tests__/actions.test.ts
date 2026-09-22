@@ -17,13 +17,29 @@ vi.mock("next/navigation", () => ({
 }));
 
 const signUpMock = vi.fn();
+const signInMock = vi.fn();
+const resendMock = vi.fn();
+const resetPasswordForEmailMock = vi.fn();
+const updateUserMock = vi.fn();
+const signOutMock = vi.fn();
+const getClaimsMock = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
-    auth: { signUp: signUpMock },
+    auth: {
+      signUp: signUpMock,
+      signInWithPassword: signInMock,
+      resend: resendMock,
+      resetPasswordForEmail: resetPasswordForEmailMock,
+      updateUser: updateUserMock,
+      signOut: signOutMock,
+      getClaims: getClaimsMock,
+    },
   })),
 }));
 
-const { signUp } = await import("@/app/auth/actions");
+const { signUp, signIn, resendConfirmation, requestPasswordReset, resetPassword } = await import(
+  "@/app/auth/actions"
+);
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -33,18 +49,39 @@ function form(fields: Record<string, string>): FormData {
 
 const VALID_TOKEN = "a".repeat(43);
 
-async function runAndCaptureRedirect(fd: FormData): Promise<string> {
+async function captureRedirect(
+  action: (fd: FormData) => Promise<unknown>,
+  fd: FormData
+): Promise<string> {
   try {
-    await signUp(fd);
-    throw new Error("signUp did not redirect");
+    await action(fd);
+    throw new Error("action did not redirect");
   } catch (e) {
     if (e instanceof RedirectSignal) return e.url;
     throw e;
   }
 }
 
+function runAndCaptureRedirect(fd: FormData): Promise<string> {
+  return captureRedirect(signUp, fd);
+}
+
 beforeEach(() => {
   signUpMock.mockReset();
+  signInMock.mockReset();
+  resendMock.mockReset();
+  resetPasswordForEmailMock.mockReset();
+  updateUserMock.mockReset();
+  signOutMock.mockReset();
+  getClaimsMock.mockReset();
+  // The default is a session the recovery link just established; the tests
+  // that care about the gate override it.
+  getClaimsMock.mockResolvedValue({
+    data: { claims: { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] } },
+  });
+  // A session in the signUp response is the "confirmation is off" shape;
+  // tests that care about the confirmation path override this.
+  signUpMock.mockResolvedValue({ data: { session: { access_token: "t" } }, error: null });
 });
 
 describe("signUp invite gating", () => {
@@ -83,7 +120,7 @@ describe("signUp invite gating", () => {
   });
 
   it("carries a well-formed invite token through to Supabase as options.data.invite_token", async () => {
-    signUpMock.mockResolvedValue({ error: null });
+    signUpMock.mockResolvedValue({ data: { session: { access_token: "t" } }, error: null });
     const fd = form({ invite: VALID_TOKEN, email: "a@b.com", password: "password1" });
     let caught: unknown;
     try {
@@ -139,5 +176,166 @@ describe("signUp invite gating", () => {
     expect(url).not.toContain("already registered");
     expect(url).not.toContain(encodeURIComponent("User already registered"));
     expect(url).toBe(`/signup?${new URLSearchParams({ invite: VALID_TOKEN, error: "signup_failed" }).toString()}`);
+  });
+});
+
+describe("signUp with email confirmation on", () => {
+  it("sends a session-less signup to check-email, not to onboarding", async () => {
+    signUpMock.mockResolvedValue({ data: { user: { id: "u1" }, session: null }, error: null });
+    const url = await runAndCaptureRedirect(
+      form({ invite: VALID_TOKEN, email: "a@b.com", password: "password1" })
+    );
+    expect(url).toBe(`/signup/check-email?${new URLSearchParams({ email: "a@b.com" }).toString()}`);
+  });
+
+  it("sends an already-registered address to the same place, revealing nothing", async () => {
+    // Supabase returns a decoy user with no identities and no session here.
+    signUpMock.mockResolvedValue({
+      data: { user: { id: "decoy", identities: [] }, session: null },
+      error: null,
+    });
+    const url = await runAndCaptureRedirect(
+      form({ invite: VALID_TOKEN, email: "taken@b.com", password: "password1" })
+    );
+    expect(url).toBe(
+      `/signup/check-email?${new URLSearchParams({ email: "taken@b.com" }).toString()}`
+    );
+  });
+});
+
+describe("signIn error mapping", () => {
+  it.each([
+    [{ code: "invalid_credentials", message: "Invalid login credentials" }, "invalid_credentials"],
+    [{ code: "email_not_confirmed", message: "Email not confirmed" }, "email_not_confirmed"],
+    [{ status: 429, code: "over_request_rate_limit", message: "…" }, "rate_limited"],
+    [{ code: "unexpected_failure", message: "Database error granting user" }, "login_failed"],
+    // Message-only shape, i.e. an SDK that does not populate `code`.
+    [{ message: "Email not confirmed" }, "email_not_confirmed"],
+  ])("maps %o to the %s code", async (error, expected) => {
+    signInMock.mockResolvedValue({ error });
+    const url = await captureRedirect(signIn, form({ email: "a@b.com", password: "password1" }));
+    expect(url).toBe(`/login?error=${expected}`);
+  });
+
+  it("never puts Supabase's raw error text in the redirect URL", async () => {
+    signInMock.mockResolvedValue({
+      error: { code: "unexpected_failure", message: "Database error granting user" },
+    });
+    const url = await captureRedirect(signIn, form({ email: "a@b.com", password: "password1" }));
+    expect(url).not.toContain("Database");
+    expect(url).not.toContain(encodeURIComponent("Database error granting user"));
+  });
+
+  it("redirects to / on success", async () => {
+    signInMock.mockResolvedValue({ error: null });
+    const url = await captureRedirect(signIn, form({ email: "a@b.com", password: "password1" }));
+    expect(url).toBe("/");
+  });
+});
+
+describe("resendConfirmation", () => {
+  it("resends for a valid address and reports it neutrally", async () => {
+    resendMock.mockResolvedValue({ error: null });
+    const url = await captureRedirect(resendConfirmation, form({ email: "a@b.com" }));
+    expect(resendMock).toHaveBeenCalledWith({ type: "signup", email: "a@b.com" });
+    expect(url).toBe("/signup/check-email?sent=1");
+  });
+
+  it("gives the same answer when Supabase errors, so a failure reveals nothing", async () => {
+    resendMock.mockResolvedValue({ error: { code: "user_not_found", message: "User not found" } });
+    const url = await captureRedirect(resendConfirmation, form({ email: "nobody@b.com" }));
+    expect(url).toBe("/signup/check-email?sent=1");
+  });
+
+  it("gives the same answer for a malformed address, without calling Supabase", async () => {
+    const url = await captureRedirect(resendConfirmation, form({ email: "not-an-email" }));
+    expect(resendMock).not.toHaveBeenCalled();
+    expect(url).toBe("/signup/check-email?sent=1");
+  });
+});
+
+describe("requestPasswordReset", () => {
+  it("sends the reset email and reports it neutrally", async () => {
+    resetPasswordForEmailMock.mockResolvedValue({ error: null });
+    const url = await captureRedirect(requestPasswordReset, form({ email: "a@b.com" }));
+    expect(resetPasswordForEmailMock).toHaveBeenCalledWith("a@b.com");
+    expect(url).toBe("/forgot-password?sent=1");
+  });
+
+  it("answers identically for an unknown address", async () => {
+    resetPasswordForEmailMock.mockResolvedValue({
+      error: { code: "user_not_found", message: "User not found" },
+    });
+    const url = await captureRedirect(requestPasswordReset, form({ email: "nobody@b.com" }));
+    expect(url).toBe("/forgot-password?sent=1");
+  });
+
+  it("answers identically for a malformed address, without calling Supabase", async () => {
+    const url = await captureRedirect(requestPasswordReset, form({ email: "nope" }));
+    expect(resetPasswordForEmailMock).not.toHaveBeenCalled();
+    expect(url).toBe("/forgot-password?sent=1");
+  });
+});
+
+describe("resetPassword", () => {
+  it("updates the password, then cuts every other session", async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+    signOutMock.mockResolvedValue({ error: null });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(updateUserMock).toHaveBeenCalledWith({ password: "newpassword" });
+    expect(signOutMock).toHaveBeenCalledWith({ scope: "others" });
+    expect(url).toBe("/");
+  });
+
+  it("rejects a short password before calling Supabase", async () => {
+    const url = await captureRedirect(resetPassword, form({ password: "abc" }));
+    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(url).toBe("/reset-password?error=weak_password");
+  });
+
+  it("does not sign other sessions out when the update failed", async () => {
+    updateUserMock.mockResolvedValue({
+      error: { code: "session_expired", message: "Session from session_id claim in JWT does not exist" },
+    });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(signOutMock).not.toHaveBeenCalled();
+    expect(url).toBe("/reset-password?error=reset_failed");
+  });
+
+  const refusedSessions: Array<[unknown, string]> = [
+    [{ amr: [{ method: "password", timestamp: Math.floor(Date.now() / 1000) }] }, "an ordinary login"],
+    [{ amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale recovery"],
+    [{}, "a token with no amr claim"],
+  ];
+
+  for (const [claims, description] of refusedSessions) {
+    it(`refuses ${description} without touching the password or other sessions`, async () => {
+      getClaimsMock.mockResolvedValue({ data: { claims } });
+      const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+      expect(updateUserMock).not.toHaveBeenCalled();
+      expect(signOutMock).not.toHaveBeenCalled();
+      expect(url).toBe("/forgot-password?expired=1");
+    });
+  }
+
+  it("refuses when there is no session at all", async () => {
+    getClaimsMock.mockResolvedValue({ data: null });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(url).toBe("/forgot-password?expired=1");
+  });
+
+  it("checks the session before validating the password, so a bad session never reveals the rule", async () => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { amr: [{ method: "password", timestamp: 1 }] } } });
+    const url = await captureRedirect(resetPassword, form({ password: "abc" }));
+    expect(url).toBe("/forgot-password?expired=1");
+  });
+
+  it("names the same-password case so the user can act on it", async () => {
+    updateUserMock.mockResolvedValue({
+      error: { code: "same_password", message: "New password should be different from the old password." },
+    });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(url).toBe("/reset-password?error=same_password");
   });
 });

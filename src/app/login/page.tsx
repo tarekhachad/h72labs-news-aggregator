@@ -1,12 +1,7 @@
 import { signIn } from "@/app/auth/actions";
 import { SubmitButton } from "@/components/SubmitButton";
-
-const INPUT_CLASS = "rounded-xl border px-4 py-3 text-sm";
-const INPUT_STYLE = {
-  borderColor: "var(--color-border)",
-  background: "var(--color-card)",
-  color: "var(--color-card-foreground)",
-} as const;
+import { INPUT_CLASS, INPUT_STYLE, SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
+import { LOGIN_ERROR_MESSAGES, isLoginErrorCode } from "@/lib/authErrors";
 
 export default async function LoginPage({
   searchParams,
@@ -14,6 +9,9 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  // Only codes this app defines are rendered; anything else in the URL is ignored.
+  const errorMessage = isLoginErrorCode(error) ? LOGIN_ERROR_MESSAGES[error] : null;
+  const needsConfirmation = error === "email_not_confirmed" || error === "link_expired";
 
   return (
     <div className="min-h-screen" style={{ background: "var(--color-background)" }}>
@@ -36,19 +34,28 @@ export default async function LoginPage({
             className={INPUT_CLASS}
             style={INPUT_STYLE}
           />
-          {error && (
+          {errorMessage && (
             <p className="text-sm" style={{ color: "var(--color-destructive)" }}>
-              {error}
+              {errorMessage}
+              {needsConfirmation && (
+                <>
+                  {" "}
+                  <a href="/signup/check-email" className="underline">
+                    Send it again
+                  </a>
+                </>
+              )}
             </p>
           )}
-          <SubmitButton
-            pendingLabel="Logging in…"
-            className="cursor-pointer self-center rounded-full px-8 py-3 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: "var(--color-primary)", color: "var(--color-on-primary)" }}
-          >
+          <SubmitButton pendingLabel="Logging in…" className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
             Log in
           </SubmitButton>
         </form>
+        <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+          <a href="/forgot-password" className="underline">
+            Forgot your password?
+          </a>
+        </p>
         <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
           Don&apos;t have an account?{" "}
           <a href="/signup" className="underline">

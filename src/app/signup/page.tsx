@@ -1,13 +1,7 @@
 import { signUp } from "@/app/auth/actions";
 import { SubmitButton } from "@/components/SubmitButton";
+import { INPUT_CLASS, INPUT_STYLE, SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
 import { INVITE_TOKEN_PATTERN, SIGNUP_ERROR_MESSAGES, isSignupErrorCode } from "@/lib/invite";
-
-const INPUT_CLASS = "rounded-xl border px-4 py-3 text-sm";
-const INPUT_STYLE = {
-  borderColor: "var(--color-border)",
-  background: "var(--color-card)",
-  color: "var(--color-card-foreground)",
-} as const;
 
 export default async function SignupPage({
   searchParams,
@@ -52,11 +46,7 @@ export default async function SignupPage({
                 {errorMessage}
               </p>
             )}
-            <SubmitButton
-              pendingLabel="Signing up…"
-              className="cursor-pointer self-center rounded-full px-8 py-3 text-sm font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ background: "var(--color-primary)", color: "var(--color-on-primary)" }}
-            >
+            <SubmitButton pendingLabel="Signing up…" className={SUBMIT_CLASS} style={SUBMIT_STYLE}>
               Sign up
             </SubmitButton>
           </form>

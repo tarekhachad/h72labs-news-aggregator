@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { INVITE_TOKEN_PATTERN, signupErrorCode, type SignupErrorCode } from "@/lib/invite";
+import { loginErrorCode } from "@/lib/authErrors";
+import { isRecoverySession } from "@/lib/recoverySession";
 
 // A missing field or a submitted File (not a string) would otherwise
 // surface as an opaque Supabase API error instead of a clean local one.
@@ -36,7 +38,7 @@ export async function signUp(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     ...parsed.data,
     // Becomes user_metadata.invite_token, which is where the
     // before-user-created hook reads it.
@@ -47,7 +49,70 @@ export async function signUp(formData: FormData) {
     signupRedirect(invite, signupErrorCode(error.message));
   }
 
+  // With email confirmation on there is no session yet, so /onboarding — which
+  // requires one — would bounce straight back to /login. An address that
+  // already has an account also lands here, with no session and no email sent,
+  // which is what keeps this page from confirming who is registered.
+  if (!data?.session) {
+    const params = new URLSearchParams({ email: parsed.data.email });
+    redirect(`/signup/check-email?${params.toString()}`);
+  }
+
   redirect("/onboarding");
+}
+
+/**
+ * Sends the confirmation email again. The invite token was already spent at
+ * account creation, so this — not a fresh invite — is how someone who never
+ * clicked the first link finishes signing up.
+ */
+export async function resendConfirmation(formData: FormData) {
+  const email = z.string().email().safeParse(formData.get("email"));
+  if (email.success) {
+    const supabase = await createClient();
+    await supabase.auth.resend({ type: "signup", email: email.data });
+  }
+
+  // Always the same redirect, whatever happened above: a different answer for
+  // a registered address would turn this form into an account checker.
+  redirect("/signup/check-email?sent=1");
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = z.string().email().safeParse(formData.get("email"));
+  if (email.success) {
+    const supabase = await createClient();
+    await supabase.auth.resetPasswordForEmail(email.data);
+  }
+
+  redirect("/forgot-password?sent=1");
+}
+
+/**
+ * Only a session the recovery link established may reset a password here,
+ * because this path also cuts every other session. Gating on any session at
+ * all would let a stolen one evict the real owner without going near their
+ * inbox, which inverts the point of the flow.
+ */
+export async function resetPassword(formData: FormData) {
+  const supabase = await createClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  if (!isRecoverySession(claims?.claims)) {
+    redirect("/forgot-password?expired=1");
+  }
+
+  const password = z.string().min(6).safeParse(formData.get("password"));
+  if (!password.success) {
+    redirect("/reset-password?error=weak_password");
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: password.data });
+  if (error) {
+    redirect(`/reset-password?error=${error.code === "same_password" ? "same_password" : "reset_failed"}`);
+  }
+
+  await supabase.auth.signOut({ scope: "others" });
+  redirect("/");
 }
 
 export async function signIn(formData: FormData) {
@@ -56,15 +121,15 @@ export async function signIn(formData: FormData) {
     password: formData.get("password"),
   });
   if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Invalid input";
-    redirect(`/login?error=${encodeURIComponent(message)}`);
+    const field = parsed.error.issues[0]?.path[0];
+    redirect(`/login?error=${field === "email" ? "invalid_email" : "invalid_credentials"}`);
   }
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    redirect(`/login?error=${loginErrorCode(error)}`);
   }
 
   redirect("/");

@@ -5,7 +5,16 @@ import { NextResponse, type NextRequest } from "next/server";
 // deliberately does NOT import anything from src/lib/{cluster,ingest,
 // triage,writeCard}.ts — those need Node APIs (@xenova/transformers) and
 // middleware runs on the Edge runtime.
-const PUBLIC_PATHS = ["/login", "/signup", "/auth/callback"];
+// /reset-password is deliberately absent: the recovery link establishes a
+// session before landing there, so it is reached as a signed-in page.
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/signup/check-email",
+  "/forgot-password",
+  "/auth/callback",
+  "/auth/confirm",
+];
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
