@@ -14,10 +14,9 @@ export default async function ResetPasswordPage({
   const { error } = await searchParams;
   const errorMessage = isResetErrorCode(error) ? RESET_ERROR_MESSAGES[error] : null;
 
-  // An ordinary logged-in session must not reach this form: saving here also
-  // signs every other session out. Only a session the recovery link itself
-  // established qualifies, which is what isRecoverySession reads out of the
-  // signed token. The action re-checks it — this is the door, not the lock.
+  // This form is reached from an emailed link, not from an ordinary login,
+  // and isRecoverySession reads that distinction out of the signed token.
+  // The action re-checks it — this is the door, not the lock.
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
   if (!isRecoverySession(claims?.claims)) {
@@ -47,9 +46,6 @@ export default async function ResetPasswordPage({
             Save password
           </SubmitButton>
         </form>
-        <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-          Saving signs you out everywhere else.
-        </p>
       </main>
     </div>
   );

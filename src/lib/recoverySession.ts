@@ -2,13 +2,19 @@
  * Tells a session established by a password-recovery link apart from an
  * ordinary one.
  *
- * /reset-password changes a password and then signs every other session out.
- * Gating that on "is anyone logged in" would hand the eviction to whoever
- * holds a session cookie, so a stolen session could lock the real owner out
- * without ever reaching their inbox — the reverse of what the flow is for.
- * Proof of inbox control is what the `recovery` entry in the token's `amr`
- * claim records, and the claim is signed by Supabase, so a session that
- * logged in with a password cannot present one.
+ * /reset-password sets a new password without asking for the old one, so it
+ * is meant to be reached from an emailed link rather than from an ordinary
+ * signed-in session, which has /profile for that.
+ * Proof of inbox control is what the token's `amr` claim records, and the
+ * claim is signed by Supabase, so a session that logged in with a password
+ * cannot present one.
+ *
+ * Both `otp` and `recovery` count. Auth records a token-hash email link as
+ * `otp` whatever the link was for, and `recovery` appears only on some
+ * flows, so accepting the narrower value alone rejects every real reset
+ * link. `otp` still means the holder opened an email this app sent, which
+ * is the property being checked; a password login records `password` and is
+ * refused either way.
  */
 
 /** Matches the link's own lifetime: a recovery session goes stale as fast. */
@@ -16,6 +22,8 @@ const RECOVERY_WINDOW_SECONDS = 60 * 60;
 
 /** Tolerance for clock drift between this server and Supabase. */
 const FUTURE_SKEW_SECONDS = 60;
+
+const INBOX_METHODS: readonly unknown[] = ["recovery", "otp"];
 
 type AmrEntry = { method?: unknown; timestamp?: unknown };
 
@@ -29,7 +37,7 @@ export function isRecoverySession(
   if (!Array.isArray(amr)) return false;
 
   return amr.some((entry: AmrEntry) => {
-    if (entry?.method !== "recovery") return false;
+    if (!INBOX_METHODS.includes(entry?.method)) return false;
     // A missing or non-numeric timestamp fails closed: without one there is
     // no way to tell a recovery from an hour ago from one from last month,
     // and a long-lived recovery session is exactly what this window exists

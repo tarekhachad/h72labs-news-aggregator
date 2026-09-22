@@ -278,12 +278,13 @@ describe("requestPasswordReset", () => {
 });
 
 describe("resetPassword", () => {
-  it("updates the password, then cuts every other session", async () => {
+  it("updates the password and leaves the account's other sessions alone", async () => {
     updateUserMock.mockResolvedValue({ error: null });
-    signOutMock.mockResolvedValue({ error: null });
     const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
     expect(updateUserMock).toHaveBeenCalledWith({ password: "newpassword" });
-    expect(signOutMock).toHaveBeenCalledWith({ scope: "others" });
+    // Eviction needs proof the reset link was opened, which amr cannot give;
+    // it belongs with the /profile reauthentication work, not here.
+    expect(signOutMock).not.toHaveBeenCalled();
     expect(url).toBe("/");
   });
 
@@ -293,7 +294,20 @@ describe("resetPassword", () => {
     expect(url).toBe("/reset-password?error=weak_password");
   });
 
-  it("does not sign other sessions out when the update failed", async () => {
+  // An emailed link records `otp`, not `recovery`, so this is the shape a
+  // real reset actually arrives in.
+  it("accepts a fresh otp session end to end", async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) }] } },
+    });
+    updateUserMock.mockResolvedValue({ error: null });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(updateUserMock).toHaveBeenCalledWith({ password: "newpassword" });
+    expect(signOutMock).not.toHaveBeenCalled();
+    expect(url).toBe("/");
+  });
+
+  it("reports a failed update without signing anyone out", async () => {
     updateUserMock.mockResolvedValue({
       error: { code: "session_expired", message: "Session from session_id claim in JWT does not exist" },
     });
@@ -305,11 +319,13 @@ describe("resetPassword", () => {
   const refusedSessions: Array<[unknown, string]> = [
     [{ amr: [{ method: "password", timestamp: Math.floor(Date.now() / 1000) }] }, "an ordinary login"],
     [{ amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale recovery"],
+    [{ amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale email-link session"],
+    [{ amr: [{ method: "token_refresh", timestamp: Math.floor(Date.now() / 1000) }] }, "a token refresh on its own"],
     [{}, "a token with no amr claim"],
   ];
 
   for (const [claims, description] of refusedSessions) {
-    it(`refuses ${description} without touching the password or other sessions`, async () => {
+    it(`refuses ${description} without touching the password`, async () => {
       getClaimsMock.mockResolvedValue({ data: { claims } });
       const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
       expect(updateUserMock).not.toHaveBeenCalled();

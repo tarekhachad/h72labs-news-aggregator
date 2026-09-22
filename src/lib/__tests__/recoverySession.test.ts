@@ -13,6 +13,17 @@ describe("isRecoverySession", () => {
     expect(isRecoverySession(claims([{ method: "recovery", timestamp: NOW - 30 }]), NOW)).toBe(true);
   });
 
+  // What Auth actually records for a token-hash email link, confirmed against
+  // auth.mfa_amr_claims on a real reset: the narrower "recovery" value alone
+  // would reject every genuine link.
+  it("accepts the otp method Auth records for an email link", () => {
+    expect(isRecoverySession(claims([{ method: "otp", timestamp: NOW - 30 }]), NOW)).toBe(true);
+  });
+
+  it("still rejects an otp entry once it is stale", () => {
+    expect(isRecoverySession(claims([{ method: "otp", timestamp: NOW - HOUR - 1 }]), NOW)).toBe(false);
+  });
+
   it("accepts a recovery entry alongside other methods", () => {
     const amr = [
       { method: "recovery", timestamp: NOW - 120 },
@@ -23,7 +34,6 @@ describe("isRecoverySession", () => {
 
   it.each([
     ["password", "an ordinary login"],
-    ["otp", "an email OTP login"],
     ["magiclink", "a magic link"],
     ["oauth", "a social login"],
     ["email/signup", "the signup confirmation itself"],

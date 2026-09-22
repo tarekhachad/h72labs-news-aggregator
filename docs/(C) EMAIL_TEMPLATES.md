@@ -47,7 +47,7 @@ Body:
 
 <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password">Set a new password</a></p>
 
-<p>The link works once and expires in an hour. Saving a new password also signs you out on every other device.</p>
+<p>The link works once and expires in an hour.</p>
 
 <p>If this wasn't you, ignore this email and your password stays as it is.</p>
 ```

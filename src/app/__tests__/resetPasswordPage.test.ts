@@ -44,7 +44,18 @@ describe("ResetPasswordPage gate", () => {
     expect(html).toContain("Set a new password");
   });
 
+  // The method a real emailed link actually carries, and the case that was
+  // live-broken when the gate demanded "recovery".
+  it("renders the form for a fresh otp session", async () => {
+    getClaimsMock.mockResolvedValue({
+      data: { claims: { amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) }] } },
+    });
+    const element = await ResetPasswordPage({ searchParams: searchParams() });
+    expect(JSON.stringify(element)).toContain("Set a new password");
+  });
+
   const refused: Array<[unknown, string]> = [
+    [{ amr: [{ method: "token_refresh", timestamp: Math.floor(Date.now() / 1000) }] }, "a token refresh on its own"],
     [{ amr: [{ method: "password", timestamp: Math.floor(Date.now() / 1000) }] }, "an ordinary login session"],
     [{ amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale recovery session"],
     [{ amr: "not-an-array" }, "a garbage amr claim"],

@@ -89,10 +89,20 @@ export async function requestPasswordReset(formData: FormData) {
 }
 
 /**
- * Only a session the recovery link established may reset a password here,
- * because this path also cuts every other session. Gating on any session at
- * all would let a stolen one evict the real owner without going near their
- * inbox, which inverts the point of the flow.
+ * Restores access to an account whose password was forgotten; it does not
+ * cut the account's other sessions.
+ *
+ * Cutting them needs proof that the emailed reset link was opened, and Auth
+ * records every email link as the same `otp` method, so a session from a
+ * signup confirmation is indistinguishable from one from a reset link. Since
+ * a stolen session can already change the password through /profile, which
+ * asks for no reauthentication, eviction would hand a thief the one thing it
+ * cannot do today. Both halves belong to the same fix — reauthentication on
+ * the profile change, and a recovery proof that does not rely on `amr` — and
+ * that fix is V2.1.9's.
+ *
+ * The recovery-session gate stays as the door: this page is reached from a
+ * link, not from an ordinary login.
  */
 export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
@@ -111,7 +121,6 @@ export async function resetPassword(formData: FormData) {
     redirect(`/reset-password?error=${error.code === "same_password" ? "same_password" : "reset_failed"}`);
   }
 
-  await supabase.auth.signOut({ scope: "others" });
   redirect("/");
 }
 
