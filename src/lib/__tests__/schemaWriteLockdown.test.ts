@@ -144,21 +144,50 @@ describe("schema.sql: no session can write digests or cards directly", () => {
   });
 });
 
+/**
+ * The `create table public.digests (...)` block, or null when the anchor no
+ * longer matches. Explicitly null rather than letting `indexOf` return -1 feed
+ * `slice`: that happens to yield an empty string, against which every
+ * `not.toContain` below would pass while checking nothing.
+ */
+function digestsTableBlock(): string | null {
+  const start = schemaSql.indexOf("create table public.digests (");
+  if (start === -1) return null;
+  const end = schemaSql.indexOf(");", start);
+  return end === -1 ? null : schemaSql.slice(start, end);
+}
+
+/**
+ * The column names a CREATE TABLE block declares — the first token of each
+ * non-comment line. Comparing against this instead of searching the block's
+ * raw text is what stops the word "generating" inside a comment near this
+ * table from failing the suite for no behavioural reason. This table already
+ * carries several paragraphs about generation semantics, so that collision is
+ * a matter of time rather than a hypothetical.
+ */
+function declaredColumns(block: string): string[] {
+  return block
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("--"))
+    .map((line) => line.split(/[\s(,]/)[0])
+    .filter((token) => /^[a-z_]+$/.test(token));
+}
+
 describe("schema.sql: the superseded generation flag is gone", () => {
-  const digestsTable = schemaSql.slice(
-    schemaSql.indexOf("create table public.digests ("),
-    schemaSql.indexOf(");", schemaSql.indexOf("create table public.digests ("))
-  );
+  const digestsTable = digestsTableBlock();
 
   it("locates the digests table definition it then checks", () => {
+    expect(digestsTable, "the digests CREATE TABLE anchor no longer matches").not.toBeNull();
     expect(digestsTable).toContain("last_generated_at timestamptz");
+    expect(declaredColumns(digestsTable ?? "")).toContain("last_generated_at");
   });
 
   it.each(["generating", "generation_started_at"])("does not declare %s", (column) => {
     // These looked exactly like a working mutex while they sat on this table.
     // The real one is public.generation_claims, keyed on the user — a check
     // wired to a column here would resurrect the per-digest-row bug.
-    expect(digestsTable).not.toContain(column);
+    expect(declaredColumns(digestsTable ?? "")).not.toContain(column);
   });
 
   it("drops both columns from a database that already has them", () => {
