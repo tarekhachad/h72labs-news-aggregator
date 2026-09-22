@@ -527,9 +527,16 @@ Three smaller things belong in the same pass. **Rename `NEXT_PUBLIC_SUPABASE_URL
 - **Still outstanding:** no run has yet written a real card under the lockdown. Every guard and the write path are proven — including `persist_generated_cards` writing the cursor with an empty card array — but the insert itself has not run in anger. The next morning digest is that confirmation.
 - **For V2.1.9:** its "no secret is inlined into the browser bundle" check can cite this — after `npm run build`, the publishable key, the project URL and the Anthropic key each appear **zero** times in `.next/static`. Re-run it against the deployed build rather than treating it as closed.
 
-#### V2.1.6 — Email: confirmation and a forgot-password flow
+#### V2.1.6 — Email: confirmation and a forgot-password flow — **SHIPPED 2026-09-22 (`69a9c4e`)**
 
-Both folded items, and both blocked on the same missing piece: Supabase's built-in email sender is rate-limited and explicitly not for production, so this starts with a real SMTP provider on a domain Tarek already owns. Then turn on email confirmation (the `/auth/callback` route already exists for it) and build the forgot-password and reset-password pages against `resetPasswordForEmail`.
+**Live and verified end to end**: a real invitee signed up, received the confirmation email, opened it on a different device from the one that signed up, and completed onboarding; a forgotten password was reset from the emailed link without Tarek touching anything. SPF, DKIM and DMARC all pass at Gmail. **Resend** sends as `H72 Labs News <no-reply@h72labs.com>`; the DNS lives in Cloudflare on the `send.` subdomain, and a `_dmarc` record at `p=none` was added during the live pass, which is what turned DMARC from fail to pass. Copy is version-controlled in `docs/(C) EMAIL_TEMPLATES.md` and pasted into the dashboard.
+
+**Two things this item learned the hard way, both worth keeping:**
+
+- **The links use `token_hash` + `verifyOtp` at `/auth/confirm`, not `{{ .ConfirmationURL }}`/PKCE.** PKCE keeps its verifier in the browser that began the flow, so an invitee who signs up on a laptop and opens the email on a phone cannot finish. That is the normal case, not an edge case. `/auth/callback` stays for anything handing back a `code`.
+- **Auth stamps every emailed link with the `otp` authentication method**, whatever the link was for — read directly from `auth.mfa_amr_claims` after a real reset. A gate demanding `recovery` refuses genuine reset links, and because `otp` also covers signup confirmations, no `amr`-based check can tell the two flows apart. That is why resetting no longer evicts the account's other sessions; see V2.1.9.
+
+**Also worth knowing:** the Site URL field, left at localhost from V2.1.0, is what `{{ .SiteURL }}` renders into, so the first confirmation email pointed at `http://localhost:3000`. The invite token is still spent at account creation, but an invitee who never confirms is no longer stranded — the account exists and the email can be resent from `/signup/check-email` or a failed login.
 
 Without this, a tester who forgets their password is locked out until Tarek fixes it by hand, and a stolen session can permanently lock out the real owner — the reason this was folded into deployment in the first place.
 
