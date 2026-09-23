@@ -8,6 +8,7 @@ Real user accounts exist from v1 (you plus, soon, a handful of friends testing),
 
 - **Account info:** email + password, handled entirely by Supabase Auth — this app never sees or stores raw passwords itself.
 - **Preferences:** selected topics of interest, selected preferred news sources.
+- **Timezone:** the IANA timezone name the reader's browser reports (e.g. `Africa/Casablanca`), stored so "today's" digest is their own calendar day. It's rewritten whenever the device reports a different zone, so it reflects roughly where the device was last used. No location beyond that is collected, and the row is deleted with the account.
 - **Usage data:** generated digests/cards (tied to the user they were generated for), bookmarks.
 
 No sensitive personal data beyond an email address is collected in v1. No payment info (nothing is monetized yet).

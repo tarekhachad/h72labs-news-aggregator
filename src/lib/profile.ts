@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
+import { DEFAULT_TIME_ZONE } from "@/lib/localDate";
 
 // Shared by onboarding and the profile/edit page's Server Actions — kept out
 // of those "use server" files since such files may only export async
@@ -61,13 +62,15 @@ function inCuratedOrder<T extends string>(curated: readonly T[], rows: string[])
 export async function getUserProfile(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ topics: Topic[]; preferredSources: Source[] }> {
+): Promise<{ topics: Topic[]; preferredSources: Source[]; timeZone: string }> {
   const [
     { data: topicRows, error: topicError },
     { data: sourceRows, error: sourceError },
+    timeZone,
   ] = await Promise.all([
     supabase.from("user_topics").select("topic").eq("user_id", userId),
     supabase.from("user_preferred_sources").select("source").eq("user_id", userId),
+    getUserTimeZone(supabase, userId),
   ]);
 
   // A transient DB/network error must not look like "user has zero
@@ -92,7 +95,31 @@ export async function getUserProfile(
     (sourceRows ?? []).map((r) => r.source as string)
   );
 
-  return { topics, preferredSources };
+  return { topics, preferredSources, timeZone };
+}
+
+/**
+ * The timezone this user's "today" is computed in, or UTC when they have no
+ * stored one yet.
+ *
+ * A failed read also degrades to UTC rather than throwing, unlike the topic
+ * and source reads above. Those guard against bouncing an onboarded user to
+ * /onboarding; the worst a wrong timezone does is file one run under the UTC
+ * date, and TimeZoneSync rewrites the value on the next page load anyway.
+ */
+export async function getUserTimeZone(supabase: SupabaseClient, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("time_zone")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[profile] failed to load time zone, using UTC:", error.message);
+    return DEFAULT_TIME_ZONE;
+  }
+  const stored = (data as { time_zone?: unknown } | null)?.time_zone;
+  return typeof stored === "string" && stored.length > 0 ? stored : DEFAULT_TIME_ZONE;
 }
 
 /**

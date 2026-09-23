@@ -210,3 +210,31 @@ describe("schema.sql: the since-cursor query has an index", () => {
     expect(match).not.toBeNull();
   });
 });
+
+describe("schema.sql: the timezone write path", () => {
+  // Same three properties as the digest and card write functions above, for
+  // the same reasons. The value arrives from a browser, and it decides which
+  // row every run of this user's writes into.
+  it("runs set_time_zone as its owner, with a pinned search_path", () => {
+    const header = functionHeader("set_time_zone");
+    expect(header, "set_time_zone is missing from schema.sql").not.toBeNull();
+    expect(header).toContain("security definer");
+    expect(header).toContain("set search_path = ''");
+  });
+
+  it("checks the caller and the zone name before writing", () => {
+    const body = functionBody("set_time_zone") ?? "";
+    expect(body).toContain("auth.uid()");
+    expect(body).toContain("pg_catalog.pg_timezone_names");
+  });
+
+  it("revokes set_time_zone from public and anon, granting only authenticated", () => {
+    expect(schemaSql).toContain("revoke execute on function public.set_time_zone(text) from public, anon;");
+    expect(schemaSql).toContain("grant execute on function public.set_time_zone(text) to authenticated;");
+  });
+
+  it("gives sessions no direct write to user_settings", () => {
+    expect(schemaSql).toContain('create policy "select own settings"');
+    expect(schemaSql).not.toMatch(/create policy "[^"]*"\s+on public\.user_settings for (insert|update|delete|all)/);
+  });
+});

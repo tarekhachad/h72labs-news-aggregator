@@ -27,24 +27,37 @@ afterEach(() => {
 });
 
 describe("upsertDigestForToday", () => {
-  it("asks for today's UTC date and nothing else", async () => {
+  it("asks for today's date in the reader's zone and nothing else", async () => {
     const client = clientReturning({ data: VALID_ID, error: null });
 
-    await upsertDigestForToday(client as never);
+    await upsertDigestForToday(client as never, "UTC");
 
     expect(client.rpc).toHaveBeenCalledWith("ensure_digest_for_today", { p_date: "2026-09-21" });
+  });
+
+  it("writes into the reader's local day when it is not the UTC one", async () => {
+    // 23:30 UTC on the 21st is 00:30 on the 22nd in Casablanca and 19:30 on
+    // the 21st in New York. This choice is which row the whole run's cards,
+    // run shape and per-topic cap belong to.
+    const casablanca = clientReturning({ data: VALID_ID, error: null });
+    await upsertDigestForToday(casablanca as never, "Africa/Casablanca");
+    expect(casablanca.rpc).toHaveBeenCalledWith("ensure_digest_for_today", { p_date: "2026-09-22" });
+
+    const newYork = clientReturning({ data: VALID_ID, error: null });
+    await upsertDigestForToday(newYork as never, "America/New_York");
+    expect(newYork.rpc).toHaveBeenCalledWith("ensure_digest_for_today", { p_date: "2026-09-21" });
   });
 
   it("returns the id the function minted", async () => {
     const client = clientReturning({ data: VALID_ID, error: null });
 
-    expect(await upsertDigestForToday(client as never)).toEqual({ digestId: VALID_ID });
+    expect(await upsertDigestForToday(client as never, "UTC")).toEqual({ digestId: VALID_ID });
   });
 
   it("throws when the RPC fails", async () => {
     const client = clientReturning({ data: null, error: { message: "permission denied" } });
 
-    await expect(upsertDigestForToday(client as never)).rejects.toThrow(/permission denied/);
+    await expect(upsertDigestForToday(client as never, "UTC")).rejects.toThrow(/permission denied/);
   });
 
   it.each([
@@ -59,6 +72,6 @@ describe("upsertDigestForToday", () => {
     // its cause.
     const client = clientReturning({ data, error: null });
 
-    await expect(upsertDigestForToday(client as never)).rejects.toThrow(/no digest id/);
+    await expect(upsertDigestForToday(client as never, "UTC")).rejects.toThrow(/no digest id/);
   });
 });

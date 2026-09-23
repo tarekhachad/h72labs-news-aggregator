@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { listDigestDatesForUser } from "@/lib/digests";
+import { getUserTimeZone } from "@/lib/profile";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 function formatDate(date: string): string {
   // `date` is a plain "YYYY-MM-DD" string (Postgres `date` column) — append
@@ -28,10 +30,12 @@ export default async function HistoryPage() {
     redirect("/login");
   }
 
-  const dates = await listDigestDatesForUser(supabase, user.id);
+  const timeZone = await getUserTimeZone(supabase, user.id);
+  const dates = await listDigestDatesForUser(supabase, user.id, timeZone);
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-16">
+      <TimeZoneSync storedTimeZone={timeZone} />
       <div className="text-center">
         <h1 className="text-2xl font-semibold">History</h1>
         <p className="mt-2 text-sm" style={{ color: "var(--color-muted-foreground)" }}>

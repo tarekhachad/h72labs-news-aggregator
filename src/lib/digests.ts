@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Card, Digest, Topic } from "@/types";
 import { getBookmarkedCardIds } from "@/lib/bookmarks";
 import { plausibleCursorLimitIso } from "@/lib/cursor";
+import { dateInTimeZone } from "@/lib/localDate";
 
 export interface CardRow {
   id: string;
@@ -41,23 +42,11 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
   };
 }
 
-// The digest "date" is a UTC calendar day, not the visiting user's local
-// day — a deliberate v1 simplification (this app has no per-user timezone
-// setting yet). This is a real, recurring complaint rather than a theoretical
-// edge case: a user well west of UTC sees "today"
-// roll over several hours before their own local midnight, silently
-// reclassifying that day's digest as history. Deferred, not fixed —
-// see docs/(C) ROADMAP.md's "Explicitly deferred" section for what a real
-// fix needs.
-//
-// Exported as of Phase 8.1 so the history route guards can ask "is this
-// date today?" without minting yet another copy. Every server-side caller
-// now imports it from here. It remains duplicated by hand in FrontPage.tsx
-// and DigestGenerationContext.tsx, which are client components and so
-// genuinely cannot import this server module — those two are the other
-// call sites a real timezone fix has to reach.
-export function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+// The digest "date" is the reader's calendar day in their stored timezone
+// (see localDate.ts). The timezone is required, not defaulted, so a call site
+// that forgets it is a type error rather than a silent return to UTC.
+export function todayDateString(timeZone: string): string {
+  return dateInTimeZone(new Date(), timeZone);
 }
 
 /**
@@ -112,9 +101,10 @@ export async function getDigestForDate(
 
 export async function getTodayDigest(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  timeZone: string
 ): Promise<Digest | null> {
-  return getDigestForDate(supabase, userId, todayDateString());
+  return getDigestForDate(supabase, userId, todayDateString(timeZone));
 }
 
 /**
@@ -256,9 +246,10 @@ export interface DigestDateSummary {
  * cluster failing triage, or an abandoned run) still rendered as a
  * clickable "0 cards" entry leading to an empty page.
  *
- * Note the exclusion is against the UTC day, like every other date
- * boundary in this app — see todayDateString()'s comment above for the
- * known, deferred consequence of that for users well west of UTC.
+ * Today is excluded with `neq`, not `lt`. A reader whose device moves west
+ * can have a row dated after their new local today, created on the other
+ * side of the world; under `lt` that row would be neither today nor history
+ * and would vanish from every page until its date came round.
  *
  * The zero-card filter runs in JS after the query rather than in SQL
  * because PostgREST can't filter parent rows on an embedded aggregate's
@@ -271,13 +262,14 @@ export interface DigestDateSummary {
 export async function listDigestDatesForUser(
   supabase: SupabaseClient,
   userId: string,
+  timeZone: string,
   range?: { from: string; to: string }
 ): Promise<DigestDateSummary[]> {
   let query = supabase
     .from("digests")
     .select("date, cards(count)")
     .eq("user_id", userId)
-    .lt("date", todayDateString())
+    .neq("date", todayDateString(timeZone))
     .order("date", { ascending: false });
 
   if (range) {
@@ -367,10 +359,11 @@ export async function getLatestGeneratedAtForUser(
  * would be a parameter the database has to distrust anyway.
  */
 export async function upsertDigestForToday(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  timeZone: string
 ): Promise<{ digestId: string }> {
   const { data, error } = await supabase.rpc("ensure_digest_for_today", {
-    p_date: todayDateString(),
+    p_date: todayDateString(timeZone),
   });
 
   if (error) throw new Error(`upsertDigestForToday: ${error.message}`);

@@ -543,7 +543,10 @@ Without this, a tester who forgets their password is locked out until Tarek fixe
 - **Plan-mode scope:** which provider and what DNS it needs; which sending domain; whether confirmation is required before onboarding or after; the reset flow's own pages and their rate limits; how a confirmation email interacts with a consumed invite token; what the emails actually say, since they are the first thing an invitee sees.
 - **Done when:** a new invitee receives a real confirmation email and can complete signup, and a user who forgets their password can reset it without Tarek touching anything.
 
-#### V2.1.7 — "Today" follows the reader, not UTC
+#### V2.1.7 — "Today" follows the reader, not UTC — **BUILT 2026-09-22 on branch `v2.1.7`, awaiting merge and live verification**
+
+**How it was answered:** the timezone is **detected from the device and stored per user** in `user_settings`, and it **always follows the device**, so a traveller's day moves with them (Tarek's call). Digests already stored under UTC dates are left as they are. The per-user mutex and the since-cursor needed no change: the mutex is per user, and the cursor is an instant, not a day. Full detail in the project log's 2026-09-22 V2.1.7 entry.
+
 
 The folded timezone item. A digest's date is a UTC calendar day, so Tarek's own evening digest silently reclassifies as history after 8pm Atlanta time — and testers in Morocco make it worse, not better. Needs the viewer's timezone stored per user and threaded through both `todayDateString()` call sites, the history list, and the since-cursor's day semantics.
 

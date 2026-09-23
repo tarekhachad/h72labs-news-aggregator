@@ -17,13 +17,6 @@ type WireEvent = { stage: Stage | "error" } & Record<string, unknown>;
 /** Slack on top of duration + stagger before a batch is force-retired. */
 const ENTRANCE_RETIRE_MARGIN_MS = 400;
 
-// Duplicated rather than imported from a server-oriented lib module into a
-// client bundle — matches digests.ts's own todayDateString() comment
-// acknowledging this duplication (both call sites need it).
-function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 interface DigestGenerationContextValue {
   cards: Card[] | undefined;
   seededDate: string | null;
@@ -284,10 +277,11 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
           );
           // Stamp defensively in case this run started before FrontPage's
           // own seed() call landed (belt-and-suspenders — in practice
-          // seed() always runs first, on mount). Safe now that the guard
-          // above already confirmed runDate === seededDateRef.current, so
-          // todayDateString() can't disagree with it.
-          setSeededDate(todayDateString());
+          // seed() always runs first, on mount). runDate rather than a
+          // freshly computed date: the guard above already confirmed it is
+          // the seeded date, and recomputing here could land on the next
+          // day if the run straddled local midnight.
+          setSeededDate(runDate);
         } else if (seededDateRef.current === runDate) {
           setStageEvent(event as StageEvent);
         }

@@ -3,7 +3,7 @@ import { listDigestDatesForUser } from "@/lib/digests";
 
 /**
  * Fake Supabase client mimicking the chainable shape listDigestDatesForUser
- * uses: .from().select().eq().lt().order() — and, only when a `range` is
+ * uses: .from().select().eq().neq().order() — and, only when a `range` is
  * passed, a further .gte().lte(). The terminal object is thenable so the
  * function's `await query` resolves it whether or not the range branch ran,
  * which is what lets one fake cover both paths.
@@ -12,7 +12,7 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
   const lte = vi.fn();
   const gte = vi.fn();
   const order = vi.fn();
-  const lt = vi.fn();
+  const neq = vi.fn();
   const eq = vi.fn();
   const select = vi.fn();
   const from = vi.fn();
@@ -20,7 +20,7 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
   // Every chain step returns the same object, which is also thenable —
   // so `await query` works at whatever point the caller stops chaining.
   const chain = {
-    lt,
+    neq,
     eq,
     order,
     gte,
@@ -31,12 +31,12 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
   lte.mockReturnValue(chain);
   gte.mockReturnValue(chain);
   order.mockReturnValue(chain);
-  lt.mockReturnValue(chain);
+  neq.mockReturnValue(chain);
   eq.mockReturnValue(chain);
   select.mockReturnValue(chain);
   from.mockReturnValue({ select });
 
-  return { client: { from } as unknown, from, select, eq, lt, order, gte, lte };
+  return { client: { from } as unknown, from, select, eq, neq, order, gte, lte };
 }
 
 /** Freezes the clock so "today" is deterministic regardless of when tests run. */
@@ -52,36 +52,59 @@ afterEach(() => {
 const row = (date: string, count: number) => ({ date, cards: [{ count }] });
 
 describe("listDigestDatesForUser", () => {
-  it("excludes today by querying strictly earlier than the UTC day", async () => {
+  it("excludes exactly today, and nothing else, by date", async () => {
     freezeDate("2026-08-12T15:00:00Z");
-    const { client, from, select, eq, lt, order } = makeFakeSupabase({
+    const { client, from, select, eq, neq, order } = makeFakeSupabase({
       data: [row("2026-08-11", 5)],
       error: null,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await listDigestDatesForUser(client as any, "user-1");
+    await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(from).toHaveBeenCalledWith("digests");
     expect(select).toHaveBeenCalledWith("date, cards(count)");
     expect(eq).toHaveBeenCalledWith("user_id", "user-1");
-    // The whole point of 8.1: a strict `<`, not `<=`.
-    expect(lt).toHaveBeenCalledWith("date", "2026-08-12");
+    // `neq`, not `lt`: a row dated after the reader's local today (their
+    // device moved west) must still be listed rather than vanish.
+    expect(neq).toHaveBeenCalledWith("date", "2026-08-12");
     expect(order).toHaveBeenCalledWith("date", { ascending: false });
   });
 
-  it("uses the UTC day, not the local one, when picking today's cutoff", async () => {
-    // 03:00 UTC on the 12th is still the 11th in the Americas. The cutoff
-    // must follow UTC, matching todayDateString() and every other date
-    // boundary in the app — a local-day cutoff here would disagree with
-    // the front page about which digest is "today".
+  it("excludes the reader's local today, not the UTC one", async () => {
+    // 03:00 UTC on the 12th is still the 11th in New York and already the
+    // 12th in Casablanca. The excluded date must be each reader's own, or
+    // history and the front page disagree about which digest is today.
     freezeDate("2026-08-12T03:00:00Z");
-    const { client, lt } = makeFakeSupabase({ data: [], error: null });
+
+    const ny = makeFakeSupabase({ data: [], error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await listDigestDatesForUser(ny.client as any, "user-1", "America/New_York");
+    expect(ny.neq).toHaveBeenCalledWith("date", "2026-08-11");
+
+    const casa = makeFakeSupabase({ data: [], error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await listDigestDatesForUser(casa.client as any, "user-1", "Africa/Casablanca");
+    expect(casa.neq).toHaveBeenCalledWith("date", "2026-08-12");
+  });
+
+  it("lists a row dated after the reader's local today", async () => {
+    // Created in Casablanca just after its midnight, then read from New York
+    // where it is still the day before. The query no longer filters it out,
+    // so what the database returns is what the page shows.
+    freezeDate("2026-08-12T03:00:00Z");
+    const { client } = makeFakeSupabase({
+      data: [row("2026-08-12", 4), row("2026-08-10", 2)],
+      error: null,
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "America/New_York");
 
-    expect(lt).toHaveBeenCalledWith("date", "2026-08-12");
+    expect(result).toEqual([
+      { date: "2026-08-12", cardCount: 4 },
+      { date: "2026-08-10", cardCount: 2 },
+    ]);
   });
 
   it("returns past dates with their card counts", async () => {
@@ -92,7 +115,7 @@ describe("listDigestDatesForUser", () => {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(result).toEqual([
       { date: "2026-08-11", cardCount: 5 },
@@ -113,7 +136,7 @@ describe("listDigestDatesForUser", () => {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(result).toEqual([{ date: "2026-08-10", cardCount: 3 }]);
   });
@@ -126,7 +149,7 @@ describe("listDigestDatesForUser", () => {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(result).toEqual([{ date: "2026-08-11", cardCount: 4 }]);
   });
@@ -139,7 +162,7 @@ describe("listDigestDatesForUser", () => {
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(result).toEqual([]);
   });
@@ -149,16 +172,17 @@ describe("listDigestDatesForUser", () => {
     // month-grid view. 8.1 must not have broken it, and its bounds stack
     // with the today exclusion rather than replacing it.
     freezeDate("2026-08-12T15:00:00Z");
-    const { client, lt, gte, lte } = makeFakeSupabase({ data: [], error: null });
+    const { client, neq, gte, lte } = makeFakeSupabase({ data: [], error: null });
 
     await listDigestDatesForUser(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       client as any,
       "user-1",
+      "UTC",
       { from: "2026-08-01", to: "2026-08-31" }
     );
 
-    expect(lt).toHaveBeenCalledWith("date", "2026-08-12");
+    expect(neq).toHaveBeenCalledWith("date", "2026-08-12");
     expect(gte).toHaveBeenCalledWith("date", "2026-08-01");
     expect(lte).toHaveBeenCalledWith("date", "2026-08-31");
   });
@@ -168,7 +192,7 @@ describe("listDigestDatesForUser", () => {
     const { client } = makeFakeSupabase({ data: null, error: null });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await listDigestDatesForUser(client as any, "user-1");
+    const result = await listDigestDatesForUser(client as any, "user-1", "UTC");
 
     expect(result).toEqual([]);
   });
@@ -179,7 +203,7 @@ describe("listDigestDatesForUser", () => {
 
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      listDigestDatesForUser(client as any, "user-1")
+      listDigestDatesForUser(client as any, "user-1", "UTC")
     ).rejects.toThrow(/listDigestDatesForUser: boom/);
   });
 });

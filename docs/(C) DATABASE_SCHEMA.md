@@ -33,6 +33,18 @@ A user's preferred news outlets (curated multi-select — e.g. NYT, WaPo, Reuter
 | `user_id` | Which user |
 | `source` | One of the curated outlet options |
 
+## `user_settings`
+
+One row per user, holding the timezone their "today" is computed in. A user with no row is treated as UTC until their first page load writes one.
+
+| Field | What it holds |
+|---|---|
+| `user_id` | Which user (primary key) |
+| `time_zone` | An IANA name such as `America/New_York`, taken from the reader's browser and rewritten whenever the device reports a different zone |
+| `updated_at` | When it was last written |
+
+Sessions can only read their own row. The one write path is `set_time_zone(text)`, a security-definer function that uses the caller's own id and refuses any name missing from Postgres's `pg_timezone_names`.
+
 ## `digests`
 
 One row per **calendar date per user** (`(user_id, date)` is unique) — not one row per generation run. The same day's digest is appended to across multiple runs (e.g. clicking "give me today's news," then clicking again later the same day for what's new since) rather than duplicated.
@@ -41,7 +53,7 @@ One row per **calendar date per user** (`(user_id, date)` is unique) — not one
 |---|---|
 | `id` | Unique digest ID (client-generated UUID — see `cards.id` below for why) |
 | `user_id` | Which user this digest was generated for |
-| `date` | The calendar date this digest belongs to (drives the calendar-history view) |
+| `date` | The calendar date this digest belongs to **in the reader's own timezone** (`user_settings.time_zone`), which is what drives "today" and the calendar-history view |
 | `requested_topic` | Null for the default daily digest; set to the topic name for an ad-hoc request (Phase 4) |
 | `last_generated_at` | Null until this digest's first successful generation run finishes; from then on, the cutoff the next run's ingest step filters "since" — this is what makes repeated same-day clicks append only new stories instead of re-fetching everything |
 | `generating` | **Dead.** Was the mutual-exclusion flag; the mutex is now `generation_claims` (below), keyed on the user rather than on one day's row. Read and written by nothing — kept only because dropping a column cannot be undone |

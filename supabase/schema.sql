@@ -58,6 +58,63 @@ create policy "delete own sources"
   on public.user_preferred_sources for delete
   using (auth.uid() = user_id);
 
+-- user_settings — one row per user, holding the timezone their "today" is
+-- computed in (src/lib/localDate.ts). The value comes from the reader's
+-- browser and is rewritten whenever the device reports a different zone, so
+-- a traveller's day follows them.
+--
+-- A user with no row is treated as UTC by the app until their first page
+-- load writes one; nothing here needs a default.
+--
+-- Select-only for sessions. The single write path is set_time_zone below,
+-- because the value arrives from a browser and has to be checked against
+-- Postgres's own tzdata before anything else reads it.
+create table public.user_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  time_zone text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_settings enable row level security;
+
+create policy "select own settings"
+  on public.user_settings for select
+  using (auth.uid() = user_id);
+
+-- A name outside pg_timezone_names is refused rather than stored, since
+-- every reader would otherwise have to handle it. That list and the
+-- runtime's ICU list are not identical, which is why localDate.ts still
+-- falls back to UTC on a name Intl rejects.
+create or replace function public.set_time_zone(p_time_zone text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := auth.uid();
+begin
+  if v_user is null then
+    raise exception 'set_time_zone requires a signed-in user';
+  end if;
+
+  if p_time_zone is null
+     or not exists (select 1 from pg_catalog.pg_timezone_names where name = p_time_zone) then
+    raise exception 'set_time_zone: unknown time zone';
+  end if;
+
+  insert into public.user_settings (user_id, time_zone, updated_at)
+  values (v_user, p_time_zone, now())
+  on conflict (user_id) do update
+    set time_zone = excluded.time_zone,
+        updated_at = excluded.updated_at;
+end;
+$$;
+
+revoke execute on function public.set_time_zone(text) from public, anon;
+grant execute on function public.set_time_zone(text) to authenticated;
+
 -- Phase 3 schema: digests + cards + bookmarks.
 --
 -- Design notes:
@@ -347,11 +404,11 @@ $$;
 -- user_id is auth.uid(), never a parameter, so a caller cannot mint a row
 -- under someone else's account.
 --
--- p_date stays a parameter rather than becoming current_date: V2.1.7 makes
--- "today" follow the reader's timezone rather than UTC, and a hardcoded
--- current_date here would have to be rewritten then. It is bounded to within
--- one day of the server's date instead, which admits every real timezone (the
--- widest offset in use is UTC+14) and refuses anything further out.
+-- p_date is a parameter rather than current_date because "today" is the
+-- reader's local day (user_settings.time_zone), not the server's. It is
+-- bounded to within one day of the server's date, which admits every real
+-- timezone (offsets run from UTC-12 to UTC+14) and refuses anything further
+-- out.
 --
 -- ON CONFLICT DO UPDATE rather than DO NOTHING because DO NOTHING returns no
 -- row on conflict, which would need a second round trip to read the existing

@@ -4,6 +4,7 @@ import { getUserProfile } from "@/lib/profile";
 import { PreferencesForm } from "@/components/PreferencesForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updatePreferences, changePassword } from "./actions";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 export default async function ProfilePage({
   searchParams,
@@ -28,10 +29,11 @@ export default async function ProfilePage({
     redirect("/login");
   }
 
-  const { topics, preferredSources } = await getUserProfile(supabase, user.id);
+  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-12 px-6 py-16">
+      <TimeZoneSync storedTimeZone={timeZone} />
       <section className="flex flex-col gap-8">
         <div className="text-center">
           <h1 className="text-2xl font-semibold">Edit your briefing</h1>

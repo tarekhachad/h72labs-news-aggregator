@@ -25,6 +25,8 @@ interface TableResponse {
 function makeFakeSupabase(responses: {
   user_topics?: Partial<TableResponse>;
   user_preferred_sources?: Partial<TableResponse>;
+  /** Omitted means the user has no settings row, the state before TimeZoneSync first writes one. */
+  user_settings?: Partial<TableResponse>;
 }) {
   const eq = vi.fn();
   const select = vi.fn();
@@ -35,7 +37,9 @@ function makeFakeSupabase(responses: {
         ? responses.user_topics
         : table === "user_preferred_sources"
           ? responses.user_preferred_sources
-          : undefined;
+          : table === "user_settings"
+            ? (responses.user_settings ?? { data: null })
+            : undefined;
     if (configured === undefined) {
       throw new Error(`fake supabase: unexpected table ${table}`);
     }
@@ -55,6 +59,8 @@ function makeFakeSupabase(responses: {
         eq(table, ...args);
         return chain;
       },
+      // getUserTimeZone ends in maybeSingle(); the list reads await the chain.
+      maybeSingle: () => Promise.resolve(response),
       then: (resolve: (v: unknown) => unknown) => Promise.resolve(response).then(resolve),
     };
     return {
@@ -158,10 +164,12 @@ describe("getUserProfile", () => {
     await expect(getUserProfile(empty.client, "user-1")).resolves.toEqual({
       topics: [],
       preferredSources: [],
+      timeZone: "UTC",
     });
     await expect(getUserProfile(nulls.client, "user-1")).resolves.toEqual({
       topics: [],
       preferredSources: [],
+      timeZone: "UTC",
     });
   });
 
@@ -222,5 +230,46 @@ describe("getUserProfile", () => {
     expect(select).toHaveBeenCalledWith("user_preferred_sources", "source");
     expect(eq).toHaveBeenCalledWith("user_topics", "user_id", "user-42");
     expect(eq).toHaveBeenCalledWith("user_preferred_sources", "user_id", "user-42");
+  });
+
+  it("returns the stored timezone", async () => {
+    const { client, eq } = makeFakeSupabase({
+      user_topics: { data: topicRows("Tech/AI") },
+      user_preferred_sources: { data: sourceRows("NYT") },
+      user_settings: { data: { time_zone: "Africa/Casablanca" } },
+    });
+
+    const profile = await getUserProfile(client, "user-1");
+
+    expect(profile.timeZone).toBe("Africa/Casablanca");
+    expect(eq).toHaveBeenCalledWith("user_settings", "user_id", "user-1");
+  });
+
+  it("uses UTC when the user has no settings row yet", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Tech/AI") },
+      user_preferred_sources: { data: sourceRows("NYT") },
+    });
+
+    expect((await getUserProfile(client, "user-1")).timeZone).toBe("UTC");
+  });
+
+  it("degrades a failed settings read to UTC instead of failing the profile", async () => {
+    // Unlike topics and sources: a wrong zone files at most one run under the
+    // UTC date, while a throw here would take down every page that loads a
+    // profile.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Tech/AI") },
+      user_preferred_sources: { data: sourceRows("NYT") },
+      user_settings: { data: null, error: { message: "settings down" } },
+    });
+
+    const profile = await getUserProfile(client, "user-1");
+
+    expect(profile.timeZone).toBe("UTC");
+    expect(profile.topics).toEqual(["Tech/AI"]);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

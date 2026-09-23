@@ -15,6 +15,7 @@ import {
 import { tierForFrontPageRank } from "@/lib/gridTiers";
 import { packGrid } from "@/lib/packGrid";
 import { newRunCardIds } from "@/lib/newRun";
+import { dateInTimeZone } from "@/lib/localDate";
 import { Button } from "@/components/ui/button";
 
 const STAGE_LABEL: Record<Stage, string> = {
@@ -65,11 +66,14 @@ function frontPageCardsOf(cards: Card[]): Card[] {
 export function FrontPage({
   initialDigest,
   userTopics,
+  timeZone,
   interactive = true,
   basePath = "",
 }: {
   initialDigest: Digest | null;
   userTopics: Topic[];
+  /** The reader's stored timezone — "today" is their calendar day, the same one the server filed the digest under. */
+  timeZone: string;
   /** false for a past /history/[date] front page — no generation trigger for a day that's already over. */
   interactive?: boolean;
   /** "/history/2026-08-01" when this is a past date's front page, so TopicNav's links stay scoped to that date. */
@@ -77,7 +81,7 @@ export function FrontPage({
 }) {
   const prefersReducedMotion = useReducedMotion();
   const digestGen = useDigestGeneration();
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = dateInTimeZone(new Date(), timeZone);
 
   // Only the live front page participates in the shared generation state —
   // a past /history/[date] front page (interactive=false) always has a

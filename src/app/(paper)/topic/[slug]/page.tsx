@@ -4,6 +4,7 @@ import { getUserProfile } from "@/lib/profile";
 import { getCardsForTopicOnDate, digestExistsForDate, todayDateString } from "@/lib/digests";
 import { slugToTopic } from "@/lib/topicSlug";
 import { TopicPage } from "@/components/newspaper/TopicPage";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 export default async function TopicRoutePage({
   params,
@@ -28,7 +29,7 @@ export default async function TopicRoutePage({
     redirect("/login");
   }
 
-  const { topics, preferredSources } = await getUserProfile(supabase, user.id);
+  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
   // Matches Home's gate — a direct hit on this route (stale bookmark, typed
   // URL) before onboarding is complete would otherwise show a misleading
   // empty "no notable news" page instead of routing to setup.
@@ -36,7 +37,7 @@ export default async function TopicRoutePage({
     redirect("/onboarding");
   }
 
-  const today = todayDateString();
+  const today = todayDateString(timeZone);
   const [cards, digestExistsToday] = await Promise.all([
     getCardsForTopicOnDate(supabase, user.id, today, topic),
     // Fail-open (defaults to ungated on a transient error): this check only
@@ -48,11 +49,14 @@ export default async function TopicRoutePage({
   ]);
 
   return (
-    <TopicPage
-      cards={cards}
-      topic={topic}
-      userTopics={topics}
-      digestExistsToday={digestExistsToday}
-    />
+    <>
+      <TimeZoneSync storedTimeZone={timeZone} />
+      <TopicPage
+        cards={cards}
+        topic={topic}
+        userTopics={topics}
+        digestExistsToday={digestExistsToday}
+      />
+    </>
   );
 }

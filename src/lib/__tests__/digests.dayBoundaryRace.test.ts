@@ -196,13 +196,13 @@ describe("day boundary: the generation claim is per user, not per digest row", (
     vi.setSystemTime(new Date("2026-08-13T23:59:30.000Z"));
     const claimA = await claimGenerationForUser(claims as never);
     expect(claimA).not.toBeNull();
-    const { digestId: idA } = await upsertDigestForToday(digests as never);
+    const { digestId: idA } = await upsertDigestForToday(digests as never, "UTC");
 
     vi.setSystemTime(new Date("2026-08-14T00:00:05.000Z"));
 
     // Request B still gets a brand-new row for the new day, and that is
     // correct — asserted so the fix is not mistaken for "one row forever".
-    const { digestId: idB } = await upsertDigestForToday(digests as never);
+    const { digestId: idB } = await upsertDigestForToday(digests as never, "UTC");
     expect(idB).not.toBe(idA);
     expect(rows.find((r) => r.date === "2026-08-14")?.id).toBe(idB);
 
@@ -264,7 +264,7 @@ describe("day boundary: the generation claim is per user, not per digest row", (
     const digests = makeFakeDigestsTable(rows);
 
     vi.setSystemTime(new Date("2026-08-13T23:59:30.000Z"));
-    await upsertDigestForToday(digests as never);
+    await upsertDigestForToday(digests as never, "UTC");
 
     // last_generated_at is written once, at the very end of a successful run,
     // so an in-flight run contributes nothing to the cursor. That is why the

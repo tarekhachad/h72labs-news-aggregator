@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { getDigestForDate, todayDateString } from "@/lib/digests";
 import { FrontPage } from "@/components/newspaper/FrontPage";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 // Reject anything that isn't a plain YYYY-MM-DD before it reaches the DB
 // query — an unvalidated value would otherwise surface as a generic
@@ -24,16 +25,6 @@ export default async function HistoryDatePage({
 }) {
   const { date } = await params;
 
-  // Today isn't history (Phase 8.1). listDigestDatesForUser no longer
-  // surfaces today's date, but this route is still directly reachable by
-  // a typed URL or a link bookmarked yesterday — without this it would
-  // render a second, non-interactive copy of the front page, missing the
-  // generation trigger. Redirect rather than 404: the content the URL is
-  // asking for genuinely exists, just at "/".
-  if (date === todayDateString()) {
-    redirect("/");
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,9 +34,20 @@ export default async function HistoryDatePage({
     redirect("/login");
   }
 
-  const { topics, preferredSources } = await getUserProfile(supabase, user.id);
+  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
   if (topics.length === 0 || preferredSources.length === 0) {
     redirect("/onboarding");
+  }
+
+  // Today isn't history. listDigestDatesForUser doesn't surface today's
+  // date, but this route is still directly reachable by a typed URL or a
+  // link bookmarked yesterday — without this it would render a second,
+  // non-interactive copy of the front page, missing the generation trigger.
+  // Redirect rather than 404: the content the URL is asking for genuinely
+  // exists, just at "/". After the profile load because "today" is the
+  // reader's own day.
+  if (date === todayDateString(timeZone)) {
+    redirect("/");
   }
 
   const digest = DATE_PATTERN.test(date)
@@ -53,11 +55,15 @@ export default async function HistoryDatePage({
     : null;
 
   return (
-    <FrontPage
-      initialDigest={digest}
-      userTopics={topics}
-      interactive={false}
-      basePath={`/history/${date}`}
-    />
+    <>
+      <TimeZoneSync storedTimeZone={timeZone} />
+      <FrontPage
+        initialDigest={digest}
+        userTopics={topics}
+        timeZone={timeZone}
+        interactive={false}
+        basePath={`/history/${date}`}
+      />
+    </>
   );
 }

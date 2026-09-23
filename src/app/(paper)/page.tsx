@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { getTodayDigest } from "@/lib/digests";
 import { FrontPage } from "@/components/newspaper/FrontPage";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -16,7 +17,7 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const { topics, preferredSources } = await getUserProfile(supabase, user.id);
+  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
 
   // Gate on both — a profile with topics but zero preferred sources would
   // otherwise pass this check and then silently produce an empty digest
@@ -25,7 +26,12 @@ export default async function Home() {
     redirect("/onboarding");
   }
 
-  const digest = await getTodayDigest(supabase, user.id);
+  const digest = await getTodayDigest(supabase, user.id, timeZone);
 
-  return <FrontPage initialDigest={digest} userTopics={topics} />;
+  return (
+    <>
+      <TimeZoneSync storedTimeZone={timeZone} />
+      <FrontPage initialDigest={digest} userTopics={topics} timeZone={timeZone} />
+    </>
+  );
 }
