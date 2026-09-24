@@ -9,6 +9,32 @@ export interface GenerationResult {
   stopReason: string | null;
 }
 
+export type RejectionReason = "empty" | "truncated" | "incompleteAfterRetry";
+
+/** How much of a rejected text's end is kept on the error — enough to see why `looksComplete` said no. */
+export const REJECTED_TAIL_CHARS = 80;
+
+/**
+ * Thrown when a generation came back but its text could not be used. Every
+ * one of these was a billed response, which is what separates it from an API
+ * error: retrying the same request is not guaranteed to change the outcome.
+ * `tail` is the end of the rejected text, kept so the reason can be read off
+ * a stored run record after the runtime logs have expired.
+ */
+export class GenerationRejectedError extends Error {
+  readonly reason: RejectionReason;
+  readonly stopReason: string | null;
+  readonly tail: string;
+
+  constructor(message: string, reason: RejectionReason, stopReason: string | null, text: string) {
+    super(message);
+    this.name = "GenerationRejectedError";
+    this.reason = reason;
+    this.stopReason = stopReason;
+    this.tail = text.slice(-REJECTED_TAIL_CHARS);
+  }
+}
+
 export function looksComplete(text: string): boolean {
   return /[.!?]["')\]]?$/.test(text.trim());
 }
@@ -50,7 +76,12 @@ export async function generateWithRetryOnAmbiguousTruncation<T extends Generatio
   const stopReason = initial.stopReason;
 
   if (text.trim().length === 0) {
-    throw new Error(`${label} produced empty output (stop_reason: ${stopReason})`);
+    throw new GenerationRejectedError(
+      `${label} produced empty output (stop_reason: ${stopReason})`,
+      "empty",
+      stopReason,
+      text
+    );
   }
 
   if (looksComplete(text)) {
@@ -58,8 +89,11 @@ export async function generateWithRetryOnAmbiguousTruncation<T extends Generatio
   }
 
   if (stopReason !== "end_turn") {
-    throw new Error(
-      `${label} produced a truncated output (stop_reason: ${stopReason}): "${text}"`
+    throw new GenerationRejectedError(
+      `${label} produced a truncated output (stop_reason: ${stopReason}): "${text}"`,
+      "truncated",
+      stopReason,
+      text
     );
   }
 
@@ -68,8 +102,11 @@ export async function generateWithRetryOnAmbiguousTruncation<T extends Generatio
   );
   const retry = await generate();
   if (retry.text.trim().length === 0 || !looksComplete(retry.text)) {
-    throw new Error(
-      `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopReason}): "${retry.text}"`
+    throw new GenerationRejectedError(
+      `${label} produced an incomplete output even after retry (stop_reason: ${retry.stopReason}): "${retry.text}"`,
+      "incompleteAfterRetry",
+      retry.stopReason,
+      retry.text
     );
   }
   return retry;

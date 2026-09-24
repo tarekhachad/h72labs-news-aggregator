@@ -638,6 +638,14 @@ create table public.usage_runs (
   cards_dropped_by_cap integer,
   cards_written integer,
   cards_failed integer,
+  -- One object per failed card: {reason, model, articleCount, ...}. reason is
+  -- 'empty'|'truncated'|'incompleteAfterRetry' (a billed response the app
+  -- refused, with the text's last 80 chars in `tail`), 'apiError' (with
+  -- `status`) or 'other' (with `errorName`). See src/lib/cardFailure.ts.
+  card_failures jsonb,
+  -- Clusters triage could not judge and dropped. Separate from clusters it
+  -- judged not notable, which is the only other way a cluster disappears there.
+  triage_failed_closed integer,
   rank_applied boolean,                -- null = ranking never attempted
 
   total_calls integer not null,
@@ -677,6 +685,12 @@ create table public.usage_runs (
 create index usage_runs_user_priced_at_idx
   on public.usage_runs (user_id, priced_at desc)
   where priced_at is not null;
+
+-- The live table predates these two columns, and `create table` above never
+-- re-runs against it. Nullable with no default, for the same reason as every
+-- other count here: null is "unmeasured", 0 is a measurement.
+alter table public.usage_runs add column if not exists card_failures jsonb;
+alter table public.usage_runs add column if not exists triage_failed_closed integer;
 
 alter table public.usage_runs enable row level security;
 

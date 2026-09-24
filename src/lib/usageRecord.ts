@@ -38,6 +38,7 @@ import {
   type UsageStage,
   type UsageSummary,
 } from "./usage.ts";
+import type { CardFailure } from "./cardFailure.ts";
 
 /**
  * How much work a digest run had to do from scratch — the single biggest
@@ -201,6 +202,10 @@ export interface UsageRunContext {
   cardsDroppedByCap: number | null;
   cardsWritten: number | null;
   cardsFailed: number | null;
+  /** Why each of `cardsFailed` produced no card, one entry per failure. */
+  cardFailures: CardFailure[] | null;
+  /** Clusters triage could not judge and dropped, as distinct from ones it judged not notable. */
+  triageFailedClosed: number | null;
   /** null = ranking was never attempted; false = attempted and failed open. */
   rankApplied: boolean | null;
   /**
@@ -392,6 +397,8 @@ export function toJsonlLine(record: UsageRunRecord): string {
     cardsDroppedByCap: record.cardsDroppedByCap,
     cardsWritten: record.cardsWritten,
     cardsFailed: record.cardsFailed,
+    cardFailures: record.cardFailures,
+    triageFailedClosed: record.triageFailedClosed,
     rankApplied: record.rankApplied,
     totalCalls: record.totalCalls,
     totalCallsWithoutUsage: record.totalCallsWithoutUsage,
@@ -456,6 +463,8 @@ export const COLUMN_OF = {
   cardsDroppedByCap: "cards_dropped_by_cap",
   cardsWritten: "cards_written",
   cardsFailed: "cards_failed",
+  cardFailures: "card_failures",
+  triageFailedClosed: "triage_failed_closed",
   rankApplied: "rank_applied",
   totalCalls: "total_calls",
   totalCallsWithoutUsage: "total_calls_without_usage",
@@ -525,6 +534,8 @@ export function toUsageRunRow(record: UsageRunRecord): UsageRunRow {
     [COLUMN_OF.cardsDroppedByCap]: record.cardsDroppedByCap,
     [COLUMN_OF.cardsWritten]: record.cardsWritten,
     [COLUMN_OF.cardsFailed]: record.cardsFailed,
+    [COLUMN_OF.cardFailures]: record.cardFailures,
+    [COLUMN_OF.triageFailedClosed]: record.triageFailedClosed,
     [COLUMN_OF.rankApplied]: record.rankApplied,
     [COLUMN_OF.totalCalls]: record.totalCalls,
     [COLUMN_OF.totalCallsWithoutUsage]: record.totalCallsWithoutUsage,

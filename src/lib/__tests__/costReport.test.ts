@@ -31,6 +31,8 @@ function run(overrides: Partial<PublicUsageRunRecord> = {}): PublicUsageRunRecor
     cardsDroppedByCap: 0,
     cardsWritten: 8,
     cardsFailed: 0,
+    cardFailures: [],
+    triageFailedClosed: 0,
     rankApplied: true,
     totalCalls: 107,
     totalCallsWithoutUsage: 0,

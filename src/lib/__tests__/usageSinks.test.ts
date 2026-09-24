@@ -43,6 +43,8 @@ function makeRecord(overrides: Partial<UsageRunContext> = {}): UsageRunRecord {
     cardsDroppedByCap: 0,
     cardsWritten: 4,
     cardsFailed: 0,
+    cardFailures: [],
+    triageFailedClosed: 0,
     rankApplied: true,
     expectedCalls: { triage: 1 },
     ...overrides,

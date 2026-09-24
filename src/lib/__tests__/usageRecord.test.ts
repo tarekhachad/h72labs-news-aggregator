@@ -57,6 +57,8 @@ function emptyContext(overrides: Partial<UsageRunContext> = {}): UsageRunContext
     cardsDroppedByCap: null,
     cardsWritten: null,
     cardsFailed: null,
+    cardFailures: null,
+    triageFailedClosed: null,
     rankApplied: null,
     expectedCalls: {},
     ...overrides,

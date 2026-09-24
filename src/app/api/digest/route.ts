@@ -7,6 +7,9 @@ import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
+import { modelForCluster } from "@/lib/cardModel";
+import { classifyCardFailure, type CardFailure } from "@/lib/cardFailure";
+import { isFailClosed } from "@/lib/triageOutcome";
 import { rankFrontPage } from "@/lib/rank";
 import type { RankUpdate } from "@/lib/rankUpdates";
 import {
@@ -146,6 +149,8 @@ async function* runDigestPipeline(
     cardsDroppedByCap: number | null;
     cardsWritten: number | null;
     cardsFailed: number | null;
+    cardFailures: CardFailure[] | null;
+    triageFailedClosed: number | null;
     rankApplied: boolean | null;
   } = {
     runShape: deriveRunShape(sinceIso, null),
@@ -158,6 +163,8 @@ async function* runDigestPipeline(
     cardsDroppedByCap: null,
     cardsWritten: null,
     cardsFailed: null,
+    cardFailures: null,
+    triageFailedClosed: null,
     rankApplied: null,
   };
 
@@ -260,6 +267,7 @@ async function* runDigestPipeline(
       triageClusters(survivingClusters)
     );
     memoryMark("after triage", { clusters: survivingClusters.length });
+    shape.triageFailedClosed = outcomes.filter(isFailClosed).length;
     const triaged = survivingClusters.map((cluster, i) => ({
       cluster,
       notable: outcomes[i].notable,
@@ -305,15 +313,21 @@ async function* runDigestPipeline(
     memoryMark("after writeCard", { written: written.length });
 
     const cards: Card[] = [];
-    for (const result of written) {
+    const cardFailures: CardFailure[] = [];
+    written.forEach((result, i) => {
       if (result.status === "fulfilled") {
         cards.push({ ...result.value, generatedAt });
       } else {
         console.error("[digest] writeCard failed:", result.reason);
+        const { cluster } = notableClusters[i];
+        cardFailures.push(
+          classifyCardFailure(result.reason, modelForCluster(cluster), cluster.articles.length)
+        );
       }
-    }
+    });
     shape.cardsWritten = cards.length;
-    shape.cardsFailed = written.length - cards.length;
+    shape.cardsFailed = cardFailures.length;
+    shape.cardFailures = cardFailures;
 
     // Secondary key on id: matches getDigestForDate's tiebreaker (see
     // digests.ts) so ties between cards sharing a publishedAt resolve the

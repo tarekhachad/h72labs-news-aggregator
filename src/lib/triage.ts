@@ -7,32 +7,11 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
 import { recordCall } from "@/lib/usageCollector";
+import { FAIL_CLOSED, type TriageOutcome } from "@/lib/triageOutcome";
 
 const client = new Anthropic();
 
-export interface TriageOutcome {
-  notable: boolean;
-  severity: number;
-}
-
-/**
- * The verdict every unjudged cluster falls back to. Fail-closed: an
- * unjudged cluster is dropped from the brief rather than written up
- * unreviewed, matching the per-cluster convention this module has always
- * had (F.3 measured triage at 65% of spend precisely because it gates the
- * expensive Sonnet step — letting an unjudged cluster through would spend
- * Sonnet money on something nothing has vetted).
- */
-// Frozen because one shared reference is handed to every unjudged cluster
-// in a response. Nothing mutates a TriageOutcome today (the route reads the
-// two fields into fresh objects), but if anything ever did, a single
-// in-place write would silently rewrite the verdict of every other
-// fail-closed cluster in the same digest. Same hazard usage.ts's frozen
-// ZERO_TOKENS singleton exists to prevent.
-const FAIL_CLOSED: TriageOutcome = Object.freeze({
-  notable: false,
-  severity: 1,
-});
+export type { TriageOutcome } from "@/lib/triageOutcome";
 
 /**
  * Clusters per batch. F.3's cost analysis found triage was 65% of a
