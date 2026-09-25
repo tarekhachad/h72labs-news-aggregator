@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Coarse "is there a session at all" gate, run on every request. This
@@ -62,9 +63,27 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isAuthed && (request.nextUrl.pathname === "/login" || request.nextUrl.pathname === "/signup")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+    // getClaims only checks the token's signature, and a token outlives its
+    // session by up to an hour, e.g. after a password reset signed this
+    // browser out. The pages check with Auth and send that browser here, so
+    // bouncing it back on the token alone loops until Chrome gives up. Auth
+    // decides, and only on these two pages, so every other request stays local.
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    if (user) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
+    // Either way /login renders, which is what ends the loop. The cookies are
+    // cleared only when Auth actually answered that the session is gone. A
+    // network error or a 5xx says nothing about the session, and clearing on
+    // one would sign out every live user who loads a page during an outage.
+    if (!isAuthRetryableFetchError(error)) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
   }
 
   return supabaseResponse;

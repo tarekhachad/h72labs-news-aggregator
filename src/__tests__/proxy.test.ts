@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const getClaimsMock = vi.fn();
+const getUserMock = vi.fn();
+const signOutMock = vi.fn();
+vi.mock("@supabase/supabase-js", () => ({
+  isAuthRetryableFetchError: (e: unknown) => (e as { name?: string } | null)?.name === "AuthRetryableFetchError",
+}));
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(() => ({
-    auth: { getClaims: getClaimsMock },
+    auth: { getClaims: getClaimsMock, getUser: getUserMock, signOut: signOutMock },
   })),
 }));
 
@@ -19,6 +24,10 @@ function req(path: string): NextRequest {
 beforeEach(() => {
   getClaimsMock.mockReset();
   getClaimsMock.mockResolvedValue({ data: null });
+  getUserMock.mockReset();
+  getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+  signOutMock.mockReset();
+  signOutMock.mockResolvedValue({ error: null });
 });
 
 function locationOf(response: Response): string | null {
@@ -85,5 +94,75 @@ describe("proxy — authenticated", () => {
     // every path that starts with it.
     const res = await proxy(req("/signup/check-email"));
     expect(locationOf(res)).toBeNull();
+  });
+});
+
+// A browser whose session was revoked (a password reset elsewhere signed it
+// out) still holds an access token with a valid signature for up to an hour.
+// The pages ask Auth and send it to /login; bouncing it back to / on the token
+// alone is the redirect loop this guards against.
+describe("proxy — token still valid, session revoked", () => {
+  beforeEach(() => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+    getUserMock.mockResolvedValue({
+      data: { user: null },
+      error: { code: "session_not_found", message: "Session from session_id claim in JWT does not exist" },
+    });
+  });
+
+  it.each(["/login", "/signup"])("shows %s instead of bouncing to /, and clears the dead session", async (path) => {
+    const res = await proxy(req(path));
+    expect(locationOf(res)).toBeNull();
+    expect(signOutMock).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("keeps the query on /login so its message still shows", async () => {
+    const res = await proxy(req("/login?error=link_expired"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+});
+
+describe("proxy — Auth is asked only on /login and /signup", () => {
+  it.each(["/", "/profile", "/saved", "/history", "/reset-password", "/api/digest"])(
+    "does not call getUser for %s",
+    async (path) => {
+      getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+      await proxy(req(path));
+      expect(getUserMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it("does not call getUser on /login for a visitor with no token at all", async () => {
+    await proxy(req("/login"));
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(signOutMock).not.toHaveBeenCalled();
+  });
+
+  it("does not sign out a live session on /login", async () => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+    await proxy(req("/login"));
+    expect(signOutMock).not.toHaveBeenCalled();
+  });
+});
+
+// A network failure or a 5xx from Auth says nothing about whether the session
+// is alive, so the proxy must not clear a live user's cookies on one.
+describe("proxy — Auth unreachable on /login", () => {
+  beforeEach(() => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+    getUserMock.mockResolvedValue({
+      data: { user: null },
+      error: { name: "AuthRetryableFetchError", status: 503, message: "Service Unavailable" },
+    });
+  });
+
+  it("renders /login without bouncing, so there is still no loop", async () => {
+    const res = await proxy(req("/login"));
+    expect(locationOf(res)).toBeNull();
+  });
+
+  it("keeps the session's cookies", async () => {
+    await proxy(req("/login"));
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 });
