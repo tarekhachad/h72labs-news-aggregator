@@ -4,7 +4,7 @@ import { resetPassword } from "@/app/auth/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { INPUT_CLASS, INPUT_STYLE, SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
 import { RESET_ERROR_MESSAGES, isResetErrorCode } from "@/lib/authErrors";
-import { RECOVERY_COOKIE, recoverySecret, verifyRecoveryMarker } from "@/lib/recoveryMarker";
+import { RECOVERY_COOKIE, recoverySecret, subjectFromClaims, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ResetPasswordPage({
@@ -20,9 +20,8 @@ export default async function ResetPasswordPage({
   // the lock.
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
-  const userId = claims?.claims?.sub;
   const marker = (await cookies()).get(RECOVERY_COOKIE)?.value;
-  if (!userId || !verifyRecoveryMarker(marker, userId, recoverySecret())) {
+  if (!verifyRecoveryMarker(marker, subjectFromClaims(claims?.claims), recoverySecret())) {
     redirect("/forgot-password?expired=1");
   }
 

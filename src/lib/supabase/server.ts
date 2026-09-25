@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { clockSkewRetryFetch } from "./clockSkewFetch";
 
 /**
  * Supabase client for Server Components, Server Actions, and Route
@@ -13,6 +14,7 @@ export async function createClient() {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_PUBLISHABLE_KEY!,
     {
+      global: { fetch: clockSkewRetryFetch() },
       cookies: {
         getAll() {
           return cookieStore.getAll();

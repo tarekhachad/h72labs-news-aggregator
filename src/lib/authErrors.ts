@@ -10,6 +10,7 @@ export const LOGIN_ERROR_MESSAGES = {
   invalid_email: "Enter a valid email.",
   email_not_confirmed: "Confirm your email address first — check your inbox for the link.",
   link_expired: "That link has expired or was already used. Request a new one below.",
+  reset_unavailable: "Password reset isn't available right now. Try again later.",
   rate_limited: "Too many attempts. Wait a minute and try again.",
   login_failed: "Could not log you in. Try again.",
 } as const;
@@ -40,6 +41,7 @@ export const CHANGE_PASSWORD_ERROR_MESSAGES = {
   password_mismatch: "Passwords don't match.",
   same_password: "That is already your password. Pick a different one.",
   rate_limited: "Too many attempts. Wait a minute and try again.",
+  reauth_required: "For security, sign out and sign back in, then try again.",
   change_failed: "Could not update your password. Try again.",
 } as const;
 
@@ -93,6 +95,13 @@ export function changePasswordErrorCode(error: SupabaseAuthErrorish): ChangePass
     case "current_password_invalid":
     case "current_password_required":
       return "wrong_current_password";
+    // Auth's nonce-based "Secure password change" setting. It is off today,
+    // but if it is ever turned on, a session older than a day would otherwise
+    // see a generic failure with no way forward.
+    case "reauthentication_needed":
+    case "reauthentication_not_valid":
+    case "reauth_nonce_missing":
+      return "reauth_required";
     case "same_password":
       return "same_password";
     case "weak_password":

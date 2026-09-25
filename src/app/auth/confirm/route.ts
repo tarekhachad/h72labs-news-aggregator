@@ -6,7 +6,9 @@ import { safeNextPath } from "@/lib/safeNext";
 import {
   RECOVERY_COOKIE,
   RECOVERY_COOKIE_OPTIONS,
+  markerSubject,
   recoverySecret,
+  sessionIdOfFreshToken,
   signRecoveryMarker,
 } from "@/lib/recoveryMarker";
 
@@ -29,6 +31,16 @@ export async function GET(request: Request) {
   // caller-supplied type through to verifyOtp would widen this route to
   // every OTP flow Supabase supports, including ones nothing here sends.
   if (tokenHash && type && VERIFIABLE_TYPES.includes(type)) {
+    // Checked before verifyOtp, not after: verifying signs the user in and
+    // spends the link, and a signed-in user sent to /login is bounced to /
+    // by the proxy, so the message would never show and the link would be
+    // gone. Refusing first leaves the link usable once the secret is fixed.
+    const secret = recoverySecret();
+    if (type === "recovery" && !secret) {
+      console.error("[auth/confirm] RECOVERY_MARKER_SECRET is missing or too short; reset stays closed");
+      return NextResponse.redirect(`${origin}/login?error=reset_unavailable`);
+    }
+
     const supabase = await createClient();
     const { data, error } = await supabase.auth.verifyOtp({
       type: type as EmailOtpType,
@@ -37,18 +49,16 @@ export async function GET(request: Request) {
     if (!error) {
       // Only a verified recovery link earns the marker /reset-password asks
       // for. A signup confirmation lands here too and must not get one.
-      const secret = recoverySecret();
-      const userId = data.user?.id;
-      if (type === "recovery" && userId) {
-        if (secret) {
+      if (type === "recovery" && secret) {
+        const userId = data.user?.id;
+        const sessionId = sessionIdOfFreshToken(data.session?.access_token);
+        if (userId && sessionId) {
           const cookieStore = await cookies();
           cookieStore.set(
             RECOVERY_COOKIE,
-            signRecoveryMarker(userId, Math.floor(Date.now() / 1000), secret),
+            signRecoveryMarker(markerSubject(userId, sessionId), Math.floor(Date.now() / 1000), secret),
             RECOVERY_COOKIE_OPTIONS
           );
-        } else {
-          console.error("[auth/confirm] RECOVERY_MARKER_SECRET is missing or too short; reset stays closed");
         }
       }
       return NextResponse.redirect(`${origin}${next}`);

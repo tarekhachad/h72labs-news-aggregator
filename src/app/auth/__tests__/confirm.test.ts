@@ -13,7 +13,12 @@ vi.mock("next/headers", () => ({
 }));
 
 const { GET } = await import("@/app/auth/confirm/route");
-const { RECOVERY_COOKIE, verifyRecoveryMarker } = await import("@/lib/recoveryMarker");
+const { RECOVERY_COOKIE, markerSubject, verifyRecoveryMarker } = await import("@/lib/recoveryMarker");
+const SID = "99999999-9999-4999-8999-999999999999";
+// A token shaped like Auth's: only the payload's session_id is read.
+const freshToken = (sessionId: string) =>
+  `h.${Buffer.from(JSON.stringify({ session_id: sessionId })).toString("base64url")}.s`;
+
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const SECRET = "s".repeat(44);
@@ -32,7 +37,7 @@ async function locationOf(query: string): Promise<string> {
 
 beforeEach(() => {
   verifyOtpMock.mockReset();
-  verifyOtpMock.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
+  verifyOtpMock.mockResolvedValue({ data: { user: { id: USER_ID }, session: { access_token: freshToken(SID) } }, error: null });
   cookieSetMock.mockReset();
   vi.stubEnv("RECOVERY_MARKER_SECRET", SECRET);
 });
@@ -96,7 +101,7 @@ describe("GET /auth/confirm", () => {
       expect(cookieSetMock).toHaveBeenCalledTimes(1);
       const [name, value, options] = cookieSetMock.mock.calls[0];
       expect(name).toBe(RECOVERY_COOKIE);
-      expect(verifyRecoveryMarker(value, USER_ID, SECRET)).toBe(true);
+      expect(verifyRecoveryMarker(value, markerSubject(USER_ID, SID), SECRET)).toBe(true);
       expect(options).toMatchObject({ httpOnly: true, secure: true, sameSite: "lax", path: "/" });
     });
 
@@ -111,11 +116,32 @@ describe("GET /auth/confirm", () => {
       expect(cookieSetMock).not.toHaveBeenCalled();
     });
 
-    it("sets no marker, and still redirects, when the secret is missing", async () => {
+    it("sets no marker and says reset is unavailable when the secret is missing", async () => {
       vi.stubEnv("RECOVERY_MARKER_SECRET", "");
       const location = await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
       expect(cookieSetMock).not.toHaveBeenCalled();
-      expect(location).toBe(`${ORIGIN}/reset-password`);
+      expect(location).toBe(`${ORIGIN}/login?error=reset_unavailable`);
+      // Refused before verifying, so no session is created and the link isn't spent.
+      expect(verifyOtpMock).not.toHaveBeenCalled();
+    });
+
+    it("still verifies a signup link when the recovery secret is missing", async () => {
+      vi.stubEnv("RECOVERY_MARKER_SECRET", "");
+      const location = await locationOf("?token_hash=abc123&type=email&next=/onboarding");
+      expect(verifyOtpMock).toHaveBeenCalledTimes(1);
+      expect(location).toBe(`${ORIGIN}/onboarding`);
+    });
+
+    it("binds the marker to the session the link just created", async () => {
+      await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
+      const [, value] = cookieSetMock.mock.calls[0];
+      expect(verifyRecoveryMarker(value, markerSubject(USER_ID, "88888888-8888-4888-8888-888888888888"), SECRET)).toBe(false);
+    });
+
+    it("sets no marker when Auth returns no session to bind it to", async () => {
+      verifyOtpMock.mockResolvedValue({ data: { user: { id: USER_ID }, session: null }, error: null });
+      await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
+      expect(cookieSetMock).not.toHaveBeenCalled();
     });
   });
 });

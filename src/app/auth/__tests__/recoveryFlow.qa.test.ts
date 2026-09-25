@@ -51,12 +51,17 @@ vi.mock("next/headers", () => ({
 
 const { GET } = await import("@/app/auth/confirm/route");
 const { resetPassword } = await import("@/app/auth/actions");
-const { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, verifyRecoveryMarker, signRecoveryMarker } = await import(
+const { RECOVERY_COOKIE, RECOVERY_COOKIE_OPTIONS, markerSubject, verifyRecoveryMarker, signRecoveryMarker } = await import(
   "@/lib/recoveryMarker"
 );
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
+const SID = "99999999-9999-4999-8999-999999999999";
+// A token shaped like Auth's: only the payload's session_id is read.
+const freshToken = (sessionId: string) =>
+  `h.${Buffer.from(JSON.stringify({ session_id: sessionId })).toString("base64url")}.s`;
+
 const SECRET = "q".repeat(44);
 const ORIGIN = "https://news.h72labs.com";
 const now = () => Math.floor(Date.now() / 1000);
@@ -86,9 +91,9 @@ beforeEach(() => {
   jar.clear();
   calls.length = 0;
   verifyOtpMock.mockReset();
-  verifyOtpMock.mockResolvedValue({ data: { user: { id: A } }, error: null });
+  verifyOtpMock.mockResolvedValue({ data: { user: { id: A }, session: { access_token: freshToken(SID) } }, error: null });
   getClaimsMock.mockReset();
-  getClaimsMock.mockResolvedValue({ data: { claims: { sub: A } } });
+  getClaimsMock.mockResolvedValue({ data: { claims: { sub: A, session_id: SID } } });
   updateUserMock.mockClear();
   updateUserImpl = () => ({ data: {}, error: null });
   signOutMock.mockClear();
@@ -102,13 +107,13 @@ describe("confirm route issues the marker only for a verified recovery", () => {
     const c = jar.get(RECOVERY_COOKIE);
     expect(c).toBeDefined();
     expect(c!.options).toEqual(RECOVERY_COOKIE_OPTIONS);
-    expect(verifyRecoveryMarker(c!.value, A, SECRET)).toBe(true);
-    expect(verifyRecoveryMarker(c!.value, B, SECRET)).toBe(false);
+    expect(verifyRecoveryMarker(c!.value, markerSubject(A, SID), SECRET)).toBe(true);
+    expect(verifyRecoveryMarker(c!.value, markerSubject(B, SID), SECRET)).toBe(false);
   });
 
   it("the marker's user comes from verifyOtp, not from anything in the URL", async () => {
     await confirm(`?token_hash=h&type=recovery&next=/reset-password&user=${B}&sub=${B}`);
-    expect(verifyRecoveryMarker(jar.get(RECOVERY_COOKIE)!.value, A, SECRET)).toBe(true);
+    expect(verifyRecoveryMarker(jar.get(RECOVERY_COOKIE)!.value, markerSubject(A, SID), SECRET)).toBe(true);
   });
 
   it("signup confirmation (type=email) never gets a marker", async () => {
@@ -181,7 +186,7 @@ describe("resetPassword gate", () => {
 
   it("cross-account: A's marker with B's session is refused and not spent", async () => {
     await confirm("?token_hash=h&type=recovery&next=/reset-password");
-    getClaimsMock.mockResolvedValue({ data: { claims: { sub: B } } });
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: B, session_id: SID } } });
     expect(await reset()).toBe("/forgot-password?expired=1");
     expect(updateUserMock).not.toHaveBeenCalled();
     expect(jar.has(RECOVERY_COOKIE)).toBe(true);
@@ -193,20 +198,20 @@ describe("resetPassword gate", () => {
     ["empty sub", { data: { claims: { sub: "" } } }],
     ["getClaims error", { data: null, error: { message: "bad jwt" } }],
   ])("%s is refused even with a marker present", async (_l, claims) => {
-    jar.set(RECOVERY_COOKIE, { value: signRecoveryMarker("", now(), SECRET) });
+    jar.set(RECOVERY_COOKIE, { value: signRecoveryMarker(markerSubject("", SID), now(), SECRET) });
     getClaimsMock.mockResolvedValue(claims);
     expect(await reset()).toBe("/forgot-password?expired=1");
     expect(updateUserMock).not.toHaveBeenCalled();
   });
 
   it("an expired marker (61 minutes old) is refused", async () => {
-    jar.set(RECOVERY_COOKIE, { value: signRecoveryMarker(A, now() - 3661, SECRET) });
+    jar.set(RECOVERY_COOKIE, { value: signRecoveryMarker(markerSubject(A, SID), now() - 3661, SECRET) });
     expect(await reset()).toBe("/forgot-password?expired=1");
     expect(updateUserMock).not.toHaveBeenCalled();
   });
 
   it("the old amr-only proof no longer opens reset", async () => {
-    getClaimsMock.mockResolvedValue({ data: { claims: { sub: A, amr: [{ method: "recovery", timestamp: now() }] } } });
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: A, session_id: SID, amr: [{ method: "recovery", timestamp: now() }] } } });
     expect(await reset()).toBe("/forgot-password?expired=1");
   });
 
@@ -242,12 +247,12 @@ describe("resetPassword gate", () => {
     err.mockRestore();
   });
 
-  it("marker is spent before eviction runs (a throwing signOut can't leave a reusable marker)", async () => {
+  it("a throwing signOut still spends the marker and lands on /, not an error page", async () => {
     await confirm("?token_hash=h&type=recovery&next=/reset-password");
     signOutImpl = () => {
       throw new Error("network down");
     };
-    await expect(resetPassword(pw())).rejects.toThrow("network down");
+    await expect(resetPassword(pw())).rejects.toMatchObject({ url: "/" });
     expect(jar.has(RECOVERY_COOKIE)).toBe(false);
   });
 });

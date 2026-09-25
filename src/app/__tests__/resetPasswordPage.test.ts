@@ -31,7 +31,9 @@ vi.mock("next/headers", () => ({
 }));
 
 const { default: ResetPasswordPage } = await import("@/app/reset-password/page");
-const { signRecoveryMarker } = await import("@/lib/recoveryMarker");
+const { markerSubject, signRecoveryMarker } = await import("@/lib/recoveryMarker");
+const SID = "99999999-9999-4999-8999-999999999999";
+
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER = "22222222-2222-4222-8222-222222222222";
@@ -50,14 +52,14 @@ async function expectRefused() {
 
 beforeEach(() => {
   getClaimsMock.mockReset();
-  getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID } } });
+  getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID, session_id: SID } } });
   markerCookie = undefined;
   vi.stubEnv("RECOVERY_MARKER_SECRET", SECRET);
 });
 
 describe("ResetPasswordPage gate", () => {
   it("renders the form when a fresh marker for this user is present", async () => {
-    markerCookie = signRecoveryMarker(USER_ID, now(), SECRET);
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), now(), SECRET);
     const element = await ResetPasswordPage({ searchParams: searchParams() });
     expect(JSON.stringify(element)).toContain("Set a new password");
   });
@@ -67,35 +69,40 @@ describe("ResetPasswordPage gate", () => {
   // marker tells them apart.
   it("refuses a signed-in session with no marker, whatever its amr says", async () => {
     getClaimsMock.mockResolvedValue({
-      data: { claims: { sub: USER_ID, amr: [{ method: "otp", timestamp: now() }] } },
+      data: { claims: { sub: USER_ID, session_id: SID, amr: [{ method: "otp", timestamp: now() }] } },
     });
     await expectRefused();
   });
 
   it("refuses a marker issued to a different account", async () => {
-    markerCookie = signRecoveryMarker(OTHER_USER, now(), SECRET);
+    markerCookie = signRecoveryMarker(markerSubject(OTHER_USER, SID), now(), SECRET);
     await expectRefused();
   });
 
   it("refuses a marker older than the window", async () => {
-    markerCookie = signRecoveryMarker(USER_ID, now() - 2 * 60 * 60, SECRET);
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), now() - 2 * 60 * 60, SECRET);
     await expectRefused();
   });
 
   it("refuses a marker signed with a different secret", async () => {
-    markerCookie = signRecoveryMarker(USER_ID, now(), "x".repeat(44));
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), now(), "x".repeat(44));
     await expectRefused();
   });
 
   it("refuses everything when the secret is not configured", async () => {
-    markerCookie = signRecoveryMarker(USER_ID, now(), SECRET);
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), now(), SECRET);
     vi.stubEnv("RECOVERY_MARKER_SECRET", "");
     await expectRefused();
   });
 
   it("refuses a marker with no session behind it", async () => {
-    markerCookie = signRecoveryMarker(USER_ID, now(), SECRET);
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), now(), SECRET);
     getClaimsMock.mockResolvedValue({ data: null });
+    await expectRefused();
+  });
+
+  it("refuses this user's marker from an earlier session", async () => {
+    markerCookie = signRecoveryMarker(markerSubject(USER_ID, "88888888-8888-4888-8888-888888888888"), now(), SECRET);
     await expectRefused();
   });
 });

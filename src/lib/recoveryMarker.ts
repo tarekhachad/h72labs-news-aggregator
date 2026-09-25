@@ -9,7 +9,11 @@
  * after a successful `type=recovery` verification, and it is signed with a
  * server-only secret so no client can mint one.
  *
- * Format: `<userId>.<issuedAtSeconds>.<base64url HMAC-SHA256 of the first two>`.
+ * It is bound to one session, not just one account: `markerSubject` joins the
+ * user id and the session id, so the marker stops working the moment that
+ * session ends, even if the cookie is left behind or copied.
+ *
+ * Format: `<subject>.<issuedAtSeconds>.<base64url HMAC-SHA256 of the first two>`.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -44,35 +48,67 @@ export function recoverySecret(): string | null {
   return secret;
 }
 
+/**
+ * The session a marker is bound to. Both ids are UUIDs, so the result never
+ * contains the `.` the marker format splits on.
+ */
+export function markerSubject(userId: string, sessionId: string): string {
+  return `${userId}:${sessionId}`;
+}
+
+/** The subject for a verified claims object, or null when either id is missing. */
+export function subjectFromClaims(claims: unknown): string | null {
+  const c = claims as { sub?: unknown; session_id?: unknown } | null | undefined;
+  if (typeof c?.sub !== "string" || typeof c?.session_id !== "string") return null;
+  if (c.sub === "" || c.session_id === "") return null;
+  return markerSubject(c.sub, c.session_id);
+}
+
+/**
+ * The session id inside an access token Auth has just issued, read without
+ * verifying the signature. That is only safe because the token came straight
+ * back from Auth in this same request; never call it on a token a client sent.
+ */
+export function sessionIdOfFreshToken(accessToken: string | undefined): string | null {
+  const payload = accessToken?.split(".")[1];
+  if (!payload) return null;
+  try {
+    const sessionId = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))?.session_id;
+    return typeof sessionId === "string" ? sessionId : null;
+  } catch {
+    return null;
+  }
+}
+
 function mac(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload, "utf8").digest("base64url");
 }
 
-export function signRecoveryMarker(userId: string, nowSeconds: number, secret: string): string {
-  const payload = `${userId}.${nowSeconds}`;
+export function signRecoveryMarker(subject: string, nowSeconds: number, secret: string): string {
+  const payload = `${subject}.${nowSeconds}`;
   return `${payload}.${mac(payload, secret)}`;
 }
 
 export function verifyRecoveryMarker(
   value: string | undefined,
-  userId: string,
+  subject: string | null,
   secret: string | null,
   // Defaulted here rather than at the call sites: one of them is a server
   // component, where the lint rule forbids calling Date.now() during render.
   nowSeconds: number = Math.floor(Date.now() / 1000)
 ): boolean {
-  if (!value || !secret) return false;
+  if (!value || !secret || !subject) return false;
 
   const parts = value.split(".");
   if (parts.length !== 3) return false;
-  const [markerUser, issuedRaw, signature] = parts;
+  const [markerSubjectValue, issuedRaw, signature] = parts;
 
-  // The marker proves one account's recovery. A marker issued to another
-  // account in the same browser must not open this one's reset form.
-  if (markerUser !== userId) return false;
+  // The marker proves one session's recovery. A marker from another account,
+  // or from an earlier session of this one, must not open the reset form.
+  if (markerSubjectValue !== subject) return false;
   if (!/^\d+$/.test(issuedRaw)) return false;
 
-  const expected = Buffer.from(mac(`${markerUser}.${issuedRaw}`, secret));
+  const expected = Buffer.from(mac(`${markerSubjectValue}.${issuedRaw}`, secret));
   const given = Buffer.from(signature);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return false;
 

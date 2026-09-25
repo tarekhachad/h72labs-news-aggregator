@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { INVITE_TOKEN_PATTERN, signupErrorCode, type SignupErrorCode } from "@/lib/invite";
 import { loginErrorCode } from "@/lib/authErrors";
-import { RECOVERY_COOKIE, recoverySecret, verifyRecoveryMarker } from "@/lib/recoveryMarker";
+import { RECOVERY_COOKIE, recoverySecret, subjectFromClaims, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 
 // A missing field or a submitted File (not a string) would otherwise
 // surface as an opaque Supabase API error instead of a clean local one.
@@ -99,8 +99,8 @@ export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
   const cookieStore = await cookies();
   const { data: claims } = await supabase.auth.getClaims();
-  const userId = claims?.claims?.sub;
-  if (!userId || !verifyRecoveryMarker(cookieStore.get(RECOVERY_COOKIE)?.value, userId, recoverySecret())) {
+  const subject = subjectFromClaims(claims?.claims);
+  if (!verifyRecoveryMarker(cookieStore.get(RECOVERY_COOKIE)?.value, subject, recoverySecret())) {
     redirect("/forgot-password?expired=1");
   }
 
@@ -117,11 +117,14 @@ export async function resetPassword(formData: FormData) {
   // Single use: the marker must not reopen the form after the reset landed.
   cookieStore.delete(RECOVERY_COOKIE);
 
-  const { error: evictError } = await supabase.auth.signOut({ scope: "others" });
-  if (evictError) {
-    // The password is already changed, so the user is not sent back to a
-    // form that would fail again. The log is what shows eviction didn't run.
-    console.error("[resetPassword] signing out other sessions failed:", evictError);
+  // The password is already changed, so a failed eviction, whether it
+  // returns an error or throws, must not send the user to an error page or
+  // back to a form that would fail again. The log is what shows it didn't run.
+  try {
+    const { error: evictError } = await supabase.auth.signOut({ scope: "others" });
+    if (evictError) console.error("[resetPassword] signing out other sessions failed:", evictError);
+  } catch (err) {
+    console.error("[resetPassword] signing out other sessions threw:", err);
   }
 
   redirect("/");
@@ -150,5 +153,8 @@ export async function signIn(formData: FormData) {
 export async function signOutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  // The marker is already dead once its session ends; clearing it just keeps
+  // the browser from carrying it around for the rest of the hour.
+  (await cookies()).delete(RECOVERY_COOKIE);
   redirect("/login");
 }

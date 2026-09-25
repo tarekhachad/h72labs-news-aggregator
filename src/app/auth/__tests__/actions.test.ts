@@ -50,7 +50,9 @@ vi.mock("next/headers", () => ({
 const { signUp, signIn, resendConfirmation, requestPasswordReset, resetPassword } = await import(
   "@/app/auth/actions"
 );
-const { RECOVERY_COOKIE, signRecoveryMarker } = await import("@/lib/recoveryMarker");
+const { RECOVERY_COOKIE, markerSubject, signRecoveryMarker } = await import("@/lib/recoveryMarker");
+const SID = "99999999-9999-4999-8999-999999999999";
+
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const MARKER_SECRET = "s".repeat(44);
@@ -91,9 +93,9 @@ beforeEach(() => {
   getClaimsMock.mockReset();
   // The default is a session with a fresh recovery marker, as a verified
   // reset link leaves it; the tests that care about the gate override it.
-  getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID } } });
+  getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID, session_id: SID } } });
   vi.stubEnv("RECOVERY_MARKER_SECRET", MARKER_SECRET);
-  markerCookie = signRecoveryMarker(USER_ID, nowSeconds(), MARKER_SECRET);
+  markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), nowSeconds(), MARKER_SECRET);
   cookieDeleteMock.mockReset();
   signOutMock.mockResolvedValue({ error: null });
   // A session in the signUp response is the "confirmation is off" shape;
@@ -311,6 +313,14 @@ describe("resetPassword", () => {
     expect(url).toBe("/");
   });
 
+  it("still lands on / when eviction throws, since the password already changed", async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+    signOutMock.mockRejectedValue(new Error("network down"));
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(cookieDeleteMock).toHaveBeenCalledWith(RECOVERY_COOKIE);
+    expect(url).toBe("/");
+  });
+
   it("rejects a short password before calling Supabase", async () => {
     const url = await captureRedirect(resetPassword, form({ password: "abc" }));
     expect(updateUserMock).not.toHaveBeenCalled();
@@ -329,9 +339,11 @@ describe("resetPassword", () => {
 
   const refused: Array<[() => void, string]> = [
     [() => { markerCookie = undefined; }, "a session with no marker (e.g. a signup confirmation)"],
-    [() => { markerCookie = signRecoveryMarker("22222222-2222-4222-8222-222222222222", nowSeconds(), MARKER_SECRET); }, "another account's marker"],
-    [() => { markerCookie = signRecoveryMarker(USER_ID, nowSeconds() - 7200, MARKER_SECRET); }, "a stale marker"],
-    [() => { markerCookie = signRecoveryMarker(USER_ID, nowSeconds(), "x".repeat(44)); }, "a forged marker"],
+    [() => { markerCookie = signRecoveryMarker(markerSubject("22222222-2222-4222-8222-222222222222", SID), nowSeconds(), MARKER_SECRET); }, "another account's marker"],
+    [() => { markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), nowSeconds() - 7200, MARKER_SECRET); }, "a stale marker"],
+    [() => { markerCookie = signRecoveryMarker(markerSubject(USER_ID, SID), nowSeconds(), "x".repeat(44)); }, "a forged marker"],
+    [() => { markerCookie = signRecoveryMarker(markerSubject(USER_ID, "88888888-8888-4888-8888-888888888888"), nowSeconds(), MARKER_SECRET); }, "a marker from an earlier session"],
+    [() => { getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID } } }); }, "a session with no session id"],
     [() => { vi.stubEnv("RECOVERY_MARKER_SECRET", ""); }, "a missing secret"],
     [() => { getClaimsMock.mockResolvedValue({ data: null }); }, "no session at all"],
   ];

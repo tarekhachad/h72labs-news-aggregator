@@ -26,12 +26,9 @@ describe("recovery marker — cross-account", () => {
     expect(verifyRecoveryMarker(`${B}.${issued}.${sig}`, B, SECRET, NOW)).toBe(false);
   });
 
-  it("an empty userId is refused even when the marker is signed for the empty user", () => {
-    // verify() takes the caller's sub; resetPassword guards !userId first, but
-    // the function itself must not treat '' as a real account either.
+  it("an empty subject is refused even when the marker is signed for it", () => {
     const m = signRecoveryMarker("", NOW, SECRET);
-    // Documenting actual behaviour: the function accepts it; the callers' !userId guard is what refuses.
-    expect(verifyRecoveryMarker(m, "", SECRET, NOW)).toBe(true);
+    expect(verifyRecoveryMarker(m, "", SECRET, NOW)).toBe(false);
   });
 });
 
