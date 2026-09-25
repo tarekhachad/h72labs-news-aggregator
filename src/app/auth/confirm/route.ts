@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/safeNext";
+import {
+  RECOVERY_COOKIE,
+  RECOVERY_COOKIE_OPTIONS,
+  recoverySecret,
+  signRecoveryMarker,
+} from "@/lib/recoveryMarker";
 
 // Where every emailed link lands: signup confirmation and password recovery
 // both point here, at {{ .SiteURL }}/auth/confirm?token_hash=…&type=…&next=…
@@ -23,11 +30,27 @@ export async function GET(request: Request) {
   // every OTP flow Supabase supports, including ones nothing here sends.
   if (tokenHash && type && VERIFIABLE_TYPES.includes(type)) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       type: type as EmailOtpType,
       token_hash: tokenHash,
     });
     if (!error) {
+      // Only a verified recovery link earns the marker /reset-password asks
+      // for. A signup confirmation lands here too and must not get one.
+      const secret = recoverySecret();
+      const userId = data.user?.id;
+      if (type === "recovery" && userId) {
+        if (secret) {
+          const cookieStore = await cookies();
+          cookieStore.set(
+            RECOVERY_COOKIE,
+            signRecoveryMarker(userId, Math.floor(Date.now() / 1000), secret),
+            RECOVERY_COOKIE_OPTIONS
+          );
+        } else {
+          console.error("[auth/confirm] RECOVERY_MARKER_SECRET is missing or too short; reset stays closed");
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

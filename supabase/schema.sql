@@ -256,9 +256,21 @@ create policy "select own bookmarks"
   on public.bookmarks for select
   using (auth.uid() = user_id);
 
+-- The card has to be the caller's own as well. addBookmark checks that in
+-- the app, but PostgREST is reachable with just a session, and without this
+-- a direct insert could bookmark another user's card id (it still couldn't
+-- read the card, but the insert succeeding confirms the id exists).
 create policy "insert own bookmarks"
   on public.bookmarks for insert
-  with check (auth.uid() = user_id);
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.cards c
+      join public.digests d on d.id = c.digest_id
+      where c.id = card_id and d.user_id = auth.uid()
+    )
+  );
 
 create policy "delete own bookmarks"
   on public.bookmarks for delete
@@ -1301,3 +1313,17 @@ begin
   end if;
 end;
 $$;
+
+-- Grant hygiene. Supabase grants anon and authenticated every table
+-- privilege by default and leaves RLS to narrow rows. TRUNCATE is the
+-- exception RLS can't narrow, since it ignores policies. No API path issues it
+-- today (PostgREST has no truncate verb), but nothing a session does needs it,
+-- nor TRIGGER or REFERENCES, so none of the three stay granted. The default
+-- privileges line applies the same to tables created later.
+revoke truncate, trigger, references on all tables in schema public from anon, authenticated;
+alter default privileges for role postgres in schema public
+  revoke truncate, trigger, references on tables from anon, authenticated;
+
+-- An event-trigger function can't be called through the API, but it has no
+-- reason to be executable by sessions either.
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;

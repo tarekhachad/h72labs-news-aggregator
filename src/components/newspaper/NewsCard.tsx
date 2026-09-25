@@ -14,6 +14,7 @@ import { useFocusMode } from "@/components/newspaper/FocusModeContext";
 import { labelColor } from "@/lib/labelColor";
 import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
 import { ENTRANCE_DURATION_SECONDS } from "@/lib/entranceTiming";
+import { safeExternalHref } from "@/lib/safeHref";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -545,7 +546,7 @@ export function NewsCard({
                   <li key={s.url} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
                     <span className="font-medium">{s.source}</span> —{" "}
                     <a
-                      href={s.url}
+                      href={safeExternalHref(s.url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}

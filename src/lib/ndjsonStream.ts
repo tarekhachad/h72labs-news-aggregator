@@ -6,6 +6,8 @@
  * the spend reservation is settled and the generation claim released.
  */
 
+export const DIGEST_FAILED_MESSAGE = "Digest failed";
+
 export function toNdjsonStream<E extends { stage: string }>(
   events: AsyncGenerator<E>,
   // Cleanup for the narrow case of a cancel arriving before the first pull,
@@ -50,10 +52,13 @@ export function toNdjsonStream<E extends { stage: string }>(
           controller.close();
         }
       } catch (err) {
+        // The full error stays in the server log. The client gets a fixed
+        // string, so no future throw can carry internal detail to the browser.
         console.error("[digest] pipeline failed:", err);
-        const message = err instanceof Error ? err.message : "Digest failed";
         try {
-          controller.enqueue(encoder.encode(JSON.stringify({ stage: "error", message }) + "\n"));
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ stage: "error", message: DIGEST_FAILED_MESSAGE }) + "\n")
+          );
           controller.close();
         } catch {
           // Client already disconnected/canceled the stream — nothing left to tell it.

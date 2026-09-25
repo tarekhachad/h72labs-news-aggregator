@@ -1,11 +1,12 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { INVITE_TOKEN_PATTERN, signupErrorCode, type SignupErrorCode } from "@/lib/invite";
 import { loginErrorCode } from "@/lib/authErrors";
-import { isRecoverySession } from "@/lib/recoverySession";
+import { RECOVERY_COOKIE, recoverySecret, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 
 // A missing field or a submitted File (not a string) would otherwise
 // surface as an opaque Supabase API error instead of a clean local one.
@@ -89,25 +90,17 @@ export async function requestPasswordReset(formData: FormData) {
 }
 
 /**
- * Restores access to an account whose password was forgotten; it does not
- * cut the account's other sessions.
- *
- * Cutting them needs proof that the emailed reset link was opened, and Auth
- * records every email link as the same `otp` method, so a session from a
- * signup confirmation is indistinguishable from one from a reset link. Since
- * a stolen session can already change the password through /profile, which
- * asks for no reauthentication, eviction would hand a thief the one thing it
- * cannot do today. Both halves belong to the same fix — reauthentication on
- * the profile change, and a recovery proof that does not rely on `amr` — and
- * that fix is V2.1.9's.
- *
- * The recovery-session gate stays as the door: this page is reached from a
- * link, not from an ordinary login.
+ * Sets a new password from a verified reset link, then signs the account out
+ * everywhere else. The eviction is what makes a reset useful against a stolen
+ * session, and it is only safe because the marker proves the reset link was
+ * opened: a session alone can't reach this code.
  */
 export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
+  const cookieStore = await cookies();
   const { data: claims } = await supabase.auth.getClaims();
-  if (!isRecoverySession(claims?.claims)) {
+  const userId = claims?.claims?.sub;
+  if (!userId || !verifyRecoveryMarker(cookieStore.get(RECOVERY_COOKIE)?.value, userId, recoverySecret())) {
     redirect("/forgot-password?expired=1");
   }
 
@@ -119,6 +112,16 @@ export async function resetPassword(formData: FormData) {
   const { error } = await supabase.auth.updateUser({ password: password.data });
   if (error) {
     redirect(`/reset-password?error=${error.code === "same_password" ? "same_password" : "reset_failed"}`);
+  }
+
+  // Single use: the marker must not reopen the form after the reset landed.
+  cookieStore.delete(RECOVERY_COOKIE);
+
+  const { error: evictError } = await supabase.auth.signOut({ scope: "others" });
+  if (evictError) {
+    // The password is already changed, so the user is not sent back to a
+    // form that would fail again. The log is what shows eviction didn't run.
+    console.error("[resetPassword] signing out other sessions failed:", evictError);
   }
 
   redirect("/");

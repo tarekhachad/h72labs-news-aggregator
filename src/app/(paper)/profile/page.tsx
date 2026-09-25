@@ -5,6 +5,7 @@ import { PreferencesForm } from "@/components/PreferencesForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updatePreferences, changePassword } from "./actions";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
+import { CHANGE_PASSWORD_ERROR_MESSAGES, isChangePasswordErrorCode } from "@/lib/authErrors";
 
 export default async function ProfilePage({
   searchParams,
@@ -17,6 +18,7 @@ export default async function ProfilePage({
   }>;
 }) {
   const { prefsError, prefsSaved, pwError, pwSaved } = await searchParams;
+  const pwErrorMessage = isChangePasswordErrorCode(pwError) ? CHANGE_PASSWORD_ERROR_MESSAGES[pwError] : null;
 
   const supabase = await createClient();
   const {
@@ -67,6 +69,19 @@ export default async function ProfilePage({
         <form action={changePassword} className="mx-auto flex w-full max-w-sm flex-col gap-3">
           <input
             type="password"
+            name="currentPassword"
+            placeholder="Current password"
+            autoComplete="current-password"
+            required
+            className="rounded-xl px-3 py-2 text-sm"
+            style={{
+              border: "1px solid var(--color-border)",
+              background: "var(--color-card)",
+              color: "var(--color-card-foreground)",
+            }}
+          />
+          <input
+            type="password"
             name="newPassword"
             placeholder="New password"
             autoComplete="new-password"
@@ -90,9 +105,9 @@ export default async function ProfilePage({
             }}
           />
 
-          {pwError && (
+          {pwErrorMessage && (
             <p className="text-center text-sm" style={{ color: "var(--color-destructive)" }}>
-              {pwError}
+              {pwErrorMessage}
             </p>
           )}
           {pwSaved && (

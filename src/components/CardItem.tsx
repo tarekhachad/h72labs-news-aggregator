@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Card } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
 import { expandErrorMessage } from "@/lib/spendMessage";
+import { safeExternalHref } from "@/lib/safeHref";
 
 /**
  * Renders one story card: the always-visible short summary, the lazy
@@ -145,7 +146,7 @@ export function CardItem({
           {card.sources.map((s, j) => (
             <li key={j} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
               <span className="font-medium">{s.source}</span> —{" "}
-              <a href={s.url} target="_blank" rel="noopener noreferrer" className="underline">
+              <a href={safeExternalHref(s.url)} target="_blank" rel="noopener noreferrer" className="underline">
                 {s.title}
               </a>
             </li>

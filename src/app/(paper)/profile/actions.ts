@@ -1,9 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { ProfileInput, saveUserProfile } from "@/lib/profile";
+import { changePasswordErrorCode, type ChangePasswordErrorCode } from "@/lib/authErrors";
 
 export async function updatePreferences(formData: FormData) {
   const supabase = await createClient();
@@ -39,15 +39,9 @@ export async function updatePreferences(formData: FormData) {
   redirect("/profile?prefsSaved=1");
 }
 
-const PasswordInput = z
-  .object({
-    newPassword: z.string().min(6, "Password must be at least 6 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+function passwordRedirect(code: ChangePasswordErrorCode): never {
+  redirect(`/profile?pwError=${code}`);
+}
 
 export async function changePassword(formData: FormData) {
   const supabase = await createClient();
@@ -59,23 +53,30 @@ export async function changePassword(formData: FormData) {
     redirect("/login");
   }
 
-  const parsed = PasswordInput.safeParse({
-    newPassword: formData.get("newPassword"),
-    confirmPassword: formData.get("confirmPassword"),
-  });
+  const currentPassword = formData.get("currentPassword");
+  const newPassword = formData.get("newPassword");
+  const confirmPassword = formData.get("confirmPassword");
 
-  if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Invalid input";
-    redirect(`/profile?pwError=${encodeURIComponent(message)}`);
+  if (typeof currentPassword !== "string" || currentPassword.length === 0) {
+    passwordRedirect("current_password_required");
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 6) {
+    passwordRedirect("weak_password");
+  }
+  if (newPassword !== confirmPassword) {
+    passwordRedirect("password_mismatch");
   }
 
-  // No current-password reauth: Supabase's updateUser trusts the request's
-  // existing session, and no reauth pattern exists elsewhere in this app.
-  // An active/hijacked session could change the password without proving
-  // knowledge of the old one — accepted trade-off for a personal reader.
-  const { error } = await supabase.auth.updateUser({ password: parsed.data.newPassword });
+  // A session alone must not be enough to take over the account. Auth checks
+  // current_password itself when "Require current password when changing
+  // password" is on in the dashboard, which also covers a stolen token calling
+  // the Auth endpoint directly, where no check in this file would run.
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+    current_password: currentPassword,
+  });
   if (error) {
-    redirect(`/profile?pwError=${encodeURIComponent(error.message)}`);
+    passwordRedirect(changePasswordErrorCode(error));
   }
 
   redirect("/profile?pwSaved=1");

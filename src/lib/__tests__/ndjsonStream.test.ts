@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { toNdjsonStream } from "@/lib/ndjsonStream";
+import { DIGEST_FAILED_MESSAGE, toNdjsonStream } from "@/lib/ndjsonStream";
 
 type Event = { stage: string };
 
@@ -57,4 +57,21 @@ describe("toNdjsonStream", () => {
     expect(text).toBe('{"stage":"ingesting"}\n{"stage":"done"}\n');
     expect(log).toEqual(["body started", "finally"]);
   });
+
+  it("sends a fixed message on failure, never the thrown error's text", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failing = (async function* () {
+      yield { stage: "ingesting" };
+      throw new Error("relation public.secret_table does not exist");
+    })();
+
+    const text = await new Response(toNdjsonStream(failing, async () => {})).text();
+
+    expect(text).toBe(`{"stage":"ingesting"}\n{"stage":"error","message":"${DIGEST_FAILED_MESSAGE}"}\n`);
+    expect(text).not.toContain("secret_table");
+    // The detail isn't lost, it goes to the server log instead.
+    expect(String(consoleError.mock.calls[0]?.[1])).toContain("secret_table");
+    consoleError.mockRestore();
+  });
 });
+

@@ -1,9 +1,10 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { resetPassword } from "@/app/auth/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { INPUT_CLASS, INPUT_STYLE, SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
 import { RESET_ERROR_MESSAGES, isResetErrorCode } from "@/lib/authErrors";
-import { isRecoverySession } from "@/lib/recoverySession";
+import { RECOVERY_COOKIE, recoverySecret, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ResetPasswordPage({
@@ -14,12 +15,14 @@ export default async function ResetPasswordPage({
   const { error } = await searchParams;
   const errorMessage = isResetErrorCode(error) ? RESET_ERROR_MESSAGES[error] : null;
 
-  // This form is reached from an emailed link, not from an ordinary login,
-  // and isRecoverySession reads that distinction out of the signed token.
-  // The action re-checks it — this is the door, not the lock.
+  // This form is reached from a verified reset link, which is what the
+  // recovery marker proves. The action re-checks it — this is the door, not
+  // the lock.
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
-  if (!isRecoverySession(claims?.claims)) {
+  const userId = claims?.claims?.sub;
+  const marker = (await cookies()).get(RECOVERY_COOKIE)?.value;
+  if (!userId || !verifyRecoveryMarker(marker, userId, recoverySecret())) {
     redirect("/forgot-password?expired=1");
   }
 

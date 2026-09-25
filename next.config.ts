@@ -33,6 +33,27 @@ const nextConfig: NextConfig = {
       "./node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
     ],
   },
+
+  // The CSP deliberately has no script-src: Next's inline bootstrap scripts
+  // need per-request nonces to pass one, which is a separate change. What it
+  // does set stops framing (clickjacking), plugins, <base> hijacking and forms
+  // posting off-site.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+          },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

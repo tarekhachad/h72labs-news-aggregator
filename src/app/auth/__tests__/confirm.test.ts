@@ -7,7 +7,16 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
+const cookieSetMock = vi.fn();
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({ set: cookieSetMock })),
+}));
+
 const { GET } = await import("@/app/auth/confirm/route");
+const { RECOVERY_COOKIE, verifyRecoveryMarker } = await import("@/lib/recoveryMarker");
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
+const SECRET = "s".repeat(44);
 
 const ORIGIN = "https://news.h72labs.com";
 const EXPIRED = `${ORIGIN}/login?error=link_expired`;
@@ -23,7 +32,9 @@ async function locationOf(query: string): Promise<string> {
 
 beforeEach(() => {
   verifyOtpMock.mockReset();
-  verifyOtpMock.mockResolvedValue({ error: null });
+  verifyOtpMock.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
+  cookieSetMock.mockReset();
+  vi.stubEnv("RECOVERY_MARKER_SECRET", SECRET);
 });
 
 describe("GET /auth/confirm", () => {
@@ -77,5 +88,34 @@ describe("GET /auth/confirm", () => {
     expect(location).toBe(EXPIRED);
     expect(location).not.toContain("expired&");
     expect(location).not.toContain(encodeURIComponent("Email link is invalid"));
+  });
+
+  describe("recovery marker", () => {
+    it("sets a signed, HttpOnly marker for this user after a verified recovery link", async () => {
+      await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
+      expect(cookieSetMock).toHaveBeenCalledTimes(1);
+      const [name, value, options] = cookieSetMock.mock.calls[0];
+      expect(name).toBe(RECOVERY_COOKIE);
+      expect(verifyRecoveryMarker(value, USER_ID, SECRET)).toBe(true);
+      expect(options).toMatchObject({ httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+    });
+
+    it("sets no marker for a signup confirmation", async () => {
+      await locationOf("?token_hash=abc123&type=email&next=/onboarding");
+      expect(cookieSetMock).not.toHaveBeenCalled();
+    });
+
+    it("sets no marker when the recovery link fails to verify", async () => {
+      verifyOtpMock.mockResolvedValue({ data: { user: null }, error: { code: "otp_expired" } });
+      await locationOf("?token_hash=stale&type=recovery&next=/reset-password");
+      expect(cookieSetMock).not.toHaveBeenCalled();
+    });
+
+    it("sets no marker, and still redirects, when the secret is missing", async () => {
+      vi.stubEnv("RECOVERY_MARKER_SECRET", "");
+      const location = await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
+      expect(cookieSetMock).not.toHaveBeenCalled();
+      expect(location).toBe(`${ORIGIN}/reset-password`);
+    });
   });
 });

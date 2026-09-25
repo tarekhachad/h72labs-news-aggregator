@@ -37,9 +37,24 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
+let markerCookie: string | undefined;
+const cookieDeleteMock = vi.fn();
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({
+    get: (name: string) =>
+      name === "pna_recovery" && markerCookie !== undefined ? { name, value: markerCookie } : undefined,
+    delete: cookieDeleteMock,
+  })),
+}));
+
 const { signUp, signIn, resendConfirmation, requestPasswordReset, resetPassword } = await import(
   "@/app/auth/actions"
 );
+const { RECOVERY_COOKIE, signRecoveryMarker } = await import("@/lib/recoveryMarker");
+
+const USER_ID = "11111111-1111-4111-8111-111111111111";
+const MARKER_SECRET = "s".repeat(44);
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -74,11 +89,13 @@ beforeEach(() => {
   updateUserMock.mockReset();
   signOutMock.mockReset();
   getClaimsMock.mockReset();
-  // The default is a session the recovery link just established; the tests
-  // that care about the gate override it.
-  getClaimsMock.mockResolvedValue({
-    data: { claims: { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] } },
-  });
+  // The default is a session with a fresh recovery marker, as a verified
+  // reset link leaves it; the tests that care about the gate override it.
+  getClaimsMock.mockResolvedValue({ data: { claims: { sub: USER_ID } } });
+  vi.stubEnv("RECOVERY_MARKER_SECRET", MARKER_SECRET);
+  markerCookie = signRecoveryMarker(USER_ID, nowSeconds(), MARKER_SECRET);
+  cookieDeleteMock.mockReset();
+  signOutMock.mockResolvedValue({ error: null });
   // A session in the signUp response is the "confirmation is off" shape;
   // tests that care about the confirmation path override this.
   signUpMock.mockResolvedValue({ data: { session: { access_token: "t" } }, error: null });
@@ -278,13 +295,19 @@ describe("requestPasswordReset", () => {
 });
 
 describe("resetPassword", () => {
-  it("updates the password and leaves the account's other sessions alone", async () => {
+  it("updates the password, spends the marker, then signs out every other session", async () => {
     updateUserMock.mockResolvedValue({ error: null });
     const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
     expect(updateUserMock).toHaveBeenCalledWith({ password: "newpassword" });
-    // Eviction needs proof the reset link was opened, which amr cannot give;
-    // it belongs with the /profile reauthentication work, not here.
-    expect(signOutMock).not.toHaveBeenCalled();
+    expect(cookieDeleteMock).toHaveBeenCalledWith(RECOVERY_COOKIE);
+    expect(signOutMock).toHaveBeenCalledWith({ scope: "others" });
+    expect(url).toBe("/");
+  });
+
+  it("still lands on / when eviction fails, since the password already changed", async () => {
+    updateUserMock.mockResolvedValue({ error: null });
+    signOutMock.mockResolvedValue({ error: { message: "network" } });
+    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
     expect(url).toBe("/");
   });
 
@@ -294,39 +317,28 @@ describe("resetPassword", () => {
     expect(url).toBe("/reset-password?error=weak_password");
   });
 
-  // An emailed link records `otp`, not `recovery`, so this is the shape a
-  // real reset actually arrives in.
-  it("accepts a fresh otp session end to end", async () => {
-    getClaimsMock.mockResolvedValue({
-      data: { claims: { amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) }] } },
-    });
-    updateUserMock.mockResolvedValue({ error: null });
-    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
-    expect(updateUserMock).toHaveBeenCalledWith({ password: "newpassword" });
-    expect(signOutMock).not.toHaveBeenCalled();
-    expect(url).toBe("/");
-  });
-
-  it("reports a failed update without signing anyone out", async () => {
+  it("reports a failed update without spending the marker or signing anyone out", async () => {
     updateUserMock.mockResolvedValue({
       error: { code: "session_expired", message: "Session from session_id claim in JWT does not exist" },
     });
     const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
+    expect(cookieDeleteMock).not.toHaveBeenCalled();
     expect(signOutMock).not.toHaveBeenCalled();
     expect(url).toBe("/reset-password?error=reset_failed");
   });
 
-  const refusedSessions: Array<[unknown, string]> = [
-    [{ amr: [{ method: "password", timestamp: Math.floor(Date.now() / 1000) }] }, "an ordinary login"],
-    [{ amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale recovery"],
-    [{ amr: [{ method: "otp", timestamp: Math.floor(Date.now() / 1000) - 7200 }] }, "a stale email-link session"],
-    [{ amr: [{ method: "token_refresh", timestamp: Math.floor(Date.now() / 1000) }] }, "a token refresh on its own"],
-    [{}, "a token with no amr claim"],
+  const refused: Array<[() => void, string]> = [
+    [() => { markerCookie = undefined; }, "a session with no marker (e.g. a signup confirmation)"],
+    [() => { markerCookie = signRecoveryMarker("22222222-2222-4222-8222-222222222222", nowSeconds(), MARKER_SECRET); }, "another account's marker"],
+    [() => { markerCookie = signRecoveryMarker(USER_ID, nowSeconds() - 7200, MARKER_SECRET); }, "a stale marker"],
+    [() => { markerCookie = signRecoveryMarker(USER_ID, nowSeconds(), "x".repeat(44)); }, "a forged marker"],
+    [() => { vi.stubEnv("RECOVERY_MARKER_SECRET", ""); }, "a missing secret"],
+    [() => { getClaimsMock.mockResolvedValue({ data: null }); }, "no session at all"],
   ];
 
-  for (const [claims, description] of refusedSessions) {
-    it(`refuses ${description} without touching the password`, async () => {
-      getClaimsMock.mockResolvedValue({ data: { claims } });
+  for (const [arrange, description] of refused) {
+    it(`refuses ${description} without touching the password or other sessions`, async () => {
+      arrange();
       const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
       expect(updateUserMock).not.toHaveBeenCalled();
       expect(signOutMock).not.toHaveBeenCalled();
@@ -334,15 +346,8 @@ describe("resetPassword", () => {
     });
   }
 
-  it("refuses when there is no session at all", async () => {
-    getClaimsMock.mockResolvedValue({ data: null });
-    const url = await captureRedirect(resetPassword, form({ password: "newpassword" }));
-    expect(updateUserMock).not.toHaveBeenCalled();
-    expect(url).toBe("/forgot-password?expired=1");
-  });
-
-  it("checks the session before validating the password, so a bad session never reveals the rule", async () => {
-    getClaimsMock.mockResolvedValue({ data: { claims: { amr: [{ method: "password", timestamp: 1 }] } } });
+  it("checks the marker before validating the password, so a bad session never reveals the rule", async () => {
+    markerCookie = undefined;
     const url = await captureRedirect(resetPassword, form({ password: "abc" }));
     expect(url).toBe("/forgot-password?expired=1");
   });

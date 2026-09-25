@@ -32,6 +32,23 @@ export function isResetErrorCode(value: string | undefined): value is ResetError
   return value !== undefined && Object.hasOwn(RESET_ERROR_MESSAGES, value);
 }
 
+/** Codes for `/profile?pwError=`, under the same rule as the two lists above. */
+export const CHANGE_PASSWORD_ERROR_MESSAGES = {
+  current_password_required: "Enter your current password.",
+  wrong_current_password: "Your current password is incorrect.",
+  weak_password: "Password must be at least 6 characters.",
+  password_mismatch: "Passwords don't match.",
+  same_password: "That is already your password. Pick a different one.",
+  rate_limited: "Too many attempts. Wait a minute and try again.",
+  change_failed: "Could not update your password. Try again.",
+} as const;
+
+export type ChangePasswordErrorCode = keyof typeof CHANGE_PASSWORD_ERROR_MESSAGES;
+
+export function isChangePasswordErrorCode(value: string | undefined): value is ChangePasswordErrorCode {
+  return value !== undefined && Object.hasOwn(CHANGE_PASSWORD_ERROR_MESSAGES, value);
+}
+
 /** The subset of Supabase's AuthError this app reads. */
 type SupabaseAuthErrorish = { code?: string; status?: number; message?: string };
 
@@ -61,4 +78,30 @@ export function loginErrorCode(error: SupabaseAuthErrorish): LoginErrorCode {
   if (message.includes("invalid login credentials")) return "invalid_credentials";
 
   return "login_failed";
+}
+
+/**
+ * Maps an updateUser failure on the in-session password change. Auth answers
+ * a wrong current password with `current_password_invalid`, but its message
+ * says "Current password required", so the code decides. The message check is
+ * a fallback for a response without a code.
+ */
+export function changePasswordErrorCode(error: SupabaseAuthErrorish): ChangePasswordErrorCode {
+  if (error.status === 429) return "rate_limited";
+
+  switch (error.code) {
+    case "current_password_invalid":
+    case "current_password_required":
+      return "wrong_current_password";
+    case "same_password":
+      return "same_password";
+    case "weak_password":
+      return "weak_password";
+    case "over_request_rate_limit":
+      return "rate_limited";
+  }
+
+  if (error.message?.toLowerCase().includes("current password")) return "wrong_current_password";
+
+  return "change_failed";
 }
