@@ -571,14 +571,14 @@ The last folded item, and **the weakest of the six** — recorded as a judgement
 - **Plan-mode scope:** whether to track failed clusters for retry or advance the cursor only to the oldest surviving article; what either costs on the next run; and first of all, whether this ships before the invites go out at all.
 - **Done when:** either it ships and a transiently-failed cluster is retried on the next run, or it is explicitly deferred with Tarek's say-so and moved to Track B.
 
-#### V2.1.9 — Security pass, then open the door — **IN PROGRESS: security pass done and live (`64ed4c2`, `f96811c`, `1a77d0d`); first invite sent 2026-09-25; the concurrent-memory probe is the one hand-probe not yet run**
+#### V2.1.9 — Security pass, then open the door — **SHIPPED 2026-09-28 (`64ed4c2`, `f96811c`, `1a77d0d`), every hand-probe run live**
 
 _Status 2026-09-28._
 
 - **The skill's report** is `notes-logs/(C) v2.1.9-security-report.md`, with nothing open at medium or above.
-- **Every hand-probe below has run against production, except the two-accounts-at-once memory probe.** It was approved for 2026-09-26 at about \$0.46 list (about \$0.23 of it extra), but didn't happen, and needs a morning when neither account has generated yet.
+- **Every hand-probe below has run against production.** The last one, two accounts generating at once, ran 2026-09-28: Tarek's main account (`firstOfDay`) and the test account (`firstEver`) reserved 0.6s apart and overlapped for their full ~58s. Both came back `complete` with 38 cards written and 2 failed, for \$0.209 and \$0.224 (\$0.43 total). Both ledger rows settled, `generation_claims` was empty afterwards, and the Vercel logs showed no `ran out of available memory`. A kill would have left the reservation and the claim behind, so the settled rows are the decisive evidence. What it doesn't prove is whether Fluid put both runs in one instance; see the log entry.
 - **The first invite** ("Othmane Hachad", Tarek's brother) was minted and sent on 2026-09-25. It was unused as of 09-28 and expires 2026-10-02.
-- **Done when** the memory probe has run. Passing it gates the second invite wave, not the first.
+- **Done-condition met.** Passing the memory probe clears the second invite wave.
 
 **Running the bundled `pre-launch-security-check` skill (`.claude/skills/pre-launch-security-check/SKILL.md`) is a required step of this item, not a suggestion** — run it against the **deployed** app rather than the local one, since this is the item that decides whether a link goes to another human being. It scales itself to what the app actually has, so it will pick up the auth/public-API/PII surface on its own; take its Step 5 report as the spine of this item's output.
 
