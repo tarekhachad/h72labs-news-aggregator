@@ -571,7 +571,14 @@ The last folded item, and **the weakest of the six** — recorded as a judgement
 - **Plan-mode scope:** whether to track failed clusters for retry or advance the cursor only to the oldest surviving article; what either costs on the next run; and first of all, whether this ships before the invites go out at all.
 - **Done when:** either it ships and a transiently-failed cluster is retried on the next run, or it is explicitly deferred with Tarek's say-so and moved to Track B.
 
-#### V2.1.9 — Security pass, then open the door
+#### V2.1.9 — Security pass, then open the door — **IN PROGRESS: security pass done and live (`64ed4c2`, `f96811c`, `1a77d0d`); first invite sent 2026-09-25; the concurrent-memory probe is the one hand-probe not yet run**
+
+_Status 2026-09-28._
+
+- **The skill's report** is `notes-logs/(C) v2.1.9-security-report.md`, with nothing open at medium or above.
+- **Every hand-probe below has run against production, except the two-accounts-at-once memory probe.** It was approved for 2026-09-26 at about \$0.46 list (about \$0.23 of it extra), but didn't happen, and needs a morning when neither account has generated yet.
+- **The first invite** ("Othmane Hachad", Tarek's brother) was minted and sent on 2026-09-25. It was unused as of 09-28 and expires 2026-10-02.
+- **Done when** the memory probe has run. Passing it gates the second invite wave, not the first.
 
 **Running the bundled `pre-launch-security-check` skill (`.claude/skills/pre-launch-security-check/SKILL.md`) is a required step of this item, not a suggestion** — run it against the **deployed** app rather than the local one, since this is the item that decides whether a link goes to another human being. It scales itself to what the app actually has, so it will pick up the auth/public-API/PII surface on its own; take its Step 5 report as the spine of this item's output.
 
@@ -738,6 +745,14 @@ Real defects, none currently user-visible in single-user local use, ordered roug
 - **Unsaving the last card on `/saved` snaps its neighbor's spacing instead of animating it** (found by `code-reviewer` during the Phase 4 final integrated pass's round 3, 2026-08-05; explicitly put to Tarek and accepted): `SavedList.tsx`'s per-item `mb-4` (needed so an exiting card's `marginBottom: 0` can animate the collapse) means only the EXITING card's own margin is wired into the animation. When the removed card happens to be the actual last one, the new-last card's `last:mb-0` class takes effect the instant the DOM changes (a static CSS toggle, not part of Motion's `exit` prop) — so its 16px margin disappears in one frame rather than shrinking alongside the exit animation. Real, but the reviewer who found it called it "likely near-imperceptible" (16px, coincides with an already-invisible element's removal). Fix, if revisited: wire the new-last card's margin into the same animated transition (e.g. via a `layout` animation on that property, or restructuring so spacing is computed centrally rather than per-item).
 
 - **Post-flip keyboard focus lands on Masthead, not new page content** (found by `code-reviewer` during Phase 4.4 Track B B8's round 3, 2026-08-05; explicitly put to Tarek and accepted rather than fixed): after a keyboard-triggered page-flip, `PageTransitionInertBoundary.tsx` moves focus to its own root (the wrapper around Masthead + page content) so it isn't left stranded on `<body>`. That's correct as far as it goes, but the wrapper includes the still-unchanged Masthead — so a keyboard user's next Tab re-traverses the hamburger/title bar before reaching the new page's actual content, rather than landing there directly. Not a functional bug (nothing is unreachable, nothing crashes) — just an extra Tab press for keyboard-only users on every flip. Fix, if revisited: move the `ref`/`tabIndex={-1}` to a dedicated wrapper around just `{children}` (below Masthead) instead of the whole boundary.
+
+- **V2.1.9's deferred review-note lows** (all logged 2026-09-25 in `notes-logs/project-log.md`, none reachable in normal use):
+  - **Clear only on an explicit rejection.** The proxy clears a token holder's cookies on `/login` for any non-retryable `getUser` error. A 429, or a non-JSON 4xx from something in front of Auth, would sign a live user out and revoke the session. Fix: clear only on `isAuthSessionMissingError`, or an `AuthApiError` with 401/403/404. The test exists, skipped, in `src/__tests__/proxy.auth-errors-r2.qa.test.ts`.
+  - **A hanging Auth call hangs `/login`.** `/login` now waits on Auth for a token holder, and auth-js sets no timeout.
+  - **The missing-secret message can still be lost.** A signed-in visitor opening a recovery link while `RECOVERY_MARKER_SECRET` is missing is bounced off `/login` and loses the `reset_unavailable` message. The link isn't spent.
+  - **The clock-skew retry has two gaps.** A body-less HEAD 401 isn't retried, and two identical GETs in one render would each wait 1s.
+  - **Emailed-link sessions skip the current-password check.** Auth skips it for a session created by an emailed link, which was seen live. That's fine for reset links, but a session stolen shortly after a signup confirmation could change the password without it.
+  - **One error page right after a reset.** A reset can show one "JWT issued at future" page on the next load. The retry now covers server-rendered pages, but not other clients.
 
 ### Track C — Hygiene
 
