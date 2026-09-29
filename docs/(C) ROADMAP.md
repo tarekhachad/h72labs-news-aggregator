@@ -621,7 +621,9 @@ Note the interaction with V2.1.4: that run dropped **147 cards** at the per-topi
 - **Plan-mode scope (when it comes up):** where a bound belongs — per topic at ingest, per run after clustering, or a lookback shortened when a profile is broad; what a user loses when their newest articles are cut, and whether the cut should favour recency, source diversity or topic balance; whether triage should be skipped for a topic already at its daily card cap (V2.1.4's question, same lever); and what the real numbers are at full profile size, which needs one measured 13-topic run (~\$0.45) rather than extrapolation from this one.
 - **Done when:** a full 13-topic profile generates inside the duration and memory ceilings with headroom, measured rather than reasoned, or the ceiling is raised deliberately with the cost of doing so recorded.
 
-### V2.2 — Rewrite `README.md` as the product's front door
+### V2.2 — Rewrite `README.md` as the product's front door — **BUILT 2026-09-29 on `v2.2-readme`: portfolio-style README, license all rights reserved**
+
+_Status 2026-09-29._ Tarek chose a recruiter-facing README over developer docs and an all-rights-reserved license over MIT (reasoning in the vault's `(C) decision-log.md`). `LICENSE` and `package.json`'s `"license": "UNLICENSED"` agree. The README covers what it is with the live link first, the daily loop, the pipeline in plain language, engineering highlights with measured numbers, honest limits, and a short local-setup section. `.env.example` gained the `RECOVERY_MARKER_SECRET` line that setup needs. It's docs only, so no review agents ran. The done-condition is met once it's merged and visible on GitHub.
 
 _Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after deployment, since a deployed app's README leads with the live link and drops most of the local-setup burden._ Today it's still untouched `create-next-app` boilerplate: Next.js tutorial links, a Vercel deploy pitch, nothing about this product, and run instructions that omit Supabase and every required env var (so following them today produces a crash, not a running app). It should cover, for a reader with zero context:
 
