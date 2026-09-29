@@ -603,7 +603,12 @@ Optional here, not a blocker: point a `news.h72labs.com` subdomain at the deploy
 - **Plan-mode scope:** which of the skill's findings block a launch versus get logged; how the hand-probes above are actually executed against a live deployment without a service-role key; the order invites go out in (one person first, then the rest).
 - **Done when:** the skill's report has nothing outstanding at medium severity or above, every hand-probe above has been run against the deployed app, and the first invite link is sent.
 
-#### V2.1.11 (deferred) — The article-volume ceiling
+#### V2.1.11 — The article-volume ceiling — **CLOSED 2026-09-29: measured in production with headroom, no build needed**
+
+**Result, 2026-09-29.** The probe account (never generated) on all 13 topics and all 48 sources, a cold `firstEver` run on Vercel Hobby, came back `complete`: 1139 articles, 930 clusters, 89 cards, 0 failed, 142 calls, **\$0.493**. It ran **80s of 120s** (reservation to settle) and peaked at **917 MB of 2048 MB** after clustering. The ledger settled (\$0.70 held), and no claims were left. The done-condition below is met, measured, so no article bound is built. Kept for later:
+
+- Two full-profile runs sharing one Fluid instance would be ~1.8 GB of 2 GB. The 2026-09-28 concurrency probe used 5-topic profiles. Revisit if invitees start choosing broad profiles.
+- Triage (\$0.207, 42%) paid for 181 cards the per-topic cap then dropped. That's the V2.3.x triage item, unchanged.
 
 **Deferred by Tarek 2026-09-17: not scheduled inside V2.1. Revisit once every other V2.1 item is done and tested, as the last call before V2.2 begins.**
 

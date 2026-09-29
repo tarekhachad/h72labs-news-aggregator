@@ -57,6 +57,17 @@ One caveat this framing got wrong for months, worth stating so the next reader d
 | front-page ranking (1 call) | \$0.005 |
 | **per card expanded** (Sonnet, on demand) | **~\$0.012** |
 
+**Full-profile worst case, measured in production 2026-09-29: \$0.493.** A brand-new account on all 13 topics and all 48 sources, cold (48h lookback, no cursor), on Vercel Hobby:
+
+| | cost |
+|---|---|
+| **per digest** | **\$0.493** |
+| triage (52 calls, Haiku) | \$0.207 |
+| card writing (48 Sonnet + 41 Haiku calls) | \$0.278 |
+| front-page ranking (1 call) | \$0.008 |
+
+That run pulled 1139 articles into 930 clusters and wrote 89 cards, with 181 triage-approved cards dropped by the per-topic cap. It took 80s against the 120s timeout, with memory peaking at 917 MB of 2048 MB after clustering. This is the figure the \$0.70 digest reservation has to cover, and it does, with a 30% margin. Returning-user runs have since been measured on a 5-topic profile: first-of-day \$0.14–0.23, same-day top-ups \$0.09–0.12.
+
 **Corrected 2026-09-11 — this table used to have two columns and the wrong one was bolded.** It read \$0.399 "at list" against \$0.335 "billed", and instructed the reader to use at-list for any forward projection because Sonnet 5's introductory \$2/\$10 rate was scheduled to rise to \$3/\$15 on 2026-09-01. **Anthropic cancelled that increase and made \$2/\$10 the standard price**, so the two columns collapsed into one and the surviving figure is the one that was labelled "billed". The old at-list column overstated by ~19%.
 
 Two things follow, and the second is the one that bites. The advice to prefer at-list is now exactly inverted — it over-provisions rather than under-provisions. And a run measured today prints **~\$0.336**, which against the documented \$0.399 looks like a 16% improvement that never happened; it is the same run at corrected rates. Anything comparing a new measurement to a pre-2026-09-11 figure has to correct the baseline first.
@@ -77,6 +88,6 @@ The lesson worth carrying: a measurement taken against a toy profile is not a me
 | Supabase (DB + Auth) | \$0/month (Free tier) |
 | RSS feeds | \$0 (always) |
 | GNews (supplement) | \$0 (free tier, non-commercial) |
-| Claude API (synthesis) | **\$0.335/digest** (+~\$0.012 per card expanded). One user once a day ≈ **\$10/month**; ten users ≈ **\$100/month** at full daily usage. Cold-start figure — a returning daily user costs materially less. |
+| Claude API (synthesis) | **\$0.335/digest** for a 9-topic cold start, **\$0.49** worst case (full 13-topic profile, cold, measured in production), +~\$0.012 per card expanded. One user once a day ≈ **\$10/month**, at most ~\$15 on the full profile; ten users ≈ **\$100/month** at full daily usage. Cold-start figures — a returning daily user costs materially less. |
 
 Living document — will be revised as the build reveals what actually works.

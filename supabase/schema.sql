@@ -884,7 +884,8 @@ create table public.spend_config (
   expand_usd numeric(12,6) not null check (expand_usd > 0 and expand_usd <> 'NaN')
 );
 
--- Sized from measured runs: a full 13-topic profile cost $0.47 first-of-day
+-- Sized from measured runs: a full 13-topic profile costs about $0.49 on a
+-- cold first run in production (the worst case digest_max_usd must cover)
 -- and $0.20 per top-up; an expand ~$0.0105.
 insert into public.spend_config (
   id, generation_enabled, user_window_usd, global_window_usd,
