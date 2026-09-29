@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card, Cluster } from "@/types";
-import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
+import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
 
@@ -31,7 +31,9 @@ const SYSTEM_PROMPT = `You write the content for one card in a daily news briefi
 - shortSummary: a single tight paragraph (2-4 sentences) capturing what happened and why it matters. Synthesize across sources; don't just paraphrase one. No headline, no bullet points, no preamble like "This story is about" — just the briefing text itself.
 - labels: 1-2 short free-form tags (1-3 words each) for this story's specific angle — a company, organization, person, or subtopic a reader could use to scan at a glance. More specific than the topic name; not a repeat of it.
 
-Always write everything in English, even when the source articles are in another language.`;
+Always write everything in English, even when the source articles are in another language.
+
+${QUOTATION_STYLE}`;
 
 // Every other prompt builder in this app caps its per-article text —
 // triage.ts slices snippets at 200 chars, dedup.ts has

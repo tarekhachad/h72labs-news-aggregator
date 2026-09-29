@@ -555,12 +555,16 @@ The folded timezone item. A digest's date is a UTC calendar day, so Tarek's own 
 
 **Note 2026-09-17:** spend caps count a rolling 24 hours (V2.1.2), so changing what "today" means here does not touch any limit.
 
-#### V2.1.8 — Retry clusters lost to transient failures — **REFRAMED 2026-09-24: record why cards are lost (8a), then fix the cause (8b)**
+#### V2.1.8 — Retry clusters lost to transient failures — **REFRAMED 2026-09-24: record why cards are lost (8a), then fix the cause (8b). 8b built and reviewed 2026-09-29; the live check is pending**
 
 **Reframed by Tarek 2026-09-24, from production data read at plan time.** The failure this item was written against has not happened: across every production digest run so far, **385 Claude calls and 0 API errors** (`usage_runs.total_calls_without_usage` is 0 on every row, and `recordCall` counts a throwing call there). Cards are lost anyway, **7 of 178 (about 4%) in 4 of 6 runs**, and every one of them was a paid response that `generateWithRetryOnAmbiguousTruncation` then refused as empty, truncated, or still incomplete after its one retry. A cross-run retry would re-bill a request that already failed on content, and would do nothing for the loss that actually occurs. The cause could not be read off the logs, because Vercel Hobby keeps runtime logs for about an hour.
 
-- **8a — built on branch `v2.1.8`:** every run's `usage_runs` row now carries `card_failures` (one entry per lost card: reason, model, article count, and the rejected text's last 80 characters or the API status) and `triage_failed_closed` (clusters triage could not judge, which were previously indistinguishable from ones it judged not notable). Both columns were added to production on 2026-09-24. No extra Claude calls, and no change to what a run produces.
-- **8b — after data:** read `card_failures` from a few real runs and fix what they show. That could be `looksComplete`'s accepted endings, the prompt, or `max_tokens`, or an in-run re-roll of the failed card if the refusals turn out to be random. It gets its own short plan once the data is in.
+- **8a — built on branch `v2.1.8`:** every run's `usage_runs` row now carries `card_failures` (one entry per lost card: reason, model, article count, and the rejected text's last 80 characters or the API status) and `triage_failed_closed` (clusters triage could not judge, which were previously indistinguishable from ones it judged not notable). Both columns were added to production on 2026-09-24. - **8b — after data:** read `card_failures` from a few real runs and fix what they show. That could be `looksComplete`'s accepted endings, the prompt, or `max_tokens`, or an in-run re-roll of the failed card if the refusals turn out to be random. It gets its own short plan once the data is in.
+- **8b — built 2026-09-29 on branch `v2.1.8b`, review loop clean in round 1 of 4.**
+  - **The data:** all 7 recorded losses (4 runs, about 5% of cards) were `incompleteAfterRetry` with `end_turn` on Sonnet. Each tail stopped on a trailing space right where a quotation would open ("calling it ", "held a ").
+  - **The cause:** a bare `"` inside a structured-output JSON string closes the field early. The rest of the object still validates, so the text arrives cut off.
+  - **The fix:** one shared prompt line (`QUOTATION_STYLE` in `claudeText.ts`) tells both prose prompts, the card and the expanded report, to use typographic quotes. `looksComplete` also accepts ” and ’ as closers.
+  - **Live check:** with no extra paid run, the next organic digests should record no quote-cut `card_failures`. If straight-quote cuts continue, the next lever is plain-text output for the single-field expanded report.to be random. It gets its own short plan once the data is in.
 - **The cross-run retry moves to Track B** (the entry under *Track B — Correctness debt* carries the evidence).
 
 The original text follows, kept as the record of what was scoped.

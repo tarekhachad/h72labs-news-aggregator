@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card } from "@/types";
-import { generateWithRetryOnAmbiguousTruncation } from "@/lib/claudeText";
+import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { recordCall } from "@/lib/usageCollector";
 
 const client = new Anthropic();
@@ -15,7 +15,9 @@ const ExpandedReport = z.object({
   report: z.string(),
 });
 
-const SYSTEM_PROMPT = `You write the full expanded report for a news card the reader has chosen to open — they've already seen a short briefing-style summary and want more depth. Given the topic, the short summary already shown to them, and the source articles it was synthesized from, write a longer report (roughly 3-6 short paragraphs) that adds real detail and context the short summary didn't have room for: background, key figures/parties involved, what happens next, differing angles across sources if any. Don't just re-word the short summary at greater length — add substance. No headline, no bullet points, no preamble. Always write in English, even when the source articles are in another language.`;
+const SYSTEM_PROMPT = `You write the full expanded report for a news card the reader has chosen to open — they've already seen a short briefing-style summary and want more depth. Given the topic, the short summary already shown to them, and the source articles it was synthesized from, write a longer report (roughly 3-6 short paragraphs) that adds real detail and context the short summary didn't have room for: background, key figures/parties involved, what happens next, differing angles across sources if any. Don't just re-word the short summary at greater length — add substance. No headline, no bullet points, no preamble. Always write in English, even when the source articles are in another language.
+
+${QUOTATION_STYLE}`;
 
 function sourceTextFor(card: Pick<Card, "sources">): string {
   return card.sources

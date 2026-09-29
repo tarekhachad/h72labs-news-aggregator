@@ -35,8 +35,18 @@ export class GenerationRejectedError extends Error {
   }
 }
 
+/**
+ * Appended to every prose-writing prompt. These calls return their text inside
+ * a structured-output JSON string, where a bare `"` is read as the string's
+ * closing quote: the field ends early, the rest of the object still validates,
+ * and the text arrives cut off right where the quotation should have opened.
+ * Typographic marks mean nothing to JSON, so they can never end the field.
+ */
+export const QUOTATION_STYLE =
+  "When you quote anyone, use typographic quotation marks — “like this”, and ‘like this’ for a quote inside a quote. Never use the straight double-quote character.";
+
 export function looksComplete(text: string): boolean {
-  return /[.!?]["')\]]?$/.test(text.trim());
+  return /[.!?]["'”’)\]]?$/.test(text.trim());
 }
 
 /**
