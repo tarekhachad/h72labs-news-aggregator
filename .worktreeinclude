@@ -1,0 +1,11 @@
+# Gitignored files `claude --worktree` copies into each new lane worktree.
+# CLAUDE.md is listed because a worktree session does not load the main
+# checkout's copy: from inside a worktree, Claude Code skips it even though the
+# worktree sits inside that checkout. The copy is a snapshot taken when the lane
+# is created. AGENTS.md is tracked, so every worktree already has its own.
+# .claude/skills/ is absent because the design skills are global.
+CLAUDE.md
+.claude/settings.local.json
+.claude/hooks/
+.claude/agents/qa.md
+.env.local
