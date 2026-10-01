@@ -18,8 +18,7 @@ import { DigestGenerationProvider } from "@/components/newspaper/DigestGeneratio
 export default function PaperLayout({ children }: { children: React.ReactNode }) {
   return (
     <PageTransitionProvider>
-      <PageTransitionInertBoundary>
-        <Masthead />
+      <PageTransitionInertBoundary masthead={<Masthead />}>
         <DigestGenerationProvider>{children}</DigestGenerationProvider>
       </PageTransitionInertBoundary>
       <PageTransition />

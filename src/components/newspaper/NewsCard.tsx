@@ -53,6 +53,9 @@ const CARD_FACE_STYLE = {
   border: "1px solid var(--color-border)",
 } as const;
 
+/** Where a live-arriving card's scale-in starts. Small enough to read as the card settling into place rather than zooming in. */
+const ENTRANCE_START_SCALE = 0.97;
+
 /**
  * One story box on the front page or a topic page. Flips in place to
  * reveal sources (B6) — E-Ink/Paper's own motion note calls for "sharp
@@ -86,7 +89,7 @@ export function NewsCard({
    * and the badge stays while the entrance animation does not.
    */
   showNewBadge?: boolean;
-  /** True only for cards that landed live via this session's own digest generation, not ones already on the page from the initial server render — see FrontPage.tsx. Plays a short fade/scale-in. */
+  /** True only for cards that landed live via this session's own digest generation, not ones already on the page from the initial server render — see FrontPage.tsx. Plays a short scale-in over a card that is already fully visible. */
   animateEntrance?: boolean;
   /** Stagger offset (seconds) so a multi-card generation reads as cards arriving one after another, not all at once. Must stay fixed for a given card — a changing value is a changing Motion transition, which re-triggers the entrance. */
   entranceDelay?: number;
@@ -331,11 +334,24 @@ export function NewsCard({
           onKeyDown={handleOpenKeyDown}
           className="relative cursor-pointer"
           style={{ ...gridPosition, perspective: "1200px" }}
-          initial={animateEntrance && !prefersReducedMotion ? { opacity: 0, scale: 0.97 } : false}
-          animate={animateEntrance && !prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
+          // The entrance is a scale-in over a card that is already fully
+          // visible, never a fade from opacity 0: it runs on
+          // requestAnimationFrame, which a hidden tab never fires, so it can
+          // be retired before playing a single frame. Starting visible makes
+          // that failure "no animation", not "no content".
+          //
+          // `animate` stays `{ scale: 1 }` for every card, retired or not, on
+          // purpose. Motion only starts or stops an animation when a value in
+          // `animate` changes; dropping `scale` from it (e.g. `undefined` on
+          // retire) would stop an unfinished entrance and send scale back to
+          // its starting 0.97, stranding the card shrunk. With a constant
+          // target, retiring changes nothing and the entrance always finishes
+          // at natural size, as soon as frames run again.
+          initial={animateEntrance && !prefersReducedMotion ? { scale: ENTRANCE_START_SCALE } : false}
+          animate={{ scale: 1 }}
           // Retires this card's entrance the moment it finishes — the
           // common, tidy path. This only ever fires for the entrance's own
-          // opacity/scale animation: Motion raises a separate
+          // scale-in: Motion raises a separate
           // LayoutAnimationComplete event for the `layout` projection, so
           // the instant reflow above can't trigger it (verified in
           // motion-dom's VisualElement source). Every case where it can't
@@ -365,11 +381,6 @@ export function NewsCard({
             layout: { duration: 0 },
             ...(animateEntrance
               ? {
-                  opacity: {
-                    duration: ENTRANCE_DURATION_SECONDS,
-                    ease: "easeOut",
-                    delay: entranceDelay,
-                  },
                   scale: {
                     duration: ENTRANCE_DURATION_SECONDS,
                     ease: "easeOut",

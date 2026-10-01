@@ -22,19 +22,28 @@ export function SavedList({ initialCards }: { initialCards: SavedCard[] }) {
     // No gap-4 here — spacing is a per-item mb-4 instead (see below), since
     // a container-level gap isn't itself animatable: it stays fixed while
     // an exiting card's height shrinks to 0, leaving a phantom empty band
-    // instead of one smooth collapse. The empty state lives INSIDE
+    // instead of one smooth collapse.
+    //
+    // Every child carries the same mb-4, the last one included, and the
+    // container's -mb-4 cancels the final one. Don't swap this for
+    // `last:mb-0`: that makes a card's margin depend on its position, so
+    // when the last card's exit ends and its node is removed, the new last
+    // card's margin drops 16px in a single frame. Here the only margin that
+    // ever changes is the exiting card's own, which the exit animates.
+    //
+    // The empty state lives INSIDE
     // AnimatePresence (not an early return above it) so un-bookmarking the
     // last saved card still gets to play its exit animation — an early
     // return here would swap this component's whole output to the empty
     // message in the same render the card leaves `cards`, unmounting
     // AnimatePresence (and every child it's tracking) before the exit
     // transition ever runs.
-    <div className="flex flex-col">
+    <div className="-mb-4 flex flex-col">
       <AnimatePresence initial={false}>
         {cards.length === 0 ? (
           <p
             key="empty"
-            className="text-center text-sm"
+            className="mb-4 text-center text-sm"
             style={{ color: "var(--color-muted-foreground)" }}
           >
             Nothing saved yet.
@@ -47,7 +56,7 @@ export function SavedList({ initialCards }: { initialCards: SavedCard[] }) {
               initial={false}
               exit={prefersReducedMotion ? undefined : { opacity: 0, height: 0, marginBottom: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="mb-4 flex flex-col gap-1 overflow-hidden last:mb-0"
+              className="mb-4 flex flex-col gap-1 overflow-hidden"
             >
               {card.date && (
                 <span className="px-1 text-xs" style={{ color: "var(--color-muted-foreground)" }}>

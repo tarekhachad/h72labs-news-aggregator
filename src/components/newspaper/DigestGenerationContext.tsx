@@ -246,16 +246,21 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
           // animation entirely, and any unmount mid-flight (navigating off
           // the front page, a rank update demoting the card) makes Motion
           // drop its event subscriptions. A stranded entry would replay the
-          // fade on that card's next mount, for content the reader has
+          // entrance on that card's next mount, for content the reader has
           // already seen.
           //
           // Deliberately owned here rather than by a per-card unmount
           // cleanup: this provider is mounted at the layout level and never
           // unmounts, so there's no cleanup for React Strict Mode's
-          // mount/unmount/remount cycle to invoke synthetically. The
-          // per-card version of this was tried first and did exactly that —
-          // retiring every entrance before it played, freezing cards at
-          // opacity 0 in dev.
+          // mount/unmount/remount cycle to invoke synthetically. A per-card
+          // cleanup would run on that synthetic unmount and retire every
+          // entrance before it played.
+          //
+          // This timer is wall-clock and the entrance runs on
+          // requestAnimationFrame, so in a hidden tab it fires before the
+          // entrance has played at all. That is safe only because the
+          // entrance never hides the card and retiring it doesn't stop it —
+          // see NewsCard's `initial`/`animate`.
           //
           // No cleanup on this timer on purpose: it must still fire after
           // the cards it covers have unmounted, since that's the case it
