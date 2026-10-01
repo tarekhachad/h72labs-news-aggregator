@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
 import { embed, cosineSimilarity } from "@/lib/embeddings";
 import { recordCall } from "@/lib/usageCollector";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const client = new Anthropic();
 
@@ -73,7 +74,11 @@ export async function isSameStory(
 
     return response.parsed_output?.sameStory ?? false;
   } catch (err) {
-    console.error("[dedup] isSameStory failed, letting the cluster through:", err);
+    // Best-effort: the call may already have been billed (a parse can fail
+    // after it), and a throw here would reject isSameStory despite its
+    // fail-open promise, rejecting filterAlreadyCovered and discarding every
+    // other paid verdict in the run.
+    bestEffortLog("error", "[dedup] isSameStory failed, letting the cluster through:", err);
     return false;
   }
 }
@@ -146,18 +151,14 @@ export async function filterAlreadyCovered(
         const same = await isSameStory(texts[clusterIdx], topicCards[bestCardIdx].shortSummary);
         if (same) {
           survivingByIndex[clusterIdx] = false;
-          // Guarded: this runs after a billed call, and an escaping throw
+          // Best-effort: this runs after a billed call, and an escaping throw
           // would reject filterAlreadyCovered, so the route would fall back
           // to the un-deduplicated list and re-cover a story the paid call
-          // just confirmed is a duplicate. Same reasoning as triage.ts's
-          // guarded verdict log.
-          try {
-            console.log(
-              `[dedup] ${topic} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
-            );
-          } catch {
-            // A lost log line must not undo a paid exclusion.
-          }
+          // just confirmed is a duplicate.
+          bestEffortLog(
+            "log",
+            `[dedup] ${topic} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
+          );
         }
       });
 

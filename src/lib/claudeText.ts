@@ -3,6 +3,8 @@
 // Extracted so both call sites share one proven strategy instead of two
 // truncation-detection implementations drifting apart over time.
 
+import { bestEffortLog } from "@/lib/bestEffortLog";
+
 /** A generation's text plus the stop_reason it came back with. */
 export interface GenerationResult {
   text: string;
@@ -107,7 +109,10 @@ export async function generateWithRetryOnAmbiguousTruncation<T extends Generatio
     );
   }
 
-  console.warn(
+  // Best-effort: the first attempt is already billed, and a throw here would
+  // discard it without ever making the retry.
+  bestEffortLog(
+    "warn",
     `[${label}] output looked incomplete (stop_reason: end_turn) — retrying once: "${text.slice(0, 200)}${text.length > 200 ? "…" : ""}"`
   );
   const retry = await generate();

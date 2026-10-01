@@ -116,6 +116,18 @@ async function generateSummary(cluster: Cluster) {
 }
 
 /**
+ * Thrown by writeCard for a cluster with no articles, before any call is
+ * made. The route records it as a card failure like any other rejection;
+ * the name is what identifies it there.
+ */
+export class EmptyClusterError extends Error {
+  constructor(topic: string) {
+    super(`writeCard: cluster for "${topic}" has no articles`);
+    this.name = "EmptyClusterError";
+  }
+}
+
+/**
  * One Claude call per triaged cluster, on the model `modelForCluster` picks:
  * Haiku for a single-article cluster, Sonnet for a multi-source one. A second
  * call only happens on the rare ambiguous-completion retry inside
@@ -126,6 +138,14 @@ async function generateSummary(cluster: Cluster) {
  * Nor is card writing the pipeline's dominant cost — triage is.
  */
 export async function writeCard(cluster: Cluster, severity: number): Promise<Card> {
+  // Checked before the call, not after: a card needs at least one source, so
+  // an empty cluster can only fail, and failing here means it is never paid
+  // for. Clustering never produces one; this is defence, and costs one length
+  // check on the normal path.
+  if (cluster.articles.length === 0) {
+    throw new EmptyClusterError(cluster.topic);
+  }
+
   const { text: shortSummary, title, labels } = await generateWithRetryOnAmbiguousTruncation(
     () => generateSummary(cluster),
     "writeCard"

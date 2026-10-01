@@ -7,6 +7,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Topic } from "@/types";
 import { recordCall } from "@/lib/usageCollector";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const client = new Anthropic();
 
@@ -109,7 +110,10 @@ export async function rankFrontPage(
 
     return result;
   } catch (err) {
-    console.error("[rank] rankFrontPage failed, leaving today's front page unchanged:", err);
+    // Best-effort: a throw here would reject rankFrontPage, and if the
+    // route's backup log failed the same way, the run's already-paid cards
+    // would be lost before they were saved.
+    bestEffortLog("error", "[rank] rankFrontPage failed, leaving today's front page unchanged:", err);
     return null;
   }
 }

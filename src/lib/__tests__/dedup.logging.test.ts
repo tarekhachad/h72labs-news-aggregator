@@ -86,3 +86,43 @@ describe("filterAlreadyCovered when the exclusion log throws", () => {
     expect(mockParse).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("isSameStory when its failure log throws", () => {
+  it("still fails open instead of rejecting", async () => {
+    mockParse.mockRejectedValue(new Error("parse failed after billing"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("stderr closed");
+    });
+    const { isSameStory } = await import("@/lib/dedup");
+
+    await expect(isSameStory("candidate", "existing")).resolves.toBe(false);
+    // The throwing line was actually reached, so the test exercises the guard.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps every other paid verdict in the run when one call fails and its log throws", async () => {
+    mockParse.mockImplementation(async (params: { messages: { content: string }[] }) => {
+      const content = params.messages[0].content;
+      if (content.includes("broken-")) throw new Error("parse failed after billing");
+      return { parsed_output: { sameStory: content.includes("dup-") } };
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("stderr closed");
+    });
+    const { filterAlreadyCovered } = await import("@/lib/dedup");
+    const fresh = makeCluster("fresh-1");
+    const broken = makeCluster("broken-1");
+
+    // Without the guard this rejects, and the route falls back to all four,
+    // re-covering both paid duplicates.
+    await expect(
+      filterAlreadyCovered(
+        [makeCluster("dup-1"), fresh, broken, makeCluster("dup-2")],
+        EXISTING,
+      ),
+    ).resolves.toEqual([fresh, broken]);
+    expect(mockParse).toHaveBeenCalledTimes(4);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+});

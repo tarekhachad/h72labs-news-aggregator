@@ -362,3 +362,34 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
     expect(Object.keys(done).sort()).toEqual(["cards", "rankUpdates", "stage"]);
   });
 });
+
+describe("digest route: the backup ranking catch when its log throws", () => {
+  it("still saves and sends this run's paid cards", async () => {
+    mocks.rankFrontPage.mockRejectedValue(new Error("unexpected failure"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation((first) => {
+      if (typeof first === "string" && first.startsWith("[digest] rankFrontPage")) {
+        throw new Error("stderr closed");
+      }
+    });
+
+    try {
+      const lines = await runPostLines();
+
+      // Without the guard, the throw escapes the generator before
+      // saveGeneratedCards and the run ends on an error event.
+      expect(lines.some((l) => l.stage === "error")).toBe(false);
+      expect(mocks.saveGeneratedCards).toHaveBeenCalledTimes(1);
+      expect(persistedCardsArg().map((c) => c.id)).toEqual([NEW_CARD.id]);
+      expect(existingRankUpdatesArg()).toEqual([]);
+      expect((doneEvent(lines).cards as Card[]).map((c) => c.id)).toEqual([NEW_CARD.id]);
+      // The throwing line was actually reached, so the test exercises the guard.
+      expect(
+        errorSpy.mock.calls.some(
+          ([first]) => typeof first === "string" && first.startsWith("[digest] rankFrontPage"),
+        ),
+      ).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});

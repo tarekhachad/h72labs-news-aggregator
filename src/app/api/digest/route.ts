@@ -7,6 +7,7 @@ import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 import { modelForCluster } from "@/lib/cardModel";
 import { classifyCardFailure, type CardFailure } from "@/lib/cardFailure";
 import { isFailClosed } from "@/lib/triageOutcome";
@@ -368,7 +369,7 @@ async function* runDigestPipeline(
         // rankFrontPage already fails open internally (catches its own SDK
         // errors and returns null) — this second layer is defense-in-depth
         // against anything else going wrong building/awaiting the call itself.
-        console.error("[digest] rankFrontPage threw unexpectedly, leaving today's front page unchanged:", err);
+        bestEffortLog("error", "[digest] rankFrontPage threw unexpectedly, leaving today's front page unchanged:", err);
       }
     }
     // Three states, not two. null means ranking was never attempted (the
