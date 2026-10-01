@@ -146,9 +146,18 @@ export async function filterAlreadyCovered(
         const same = await isSameStory(texts[clusterIdx], topicCards[bestCardIdx].shortSummary);
         if (same) {
           survivingByIndex[clusterIdx] = false;
-          console.log(
-            `[dedup] ${topic} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
-          );
+          // Guarded: this runs after a billed call, and an escaping throw
+          // would reject filterAlreadyCovered, so the route would fall back
+          // to the un-deduplicated list and re-cover a story the paid call
+          // just confirmed is a duplicate. Same reasoning as triage.ts's
+          // guarded verdict log.
+          try {
+            console.log(
+              `[dedup] ${topic} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
+            );
+          } catch {
+            // A lost log line must not undo a paid exclusion.
+          }
         }
       });
 

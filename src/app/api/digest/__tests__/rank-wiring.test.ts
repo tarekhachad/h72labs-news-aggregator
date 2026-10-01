@@ -355,4 +355,10 @@ describe("digest route: rankUpdates on the wire (Phase 8.4)", () => {
 
     expect(done.rankUpdates).toEqual([]);
   });
+
+  it("sends only what the client reads: no topics list, which the nav takes from the page instead", async () => {
+    const done = doneEvent(await runPostLines());
+
+    expect(Object.keys(done).sort()).toEqual(["cards", "rankUpdates", "stage"]);
+  });
 });

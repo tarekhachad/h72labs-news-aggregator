@@ -65,15 +65,9 @@ type DigestEvent =
   | { stage: "triaging"; clusterCount: number }
   | { stage: "writing"; notableCount: number }
   | { stage: "ranking" }
-  // `topics` is the user's full selected topic list (not just the ones
-  // that produced a card) — the client needs it to render one tab per
-  // topic, including an explicit "nothing notable" state for topics that
-  // genuinely had no notable news today, instead of those topics silently
-  // vanishing from a flat merged list.
   | {
       stage: "done";
       cards: Card[];
-      topics: Topic[];
       /**
        * Rank changes this run applied to cards the client is ALREADY
        * showing (today's earlier runs) — the same list persisted via
@@ -426,7 +420,6 @@ async function* runDigestPipeline(
     yield {
       stage: "done",
       cards,
-      topics: profile.topics,
       rankUpdates: existingCardRankUpdates,
     };
   } finally {

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Article } from "@/types";
+import { embed } from "@/lib/embeddings";
 
 // Deterministic embed() so clustering behavior is controlled purely by the
 // vectors we hand back, not by the real (slow, model-dependent) embedder.
@@ -60,6 +61,14 @@ function makeArticle(overrides: Partial<Article> = {}): Article {
     ...overrides,
   };
 }
+
+// The mocked embed is created once for the whole file, so its call history
+// would otherwise carry from one test into the next, and any test asserting
+// it was not called would pass or fail depending on what ran before it.
+// mockClear keeps the vectorForText implementation; it only forgets calls.
+beforeEach(() => {
+  vi.mocked(embed).mockClear();
+});
 
 describe("clusterArticles (post-extraction sanity check)", () => {
   it("returns an empty array for no articles, without calling embed", async () => {

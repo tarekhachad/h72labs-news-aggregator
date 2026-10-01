@@ -117,6 +117,22 @@ export interface TriageBatch {
 }
 
 /**
+ * The topic to batch a cluster under, or null when the cluster is too
+ * malformed to plan (null, or no string topic). Total on purpose: it runs
+ * before any batch is sent, so a throw here would reject triageClusters and
+ * lose the whole digest's triage over one bad cluster — the never-rejects
+ * contract the route relies on.
+ */
+function plannableTopic(cluster: Cluster): Topic | null {
+  try {
+    const topic: unknown = cluster?.topic;
+    return typeof topic === "string" ? (topic as Topic) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Groups clusters into the batches triage will actually send: per-topic,
  * then split into size-evened chunks.
  *
@@ -134,13 +150,19 @@ export interface TriageBatch {
  * same function that produces the batches, rather than a second copy of
  * this arithmetic that could drift and make the module whose premise is
  * "a confidently wrong number is worse than a crash" emit false warnings.
+ *
+ * A malformed cluster (see plannableTopic) is left out of every batch, so
+ * triageClusters fails it closed on its own while the rest are still judged,
+ * and triageBatchCount never predicts a call for it.
  */
 export function planTriageBatches(clusters: Cluster[]): TriageBatch[] {
   const byTopic = new Map<Topic, number[]>();
   clusters.forEach((cluster, index) => {
-    const existing = byTopic.get(cluster.topic);
+    const topic = plannableTopic(cluster);
+    if (topic === null) return;
+    const existing = byTopic.get(topic);
     if (existing) existing.push(index);
-    else byTopic.set(cluster.topic, [index]);
+    else byTopic.set(topic, [index]);
   });
 
   const batches: TriageBatch[] = [];
@@ -252,8 +274,8 @@ function loggedReason(verdict: object): string {
  * "return a string, or nothing" and there is no in-band failure worth
  * surfacing.
  *
- * Note the `cluster?.` chain is defence only — planTriageBatches reads
- * cluster.topic unguarded, so a null cluster crashes long before this.
+ * Note the `cluster?.` chain is defence only — planTriageBatches leaves a
+ * null cluster out of every batch, so one never reaches this.
  *
  * The segment is quoted and flattened so it survives as one field for a
  * quote-aware (CSV-style) reader. That is NOT the same as making a naive

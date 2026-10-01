@@ -25,16 +25,25 @@ export function toNdjsonStream<E extends { stage: string }>(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let started = false;
+  let cancelled = false;
   return new ReadableStream({
     async pull(controller) {
       started = true;
+      // True only while calling the controller, so the catch can tell a
+      // throw from the stream (its reader is gone) from one out of the
+      // pipeline. Both must be told apart even after a cancel: a stage that
+      // was already in flight can still genuinely fail.
+      let writing = false;
       try {
         const { value, done } = await events.next();
         if (done) {
+          writing = true;
           controller.close();
           return;
         }
-        controller.enqueue(encoder.encode(JSON.stringify(value) + "\n"));
+        const line = encoder.encode(JSON.stringify(value) + "\n");
+        writing = true;
+        controller.enqueue(line);
         // The digest pipeline never actually yields a "error" stage today —
         // every failure propagates as a thrown exception, handled by the
         // catch block below instead (whose own throw path already runs the
@@ -48,10 +57,20 @@ export function toNdjsonStream<E extends { stage: string }>(
           // that resumption now, the same way cancel() below already does
           // for early cancellation, instead of just closing the stream
           // and leaving the generator (and its cleanup) suspended forever.
+          writing = false;
           await events.return?.(undefined);
+          writing = true;
           controller.close();
         }
       } catch (err) {
+        if (cancelled && writing) {
+          // Not a pipeline failure: the browser went away (tab closed,
+          // navigated off) and this event had nowhere to go. The
+          // generator's own cleanup is unaffected — cancel() below already
+          // asked it to return.
+          console.warn("[digest] client disconnected mid-stream; stopped sending events");
+          return;
+        }
         // The full error stays in the server log. The client gets a fixed
         // string, so no future throw can carry internal detail to the browser.
         console.error("[digest] pipeline failed:", err);
@@ -66,6 +85,7 @@ export function toNdjsonStream<E extends { stage: string }>(
       }
     },
     async cancel() {
+      cancelled = true;
       if (!started) {
         started = true;
         await events.return?.(undefined);
