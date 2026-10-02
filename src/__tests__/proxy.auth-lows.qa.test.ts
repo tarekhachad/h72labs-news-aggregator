@@ -299,9 +299,14 @@ describe("where the deadline must NOT go", () => {
   // auth-js retries a 503 refresh with backoff for about 25 s of its own
   // sleeps. Faked clocks run that loop in full without the wait; the deadline
   // is never armed on this path, so its real timer doesn't matter here.
+  // The token has 85 s left, not 30: auth-js still refreshes anything within
+  // its 90 s margin, and the loop below can advance the faked clock at most
+  // 60 s (120 steps of 500 ms), so the token can't expire before getUser runs.
+  // That bound matters because how far the faked clock overshoots the backoff
+  // depends on how fast the machine verifies the token on the real clock.
   it("a refresh that fails with 503 inside getClaims is not retried under the deadline by getUser", async () => {
     tokenReply = async () => json(503, { msg: "down" });
-    const c = cookie(30);
+    const c = cookie(85);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       let settled = false;
