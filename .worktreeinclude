@@ -7,5 +7,4 @@
 CLAUDE.md
 .claude/settings.local.json
 .claude/hooks/
-.claude/agents/qa.md
 .env.local
