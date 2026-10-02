@@ -36,12 +36,13 @@ describe("upsertDigestForToday", () => {
   });
 
   it("writes into the reader's local day when it is not the UTC one", async () => {
-    // 23:30 UTC on the 21st is 00:30 on the 22nd in Casablanca and 19:30 on
-    // the 21st in New York. This choice is which row the whole run's cards,
-    // run shape and per-topic cap belong to.
-    const casablanca = clientReturning({ data: VALID_ID, error: null });
-    await upsertDigestForToday(casablanca as never, "Africa/Casablanca");
-    expect(casablanca.rpc).toHaveBeenCalledWith("ensure_digest_for_today", { p_date: "2026-09-22" });
+    // 23:30 UTC on the 21st is 08:30 on the 22nd in Tokyo and 19:30 on the
+    // 21st in New York. This choice is which row the whole run's cards, run
+    // shape and per-topic cap belong to. Tokyo's offset has not changed in
+    // decades, so the result doesn't depend on the runtime's tz database.
+    const tokyo = clientReturning({ data: VALID_ID, error: null });
+    await upsertDigestForToday(tokyo as never, "Asia/Tokyo");
+    expect(tokyo.rpc).toHaveBeenCalledWith("ensure_digest_for_today", { p_date: "2026-09-22" });
 
     const newYork = clientReturning({ data: VALID_ID, error: null });
     await upsertDigestForToday(newYork as never, "America/New_York");

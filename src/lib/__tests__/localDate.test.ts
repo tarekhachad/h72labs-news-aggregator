@@ -35,7 +35,9 @@ describe("dateInTimeZone", () => {
 
   it("handles a year rollover in the reader's zone", () => {
     expect(dateInTimeZone(at("2027-01-01T03:00:00Z"), "America/New_York")).toBe("2026-12-31");
-    expect(dateInTimeZone(at("2026-12-31T23:30:00Z"), "Africa/Casablanca")).toBe("2027-01-01");
+    // Tokyo, not a zone whose offset governments still change: the assertion
+    // must hold whichever tz database version the runtime ships.
+    expect(dateInTimeZone(at("2026-12-31T23:30:00Z"), "Asia/Tokyo")).toBe("2027-01-01");
   });
 
   it("falls back to UTC for a name Intl rejects instead of throwing", () => {
