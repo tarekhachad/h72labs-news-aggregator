@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const verifyOtpMock = vi.fn();
-const createClientMock = vi.fn(async () => ({ auth: { verifyOtp: verifyOtpMock } }));
+const signOutMock = vi.fn(async () => ({ error: null }));
+const createClientMock = vi.fn(async () => ({ auth: { verifyOtp: verifyOtpMock, signOut: signOutMock } }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
 
 const cookieSetMock = vi.fn();
@@ -69,11 +70,11 @@ describe("/auth/confirm refuses a no-secret recovery link before touching Auth",
     }
   );
 
-  it("a signup link with a too-short secret is still verified and lands on next", async () => {
+  it("a signup link with a too-short secret is still verified and lands on the confirmed message", async () => {
     vi.stubEnv("RECOVERY_MARKER_SECRET", "x".repeat(31));
     const r = await hit("?token_hash=abc&type=email&next=/onboarding");
     expect(verifyOtpMock).toHaveBeenCalledWith({ type: "email", token_hash: "abc" });
-    expect(r.location).toBe(`${ORIGIN}/onboarding`);
+    expect(r.location).toBe(`${ORIGIN}/login?confirmed=1`);
     expect(cookieSetMock).not.toHaveBeenCalled();
   });
 

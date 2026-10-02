@@ -123,13 +123,22 @@ describe("Auth says the session or user is gone: /login renders and the cookies 
   });
 });
 
-// A 429 is not in auth-js's retryable set, so today a rate-limited /user signs a
-// live browser out. A 429 says nothing about whether the session is alive.
-// Skipped until the proxy clears only on an explicit rejection (session
-// missing, or 401/403/404); tracked in the project log's review notes.
+// A 429 is not in auth-js's retryable set, but it says nothing about whether the
+// session is alive. The proxy clears only on an explicit rejection (session
+// missing, or 401/403/404).
 describe("Auth answers 429 for a live session", () => {
-  it.skip("keeps the session", async () => {
+  it("keeps the session", async () => {
     userReply = async () => json(429, { code: 429, error_code: "over_request_rate_limit", msg: "Request rate limit reached" });
+    const res = await proxy(req("/login"));
+    expect(res.headers.get("location")).toBeNull();
+    expect(logouts()).toEqual([]);
+    expect(cleared(res)).toEqual([]);
+  });
+});
+
+describe("A 4xx with no JSON body (something in front of Auth answered) keeps the session", () => {
+  it("HTML 403 from a proxy or WAF", async () => {
+    userReply = async () => new Response("<html>Forbidden</html>", { status: 403, headers: { "content-type": "text/html" } });
     const res = await proxy(req("/login"));
     expect(res.headers.get("location")).toBeNull();
     expect(logouts()).toEqual([]);

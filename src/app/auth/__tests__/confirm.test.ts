@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const verifyOtpMock = vi.fn();
+const signOutMock = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
-    auth: { verifyOtp: verifyOtpMock },
+    auth: { verifyOtp: verifyOtpMock, signOut: signOutMock },
   })),
 }));
 
@@ -25,6 +26,7 @@ const SECRET = "s".repeat(44);
 
 const ORIGIN = "https://news.h72labs.com";
 const EXPIRED = `${ORIGIN}/login?error=link_expired`;
+const CONFIRMED = `${ORIGIN}/login?confirmed=1`;
 
 function request(query: string): Request {
   return new Request(`${ORIGIN}/auth/confirm${query}`);
@@ -39,14 +41,52 @@ beforeEach(() => {
   verifyOtpMock.mockReset();
   verifyOtpMock.mockResolvedValue({ data: { user: { id: USER_ID }, session: { access_token: freshToken(SID) } }, error: null });
   cookieSetMock.mockReset();
+  signOutMock.mockReset();
+  signOutMock.mockResolvedValue({ error: null });
   vi.stubEnv("RECOVERY_MARKER_SECRET", SECRET);
 });
 
 describe("GET /auth/confirm", () => {
-  it("verifies a signup link and lands on the requested page", async () => {
+  it("verifies a signup link, ends the session it made, and sends the user to sign in", async () => {
     const location = await locationOf("?token_hash=abc123&type=email&next=/onboarding");
     expect(verifyOtpMock).toHaveBeenCalledWith({ type: "email", token_hash: "abc123" });
-    expect(location).toBe(`${ORIGIN}/onboarding`);
+    expect(signOutMock).toHaveBeenCalledWith({ scope: "local" });
+    expect(signOutMock.mock.invocationCallOrder[0]).toBeGreaterThan(verifyOtpMock.mock.invocationCallOrder[0]);
+    expect(location).toBe(CONFIRMED);
+  });
+
+  it.each(["", "&next=/onboarding", "&next=/profile", "&next=https://evil.example/"])(
+    "ignores next on a signup link (%s)",
+    async (nextParam) => {
+      expect(await locationOf(`?token_hash=abc123&type=email${nextParam}`)).toBe(CONFIRMED);
+    }
+  );
+
+  it("still lands on the confirmed message when ending the session returns an error", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    signOutMock.mockResolvedValue({ error: { message: "Service Unavailable", status: 503 } });
+    expect(await locationOf("?token_hash=abc123&type=email&next=/onboarding")).toBe(CONFIRMED);
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("still lands on the confirmed message when ending the session throws", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    signOutMock.mockRejectedValue(new TypeError("fetch failed"));
+    expect(await locationOf("?token_hash=abc123&type=email&next=/onboarding")).toBe(CONFIRMED);
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("does not sign out when a signup link fails to verify", async () => {
+    verifyOtpMock.mockResolvedValue({ data: { user: null, session: null }, error: { code: "otp_expired" } });
+    expect(await locationOf("?token_hash=stale&type=email&next=/onboarding")).toBe(EXPIRED);
+    expect(signOutMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session a recovery link makes", async () => {
+    await locationOf("?token_hash=abc123&type=recovery&next=/reset-password");
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 
   it("verifies a recovery link and lands on the reset page", async () => {
@@ -55,8 +95,8 @@ describe("GET /auth/confirm", () => {
     expect(location).toBe(`${ORIGIN}/reset-password`);
   });
 
-  it("falls back to the root when no next is given", async () => {
-    expect(await locationOf("?token_hash=abc123&type=email")).toBe(`${ORIGIN}/`);
+  it("falls back to the root when a recovery link gives no next", async () => {
+    expect(await locationOf("?token_hash=abc123&type=recovery")).toBe(`${ORIGIN}/`);
   });
 
   it.each([
@@ -65,7 +105,7 @@ describe("GET /auth/confirm", () => {
     ["https://evil.example/", "absolute"],
   ])("refuses a %s next target (%s), sending the user to the root instead", async (next) => {
     const location = await locationOf(
-      `?token_hash=abc123&type=email&next=${encodeURIComponent(next)}`
+      `?token_hash=abc123&type=recovery&next=${encodeURIComponent(next)}`
     );
     expect(location).toBe(`${ORIGIN}/`);
     expect(location).not.toContain("evil.example");
@@ -129,7 +169,7 @@ describe("GET /auth/confirm", () => {
       vi.stubEnv("RECOVERY_MARKER_SECRET", "");
       const location = await locationOf("?token_hash=abc123&type=email&next=/onboarding");
       expect(verifyOtpMock).toHaveBeenCalledTimes(1);
-      expect(location).toBe(`${ORIGIN}/onboarding`);
+      expect(location).toBe(CONFIRMED);
     });
 
     it("binds the marker to the session the link just created", async () => {

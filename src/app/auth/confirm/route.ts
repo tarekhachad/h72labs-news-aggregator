@@ -47,6 +47,22 @@ export async function GET(request: Request) {
       token_hash: tokenHash,
     });
     if (!error) {
+      // Auth exempts any session made by an emailed link from its "current
+      // password" check, so the session a confirmation link creates could
+      // change the password without knowing it. Only a reset needs that; a
+      // confirmation ends the session at once and the user signs in with the
+      // password they chose. Signing in lands on /, which sends a user with no
+      // topics yet to /onboarding.
+      if (type === "email") {
+        try {
+          const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
+          if (signOutError) console.error("[auth/confirm] ending the confirmation session failed:", signOutError);
+        } catch (err) {
+          console.error("[auth/confirm] ending the confirmation session threw:", err);
+        }
+        return NextResponse.redirect(`${origin}/login?confirmed=1`);
+      }
+
       // Only a verified recovery link earns the marker /reset-password asks
       // for. A signup confirmation lands here too and must not get one.
       if (type === "recovery" && secret) {

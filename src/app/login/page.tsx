@@ -6,9 +6,9 @@ import { LOGIN_ERROR_MESSAGES, isLoginErrorCode } from "@/lib/authErrors";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; confirmed?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, confirmed } = await searchParams;
   // Only codes this app defines are rendered; anything else in the URL is ignored.
   const errorMessage = isLoginErrorCode(error) ? LOGIN_ERROR_MESSAGES[error] : null;
   const needsConfirmation = error === "email_not_confirmed" || error === "link_expired";
@@ -17,6 +17,11 @@ export default async function LoginPage({
     <div className="min-h-screen" style={{ background: "var(--color-background)" }}>
       <main className="mx-auto flex max-w-sm flex-col gap-6 px-6 py-24">
         <h1 className="font-heading text-center text-2xl font-semibold">Log in</h1>
+        {confirmed === "1" && (
+          <p role="status" className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+            Your email is confirmed. Sign in with the password you just chose.
+          </p>
+        )}
         <form action={signIn} className="flex flex-col gap-4">
           <input
             name="email"

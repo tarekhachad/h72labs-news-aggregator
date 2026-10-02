@@ -14,7 +14,7 @@ export default async function CheckEmailPage({
       <main className="mx-auto flex max-w-sm flex-col gap-6 px-6 py-24">
         <h1 className="font-heading text-center text-2xl font-semibold">Check your email</h1>
         <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-          We sent you a link to confirm your address. Open it and you&apos;ll be signed in and ready to pick your topics.
+          We sent you a link to confirm your address. Open it, then sign in with your password to pick your topics.
         </p>
         {sent && (
           <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>

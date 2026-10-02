@@ -254,7 +254,7 @@ describe("missing or short secret on a verified recovery link", () => {
 
   it("a signup link with no secret is unaffected", async () => {
     vi.stubEnv("RECOVERY_MARKER_SECRET", "");
-    expect(await confirm("?token_hash=h&type=email&next=/onboarding")).toBe(`${ORIGIN}/onboarding`);
+    expect(await confirm("?token_hash=h&type=email&next=/onboarding")).toBe(`${ORIGIN}/login?confirmed=1`);
   });
 
   it("with no secret, a recovery link is refused before verifying, whatever its state", async () => {

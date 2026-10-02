@@ -1,15 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { AuthApiError, AuthRetryableFetchError, AuthSessionMissingError, AuthUnknownError } from "@supabase/supabase-js";
 
 const getClaimsMock = vi.fn();
 const getUserMock = vi.fn();
 const signOutMock = vi.fn();
-vi.mock("@supabase/supabase-js", () => ({
-  isAuthRetryableFetchError: (e: unknown) => (e as { name?: string } | null)?.name === "AuthRetryableFetchError",
-}));
+const adminSignOutMock = vi.fn();
+const getSessionMock = vi.fn(async () => ({ data: { session: { access_token: "token-1" } }, error: null }));
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(() => ({
-    auth: { getClaims: getClaimsMock, getUser: getUserMock, signOut: signOutMock },
+    auth: {
+      getClaims: getClaimsMock,
+      getSession: getSessionMock,
+      getUser: getUserMock,
+      signOut: signOutMock,
+      admin: { signOut: adminSignOutMock },
+    },
   })),
 }));
 
@@ -28,7 +34,17 @@ beforeEach(() => {
   getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
   signOutMock.mockReset();
   signOutMock.mockResolvedValue({ error: null });
+  adminSignOutMock.mockReset();
+  adminSignOutMock.mockResolvedValue({ data: null, error: null });
 });
+
+// The session cookie a real browser would send, and its expiry on the response.
+const SESSION = "sb-127-auth-token";
+function reqWithSession(path: string): NextRequest {
+  return new NextRequest(new Request(`${ORIGIN}${path}`, { headers: { cookie: `${SESSION}=base64-x; ${SESSION}.1=y; theme=dark` } }));
+}
+const expired = (res: Response) =>
+  res.headers.getSetCookie().filter((l) => /max-age=0/i.test(l)).map((l) => l.slice(0, l.indexOf("=")));
 
 function locationOf(response: Response): string | null {
   const loc = response.headers.get("location");
@@ -79,6 +95,12 @@ describe("proxy — authenticated", () => {
     expect(locationOf(res)).toBeNull();
   });
 
+  it("checks the session's own token with Auth, so getUser cannot refresh it", async () => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+    await proxy(req("/login"));
+    expect(getUserMock).toHaveBeenCalledWith("token-1");
+  });
+
   it("bounces an authenticated visitor away from /login", async () => {
     const res = await proxy(req("/login"));
     expect(locationOf(res)).toBe("/");
@@ -104,16 +126,17 @@ describe("proxy — authenticated", () => {
 describe("proxy — token still valid, session revoked", () => {
   beforeEach(() => {
     getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
-    getUserMock.mockResolvedValue({
-      data: { user: null },
-      error: { code: "session_not_found", message: "Session from session_id claim in JWT does not exist" },
-    });
+    // auth-js turns a session_not_found answer into AuthSessionMissingError.
+    getUserMock.mockResolvedValue({ data: { user: null }, error: new AuthSessionMissingError() });
   });
 
-  it.each(["/login", "/signup"])("shows %s instead of bouncing to /, and clears the dead session", async (path) => {
+  // auth-js drops a session_not_found session inside getUser, so the proxy
+  // has nothing left to revoke or clear.
+  it.each(["/login", "/signup"])("shows %s instead of bouncing to /, and revokes nothing more", async (path) => {
     const res = await proxy(req(path));
     expect(locationOf(res)).toBeNull();
-    expect(signOutMock).toHaveBeenCalledWith({ scope: "local" });
+    expect(adminSignOutMock).not.toHaveBeenCalled();
+    expect(signOutMock).not.toHaveBeenCalled();
   });
 
   it("keeps the query on /login so its message still shows", async () => {
@@ -152,7 +175,7 @@ describe("proxy — Auth unreachable on /login", () => {
     getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
     getUserMock.mockResolvedValue({
       data: { user: null },
-      error: { name: "AuthRetryableFetchError", status: 503, message: "Service Unavailable" },
+      error: new AuthRetryableFetchError("Service Unavailable", 503),
     });
   });
 
@@ -164,5 +187,54 @@ describe("proxy — Auth unreachable on /login", () => {
   it("keeps the session's cookies", async () => {
     await proxy(req("/login"));
     expect(signOutMock).not.toHaveBeenCalled();
+  });
+});
+
+// Only an explicit "this session or user is gone" from Auth clears the cookies.
+describe("proxy — which Auth errors clear the session on /login", () => {
+  beforeEach(() => {
+    getClaimsMock.mockResolvedValue({ data: { claims: { sub: "user-1" } } });
+  });
+
+  it.each([
+    ["401", new AuthApiError("invalid JWT", 401, "bad_jwt")],
+    ["403 user_not_found", new AuthApiError("User from sub claim in JWT does not exist", 403, "user_not_found")],
+    ["404", new AuthApiError("not found", 404, undefined)],
+  ])("revokes the rejected token and expires every session cookie on %s", async (_label, error) => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error });
+    const res = await proxy(reqWithSession("/login"));
+    expect(locationOf(res)).toBeNull();
+    expect(adminSignOutMock).toHaveBeenCalledWith("token-1", "local");
+    expect(signOutMock).not.toHaveBeenCalled();
+    expect(expired(res).sort()).toEqual([SESSION, `${SESSION}.1`]);
+  });
+
+  it("still expires the cookies when revoking fails", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: new AuthApiError("gone", 403, "user_not_found") });
+    adminSignOutMock.mockResolvedValue({ data: null, error: new AuthRetryableFetchError("fetch failed", 0) });
+    const res = await proxy(reqWithSession("/login"));
+    expect(expired(res).sort()).toEqual([SESSION, `${SESSION}.1`]);
+  });
+
+  it("leaves a missing session to auth-js, which already dropped it", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: new AuthSessionMissingError() });
+    const res = await proxy(reqWithSession("/login"));
+    expect(adminSignOutMock).not.toHaveBeenCalled();
+    expect(expired(res)).toEqual([]);
+  });
+
+  it.each([
+    ["429", new AuthApiError("Request rate limit reached", 429, "over_request_rate_limit")],
+    ["400", new AuthApiError("bad request", 400, "validation_failed")],
+    ["a 4xx with no JSON body", new AuthUnknownError("Unexpected token <", new SyntaxError("Unexpected token <"))],
+    ["a 503", new AuthRetryableFetchError("Service Unavailable", 503)],
+    ["a network failure", new AuthRetryableFetchError("fetch failed", 0)],
+  ])("keeps the session on %s and still renders /login", async (_label, error) => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error });
+    const res = await proxy(reqWithSession("/login"));
+    expect(locationOf(res)).toBeNull();
+    expect(adminSignOutMock).not.toHaveBeenCalled();
+    expect(signOutMock).not.toHaveBeenCalled();
+    expect(expired(res)).toEqual([]);
   });
 });

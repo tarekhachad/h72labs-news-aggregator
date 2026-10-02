@@ -179,9 +179,11 @@ describe("resetPassword gate", () => {
 
   it("a signup-confirmation session cannot reset", async () => {
     await confirm("?token_hash=h&type=email&next=/");
+    // The confirm route ends its own session; reset must evict nothing.
+    expect(calls).toEqual(['signOut:{"scope":"local"}']);
     expect(await reset()).toBe("/forgot-password?expired=1");
     expect(updateUserMock).not.toHaveBeenCalled();
-    expect(signOutMock).not.toHaveBeenCalled();
+    expect(calls).toEqual(['signOut:{"scope":"local"}']);
   });
 
   it("cross-account: A's marker with B's session is refused and not spent", async () => {
