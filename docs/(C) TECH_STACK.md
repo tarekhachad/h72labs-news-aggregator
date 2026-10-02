@@ -24,13 +24,13 @@ What's chosen, and why, in plain language. Every non-obvious term also lives in 
 
 ---
 
-## News sourcing: RSS feeds (primary) + GNews (optional supplement)
+## News sourcing: RSS feeds
 
-**What it is:** RSS is a standard format news sites publish their own articles in — free to read, no usage restrictions, real-time. GNews is a news API (a paid service that returns structured article data) with a free tier for supplementing topics where a good RSS feed isn't easy to find.
+**What it is:** RSS is a standard format news sites publish their own articles in — free to read and real-time. Free to read is not the same as unrestricted: some outlets set terms on reuse (AllAfrica asks for credit and a link; Reuters forbids automated collection without written consent), so each new outlet's terms are checked when its feed is added. GNews is a news API (a paid service that returns structured article data); it is **not in use**, see below.
 
 **Why not NewsAPI.org:** Checked the actual terms — NewsAPI's free tier technically blocks any request from a non-localhost domain. It would stop working the instant this app is deployed for anyone but you to test on `localhost`, regardless of whether it's monetized. It's a dead end for this project.
 
-**Why RSS as primary:** No commercial-use restriction, no domain lock, free, real-time. **GNews as backup:** free tier works from any domain but forbids commercial use (fine — not monetized yet) and delays articles by 12 hours (acceptable for supplementary coverage, not for every topic).
+**Why RSS:** no domain lock, no quota, free, real-time, and the only channel checked whose terms fit a small commercial app without a contract. **GNews is not a free supplement after all (corrected 2026-10-02):** its pricing page says the free plan is for development and testing only, so a live app, even invite-only, doesn't qualify; the paid Essential plan is €49.99 a month. What to add beyond RSS, and in what order, is in `notes-logs/(C) data-sources-research.md` and the roadmap: free per-country feeds first, then full-text extraction, with a search fallback parked.
 
 ---
 
@@ -87,7 +87,7 @@ The lesson worth carrying: a measurement taken against a toy profile is not a me
 | Vercel (hosting) | \$0/month (Hobby, non-commercial) |
 | Supabase (DB + Auth) | \$0/month (Free tier) |
 | RSS feeds | \$0 (always) |
-| GNews (supplement) | \$0 (free tier, non-commercial) |
+| GNews | not used: the free tier is for development and testing only |
 | Claude API (synthesis) | **\$0.335/digest** for a 9-topic cold start, **\$0.49** worst case (full 13-topic profile, cold, measured in production), +~\$0.012 per card expanded. One user once a day ≈ **\$10/month**, at most ~\$15 on the full profile; ten users ≈ **\$100/month** at full daily usage. Cold-start figures — a returning daily user costs materially less. |
 
 Living document — will be revised as the build reveals what actually works.
