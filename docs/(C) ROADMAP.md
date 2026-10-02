@@ -643,6 +643,8 @@ _Moved here from the Final Phase 2026-08-12, per Tarek — it belongs after depl
 
 **Wave 2 SHIPPED 2026-10-01:** L4 billed-path guards (`bf8b93a`) and L3 auth lows (`702b72f`). Detail in `notes-logs/project-log.md`.
 
+**Morocco GMT correction SHIPPED 2026-10-02 (`0b11229`):** `dateInTimeZone` dates `Africa/Casablanca` and `Africa/El_Aaiun` by tz `2026c`'s permanent UTC+0 on runtimes with older tz data. **To retire:** once the production log line `[tz] runtime tz database …` reads `2026c` or later (it appears on the first Moroccan reader's visit), delete `moroccoCorrectedZone`, the probe and `localDate.morocco.simulated.qa.test.ts`. The correction is already inert on such a runtime, so this is cleanup, not a fix.
+
 Drawn from **Deferred work — grouped and sequenced** below, in a dedicated planning session. Take the tracks in order — **A (digest quality), B (correctness debt), C (hygiene), D (product expansion)** — rather than picking items off individually; the sequencing constraints that matter are written into the track headers, not into the items.
 
 _Rewritten 2026-09-14. This paragraph used to name twelve items as though it enumerated the list. The list held twenty-nine, so thirteen of them — including every code-correctness finding — appeared in no sequencing anywhere in this file._
