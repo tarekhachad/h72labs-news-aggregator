@@ -308,11 +308,11 @@ describe("which cookies the revoke expires", () => {
     for (const o of others) expect(setCookieNames(res)).not.toContain(o.slice(0, o.indexOf("=")));
   });
 
-  it("DOCUMENTS: another project's session cookie on the same host is expired as well", async () => {
+  it("another project's session cookie on the same host is left alone", async () => {
     userReply = async () => REJECT[403]();
-    const sent = `${cookie()}; sb-otherref-auth-token=base64-eyJ9; sb-a-b-c-auth-token.0=x`;
+    const sent = `${cookie()}; sb-otherref-auth-token=base64-eyJ9; sb-a-b-c-auth-token.0=x; sb-other-auth-token.1=y`;
     const res = await proxy(req("/login", sent));
-    expect(clearedNames(res)).toEqual([COOKIE, "sb-a-b-c-auth-token.0", "sb-otherref-auth-token"]);
+    expect(clearedNames(res)).toEqual([COOKIE]);
   });
 
   it("the expiry lines carry the same scope (Domain/Path/Secure/SameSite) as the lines @supabase/ssr writes the session with", async () => {

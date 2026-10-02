@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { AuthApiError, AuthRetryableFetchError, AuthSessionMissingError, AuthUnknownError } from "@supabase/supabase-js";
 
@@ -36,6 +36,11 @@ beforeEach(() => {
   signOutMock.mockResolvedValue({ error: null });
   adminSignOutMock.mockReset();
   adminSignOutMock.mockResolvedValue({ data: null, error: null });
+  // The project ref in SESSION below comes from this URL's first label.
+  vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 // The session cookie a real browser would send, and its expiry on the response.

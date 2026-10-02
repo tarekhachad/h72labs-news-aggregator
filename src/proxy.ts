@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { isAuthApiError, type AuthError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { EXPIRED_SESSION_COOKIE, sessionCookieMatcher } from "@/lib/supabase/sessionCookie";
 
 // Coarse "is there a session at all" gate, run on every request. This
 // deliberately does NOT import anything from src/lib/{cluster,ingest,
@@ -26,14 +27,20 @@ function tokenRejected(error: AuthError | null): boolean {
   return isAuthApiError(error) && [401, 403, 404].includes(error.status);
 }
 
-// Where @supabase/ssr keeps the session: sb-<ref>-auth-token, split into
-// .0, .1, … when it is too large for one cookie.
-const SESSION_COOKIE = /^sb-.+-auth-token(\.\d+)?$/;
-
 function clearSessionCookies(request: NextRequest, response: NextResponse) {
+  const isSessionCookie = sessionCookieMatcher();
   for (const { name } of request.cookies.getAll()) {
-    if (SESSION_COOKIE.test(name)) response.cookies.set(name, "", { path: "/", sameSite: "lax", maxAge: 0 });
+    if (isSessionCookie(name)) response.cookies.set(name, "", EXPIRED_SESSION_COOKIE);
   }
+}
+
+// The one signed-in visit /login keeps. /auth/confirm sends a recovery link
+// here, unspent, when RECOVERY_MARKER_SECRET is missing; bouncing a signed-in
+// visitor to / would lose the message. Exactly one error value, as the page
+// renders nothing for a repeated one.
+function showsResetUnavailable(url: NextRequest["nextUrl"]): boolean {
+  const errors = url.searchParams.getAll("error");
+  return url.pathname === "/login" && errors.length === 1 && errors[0] === "reset_unavailable";
 }
 
 // auth-js sets no timeout of its own, so a hanging Auth would hang /login.
@@ -117,6 +124,7 @@ export async function proxy(request: NextRequest) {
         error,
       } = await supabase.auth.getUser(accessToken);
       if (user) {
+        if (showsResetUnavailable(request.nextUrl)) return supabaseResponse;
         const url = request.nextUrl.clone();
         url.pathname = "/";
         return NextResponse.redirect(url);

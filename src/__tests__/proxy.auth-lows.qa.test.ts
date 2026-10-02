@@ -296,12 +296,29 @@ describe("where the deadline must NOT go", () => {
     expect(callsTo("POST /token").every((c) => c.signal === undefined)).toBe(true);
   });
 
+  // auth-js retries a 503 refresh with backoff for about 25 s of its own
+  // sleeps. Faked clocks run that loop in full without the wait; the deadline
+  // is never armed on this path, so its real timer doesn't matter here.
   it("a refresh that fails with 503 inside getClaims is not retried under the deadline by getUser", async () => {
     tokenReply = async () => json(503, { msg: "down" });
-    await proxy(req("/login", cookie(30)));
-    expect(callsTo("POST /token").length).toBeGreaterThan(0);
+    const c = cookie(30);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      let settled = false;
+      const done = proxy(req("/login", c)).finally(() => (settled = true));
+      for (let step = 0; step < 120 && !settled; step++) await vi.advanceTimersByTimeAsync(500);
+      expect(settled).toBe(true);
+      await done;
+    } finally {
+      vi.useRealTimers();
+    }
+    // The whole backoff ran: 200 ms doubling while it still fits auth-js's 30 s window.
+    expect(callsTo("POST /token")).toHaveLength(8);
     expect(callsTo("POST /token").every((c) => c.signal === undefined)).toBe(true);
-  }, 40000);
+    // Only GET /user runs under the deadline, after every refresh attempt.
+    expect(calls.filter((c) => c.signal).map((c) => c.call)).toEqual(["GET /user"]);
+    expect(calls.findLastIndex((c) => c.call.startsWith("POST /token"))).toBeLessThan(calls.findIndex((c) => c.signal));
+  });
 
   it.each(["/", "/profile", "/reset-password", "/forgot-password", "/auth/confirm", "/api/digest", "/login-foo", "/signup/check-email"])(
     "no Auth call on %s carries a signal, refresh included",

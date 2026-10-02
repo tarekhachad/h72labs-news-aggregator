@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/safeNext";
+import { EXPIRED_SESSION_COOKIE, sessionCookieMatcher } from "@/lib/supabase/sessionCookie";
 import {
   RECOVERY_COOKIE,
   RECOVERY_COOKIE_OPTIONS,
@@ -20,6 +21,21 @@ import {
 // flow, so a link opened on a different device than the one that signed up
 // cannot be completed — which is the normal case for an emailed link.
 const VERIFIABLE_TYPES: readonly string[] = ["email", "recovery"];
+
+// For a signOut that threw, possibly before it removed anything, leaving the
+// cookies verifyOtp just wrote. Next lets the returned response's cookies
+// override the cookie store's, so these expiries win. If the store can't be
+// read either, the user still gets the redirect.
+async function expireSessionCookies(response: NextResponse) {
+  try {
+    const isSessionCookie = sessionCookieMatcher();
+    for (const { name } of (await cookies()).getAll()) {
+      if (isSessionCookie(name)) response.cookies.set(name, "", EXPIRED_SESSION_COOKIE);
+    }
+  } catch (err) {
+    console.error("[auth/confirm] expiring the confirmation session's cookies threw:", err);
+  }
+}
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -54,13 +70,15 @@ export async function GET(request: Request) {
       // password they chose. Signing in lands on /, which sends a user with no
       // topics yet to /onboarding.
       if (type === "email") {
+        const confirmed = NextResponse.redirect(`${origin}/login?confirmed=1`);
         try {
           const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
           if (signOutError) console.error("[auth/confirm] ending the confirmation session failed:", signOutError);
         } catch (err) {
           console.error("[auth/confirm] ending the confirmation session threw:", err);
+          await expireSessionCookies(confirmed);
         }
-        return NextResponse.redirect(`${origin}/login?confirmed=1`);
+        return confirmed;
       }
 
       // Only a verified recovery link earns the marker /reset-password asks

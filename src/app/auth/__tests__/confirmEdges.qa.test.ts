@@ -106,6 +106,19 @@ async function confirm(query: string): Promise<string | null> {
   return res.headers.get("location");
 }
 const sessionCookies = () => [...jar.keys()].filter((k) => k.startsWith("sb-"));
+const expiredOn = (res: Response) =>
+  res.headers.getSetCookie().filter((l) => /max-age=0/i.test(l)).map((l) => l.slice(0, l.indexOf("="))).sort();
+// What the browser holds afterwards: Next applies the cookie store's writes,
+// then the returned response's own cookies, which take precedence.
+function browserSessionCookies(res: Response): string[] {
+  const held = new Set(jar.keys());
+  for (const line of res.headers.getSetCookie()) {
+    const name = line.slice(0, line.indexOf("="));
+    if (/max-age=0/i.test(line)) held.delete(name);
+    else held.add(name);
+  }
+  return [...held].filter((k) => k.startsWith("sb-")).sort();
+}
 const logouts = () => calls.filter((c) => c.call.startsWith("POST /logout"));
 const verifies = () => calls.filter((c) => c.call.startsWith("POST /verify"));
 const CONFIRMED = `${ORIGIN}/login?confirmed=1`;
@@ -185,15 +198,53 @@ describe("/logout failing does not change where the user goes, and still clears 
   });
 
   // The route promises the confirmation session is ended. When signOut throws
-  // before it removes anything, the cookies verifyOtp just wrote are still in the
-  // response, so the browser arrives at /login?confirmed=1 signed in. auth-js
-  // returns signOut failures rather than throwing them, so this needs a storage
-  // or lock fault. Skipped until the route clears the cookies itself on a
-  // throw; tracked in the project log's review notes.
-  it.skip("signOut throwing outright still leaves the browser with no session cookie", async () => {
+  // before it removes anything, the cookies verifyOtp just wrote are still in
+  // the cookie store, so the route expires them on the redirect itself.
+  it("signOut throwing outright still leaves the browser with no session cookie", async () => {
     signOutThrows = true;
-    await confirm("?token_hash=abc&type=email");
-    expect(sessionCookies()).toEqual([]);
+    const res = await GET(new Request(`${ORIGIN}/auth/confirm?token_hash=abc&type=email`));
+    expect(res.headers.get("location")).toBe(CONFIRMED);
+    expect(jar.has("sb-127-auth-token")).toBe(true); // the store alone would have kept it
+    expect(browserSessionCookies(res)).toEqual([]);
+  });
+
+  it("signOut throwing outright on a chunked session expires every chunk", async () => {
+    signOutThrows = true;
+    session = verifiedSession({ user_metadata: { blob: "x".repeat(9000) } });
+    const res = await GET(new Request(`${ORIGIN}/auth/confirm?token_hash=abc&type=email`));
+    expect(sessionCookies().filter((k) => /\.\d+$/.test(k)).length).toBeGreaterThan(1);
+    expect(browserSessionCookies(res)).toEqual([]);
+  });
+
+  it("signOut throwing outright expires only this project's cookies, not another project's", async () => {
+    signOutThrows = true;
+    jar.set("sb-otherref-auth-token", { value: "theirs" });
+    jar.set("sb-otherref-auth-token.0", { value: "theirs" });
+    const res = await GET(new Request(`${ORIGIN}/auth/confirm?token_hash=abc&type=email`));
+    expect(expiredOn(res)).toEqual(["sb-127-auth-token"]);
+    expect(browserSessionCookies(res)).toEqual(["sb-otherref-auth-token", "sb-otherref-auth-token.0"]);
+  });
+
+  it("signOut throwing and the cookie store then failing too still redirects to /login?confirmed=1, and logs both", async () => {
+    signOutThrows = true;
+    const { cookies } = await import("next/headers");
+    const store = vi.mocked(cookies).getMockImplementation()!;
+    // The first read is createClient's; the second is the route's own, after the throw.
+    vi.mocked(cookies)
+      .mockImplementationOnce(store)
+      .mockImplementationOnce(async () => {
+        throw new Error("store gone");
+      });
+    expect(await confirm("?token_hash=abc&type=email")).toBe(CONFIRMED);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("ending the confirmation session threw"), expect.any(Error));
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("expiring the confirmation session's cookies threw"), expect.any(Error));
+  });
+
+  it("a signOut that returns its failure sets no cookie on the redirect (the store already cleared them)", async () => {
+    logoutReply = () => json(500, { msg: "boom" });
+    const res = await GET(new Request(`${ORIGIN}/auth/confirm?token_hash=abc&type=email`));
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(browserSessionCookies(res)).toEqual([]);
   });
 });
 
