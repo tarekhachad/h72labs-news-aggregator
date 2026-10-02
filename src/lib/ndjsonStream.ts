@@ -6,6 +6,8 @@
  * the spend reservation is settled and the generation claim released.
  */
 
+import { bestEffortLog } from "@/lib/bestEffortLog";
+
 export const DIGEST_FAILED_MESSAGE = "Digest failed";
 
 export function toNdjsonStream<E extends { stage: string }>(
@@ -68,12 +70,12 @@ export function toNdjsonStream<E extends { stage: string }>(
           // navigated off) and this event had nowhere to go. The
           // generator's own cleanup is unaffected — cancel() below already
           // asked it to return.
-          console.warn("[digest] client disconnected mid-stream; stopped sending events");
+          bestEffortLog("warn", "[digest] client disconnected mid-stream; stopped sending events");
           return;
         }
         // The full error stays in the server log. The client gets a fixed
         // string, so no future throw can carry internal detail to the browser.
-        console.error("[digest] pipeline failed:", err);
+        bestEffortLog("error", "[digest] pipeline failed:", err);
         try {
           controller.enqueue(
             encoder.encode(JSON.stringify({ stage: "error", message: DIGEST_FAILED_MESSAGE }) + "\n")
@@ -94,7 +96,7 @@ export function toNdjsonStream<E extends { stage: string }>(
         } catch (err) {
           // Nothing is left to tell the client, and a rejection here would
           // surface as an unhandled rejection rather than anywhere useful.
-          console.error("[digest] cleanup after an abandoned request failed:", err);
+          bestEffortLog("error", "[digest] cleanup after an abandoned request failed:", err);
         }
         return;
       }

@@ -16,6 +16,7 @@ import {
   type SpendRefusalBody,
   type SpendRefusalReason,
 } from "@/lib/spendMessage";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 export type Reservation = {
   id: string;
@@ -88,7 +89,7 @@ export async function reserveSpend(
     );
     const { data, error } = await withTimeout(call, RESERVE_TIMEOUT_MS);
     if (error) {
-      console.error(`[spend] reserve_spend failed: ${error.message}`);
+      bestEffortLog("error", `[spend] reserve_spend failed: ${error.message}`);
       return { status: "error" };
     }
     const granted = Granted.safeParse(data);
@@ -112,16 +113,16 @@ export async function reserveSpend(
       };
     }
     // Deliberately not logging `data`: a malformed grant could still carry a token.
-    console.error("[spend] reserve_spend returned an unexpected shape");
+    bestEffortLog("error", "[spend] reserve_spend returned an unexpected shape");
     return { status: "error" };
   } catch (err) {
-    console.error(`[spend] reserve_spend threw: ${err instanceof Error ? err.message : "unknown error"}`);
+    bestEffortLog("error", `[spend] reserve_spend threw: ${err instanceof Error ? err.message : "unknown error"}`);
     if (err instanceof Timeout && call !== undefined) {
       const cleanup = settleLateGrant(call);
       try {
         options.keepAlive?.(cleanup);
       } catch (keepAliveErr) {
-        console.error(
+        bestEffortLog("error", 
           `[spend] could not schedule late-grant cleanup: ${keepAliveErr instanceof Error ? keepAliveErr.message : "unknown error"}`
         );
       }
@@ -137,7 +138,7 @@ async function settleLateGrant(
     const { data } = await call;
     const granted = Granted.safeParse(data);
     if (!granted.success) return;
-    console.error(`[spend] releasing reservation ${granted.data.reservation_id}, granted after the timeout`);
+    bestEffortLog("error", `[spend] releasing reservation ${granted.data.reservation_id}, granted after the timeout`);
     await settleSpend(
       {
         id: granted.data.reservation_id,
@@ -190,13 +191,13 @@ function settleClient(): SupabaseClient | null {
  */
 export async function settleSpend(reservation: Reservation, amountUsd: number | null): Promise<boolean> {
   if (amountUsd === null) {
-    console.error(`[spend] keeping the full reservation ${reservation.id} (no trustworthy total)`);
+    bestEffortLog("error", `[spend] keeping the full reservation ${reservation.id} (no trustworthy total)`);
     return false;
   }
   try {
     const client = settleClient();
     if (client === null) {
-      console.error("[spend] cannot settle: Supabase URL or publishable key is not set");
+      bestEffortLog("error", "[spend] cannot settle: Supabase URL or publishable key is not set");
       return false;
     }
     const { data, error } = await withTimeout(
@@ -208,16 +209,16 @@ export async function settleSpend(reservation: Reservation, amountUsd: number | 
       SETTLE_TIMEOUT_MS
     );
     if (error) {
-      console.error(`[spend] settle_spend failed for ${reservation.id}: ${error.message}`);
+      bestEffortLog("error", `[spend] settle_spend failed for ${reservation.id}: ${error.message}`);
       return false;
     }
     if (data !== true) {
-      console.error(`[spend] settle_spend did not settle ${reservation.id}`);
+      bestEffortLog("error", `[spend] settle_spend did not settle ${reservation.id}`);
       return false;
     }
     return true;
   } catch (err) {
-    console.error(
+    bestEffortLog("error", 
       `[spend] settle_spend threw for ${reservation.id}: ${err instanceof Error ? err.message : "unknown error"}`
     );
     return false;

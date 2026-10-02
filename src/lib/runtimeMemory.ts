@@ -16,14 +16,28 @@
  * exit paths already carry the money.
  */
 
+import { bestEffortLog } from "@/lib/bestEffortLog";
+
 /** Resident set size in whole MB, the figure the platform's limit is stated in. */
 function rssMb(): number {
   return Math.round(process.memoryUsage().rss / 1048576);
 }
 
+/**
+ * Never throws. The marks sit between paid stages and the save, so a failure
+ * here would discard a run's paid work over a diagnostic. Reading the
+ * process's memory is guarded as well as the log line, because it is the one
+ * part bestEffortLog can't cover: arguments are built before it runs.
+ */
 export function memoryMark(stage: string, facts: Record<string, number> = {}): void {
-  const detail = Object.entries(facts)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" ");
-  console.log(`[mem] ${stage} rss=${rssMb()}MB${detail ? " " + detail : ""}`);
+  let line: string;
+  try {
+    const detail = Object.entries(facts)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(" ");
+    line = `[mem] ${stage} rss=${rssMb()}MB${detail ? " " + detail : ""}`;
+  } catch {
+    return;
+  }
+  bestEffortLog("log", line);
 }

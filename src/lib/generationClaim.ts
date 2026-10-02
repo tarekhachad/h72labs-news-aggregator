@@ -15,6 +15,7 @@
 
 import { type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 /**
  * How long this app asks for a claim to be honored before it may be
@@ -98,14 +99,14 @@ export async function releaseGenerationClaim(
     ]);
 
     if (error) {
-      console.error(`[claim] release_generation failed: ${error.message}`);
+      bestEffortLog("error", `[claim] release_generation failed: ${error.message}`);
       return;
     }
     if (data !== true) {
-      console.error("[claim] release_generation released nothing: this claim was already reclaimed");
+      bestEffortLog("error", "[claim] release_generation released nothing: this claim was already reclaimed");
     }
   } catch (err) {
-    console.error(
+    bestEffortLog("error", 
       `[claim] release_generation threw: ${err instanceof Error ? err.message : "unknown error"}`
     );
   } finally {

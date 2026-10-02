@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildUsageRunRecord } from "@/lib/usageRecord";
-import { settleSpend } from "@/lib/spend";
+import { defaultUsageSinks } from "@/lib/usageSinks";
 
-// Every route log line that follows a billed call has to survive a dead
-// console: otherwise a log line, not the pipeline, decides whether paid work
-// is kept and whether the claim and reservation are released.
+// QA round 1 gaps: the digest route's remaining degrade-and-continue catches,
+// each with a fully dead console. Every one of these sits on a path where a
+// throwing log line would turn a run that should finish into a failed one.
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(), getUserProfile: vi.fn(), ingestArticles: vi.fn(), clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(), triageClusters: vi.fn(), writeCard: vi.fn(), rankFrontPage: vi.fn(),
@@ -31,9 +30,9 @@ vi.mock("@/lib/rank", () => ({ rankFrontPage: mocks.rankFrontPage }));
 vi.mock("@/lib/digests", () => ({
   upsertDigestForToday: mocks.upsertDigestForToday, getLatestGeneratedAtForUser: mocks.getLatestGeneratedAtForUser,
   saveGeneratedCards: mocks.saveGeneratedCards, getTodaysCardSummaries: mocks.getTodaysCardSummaries }));
-vi.mock("@/lib/usageRecord", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/usageRecord")>("@/lib/usageRecord");
-  return { ...actual, buildUsageRunRecord: vi.fn(actual.buildUsageRunRecord) };
+vi.mock("@/lib/usageSinks", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/usageSinks")>("@/lib/usageSinks");
+  return { ...actual, defaultUsageSinks: vi.fn(() => [async () => {}]) };
 });
 vi.mock("@/lib/generationClaim", () => ({
   claimGenerationForUser: mocks.claimGenerationForUser, releaseGenerationClaim: mocks.releaseGenerationClaim }));
@@ -41,6 +40,7 @@ vi.mock("@/lib/generationClaim", () => ({
 const CL = [{ topic: "Tech/AI", articles: [{ title: "a", snippet: "s", url: "https://e.com", source: "BBC", topic: "Tech/AI", publishedAt: "2026-07-31T12:00:00Z" }] }];
 const CARD = { id: "c1", topic: "Tech/AI", title: "T", shortSummary: "s.", labels: [], expandedReport: null, sources: [],
   publishedAt: "2026-07-31T12:00:00Z", generatedAt: "x", bookmarked: false, severity: 4, frontPageRank: null };
+const EXISTING = [{ id: "e1", topic: "Tech/AI", shortSummary: "earlier story", severity: 3 }];
 
 function setup() {
   vi.clearAllMocks();
@@ -58,62 +58,59 @@ function setup() {
   mocks.saveGeneratedCards.mockResolvedValue(undefined);
   mocks.upsertDigestForToday.mockResolvedValue({ digestId: "d" });
   mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-07-31T10:00:00Z");
+  for (const level of ["log", "warn", "error"] as const) {
+    vi.spyOn(console, level).mockImplementation(() => {
+      throw new Error("console is dead");
+    });
+  }
 }
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 async function run() {
   const { POST } = await import("@/app/api/digest/route");
   const text = await (await POST()).text();
   return text.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
+function expectFinishedCleanly(lines: { stage: string }[]) {
+  expect(lines.some((l) => l.stage === "error")).toBe(false);
+  expect(lines.at(-1)?.stage).toBe("done");
+  expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
+}
 
-describe("route logs after billed calls", () => {
-  // Restored here rather than after run(), so a test that throws midway
-  // cannot leave a dead console behind for the next one.
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("a failing writeCard + dead console.error still saves the other paid cards", async () => {
+describe("digest route degrade paths with a dead console", () => {
+  it("keeps the paid cards when rankFrontPage throws", async () => {
     setup();
-    mocks.clusterArticles.mockResolvedValue([CL[0], CL[0]]);
-    mocks.filterAlreadyCovered.mockResolvedValue([CL[0], CL[0]]);
-    mocks.writeCard.mockResolvedValueOnce(CARD).mockRejectedValueOnce(new Error("bad"));
-    vi.spyOn(console, "error").mockImplementation((m) => {
-      if (typeof m === "string" && m.startsWith("[digest] writeCard failed")) throw new Error("dead");
-    });
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    mocks.rankFrontPage.mockRejectedValue(new Error("rank broke"));
     const lines = await run();
-    expect(lines.some((l) => l.stage === "error")).toBe(false);
+    expectFinishedCleanly(lines);
     expect(mocks.saveGeneratedCards).toHaveBeenCalledTimes(1);
-    const saved = mocks.saveGeneratedCards.mock.calls[0][2] as { id: string }[];
-    expect(saved.map((c) => c.id)).toEqual([CARD.id]);
+    expect(mocks.saveGeneratedCards.mock.calls[0][2]).toHaveLength(1);
   });
-  it("dead console.log on the per-topic cap line does not discard paid triage", async () => {
+
+  it("finishes the run when cross-run dedup throws", async () => {
     setup();
-    const many = Array.from({ length: 40 }, () => CL[0]);
-    mocks.clusterArticles.mockResolvedValue(many);
-    mocks.filterAlreadyCovered.mockResolvedValue(many);
-    const spy = vi.spyOn(console, "log").mockImplementation((m) => {
-      if (typeof m === "string" && m.startsWith("[digest] Tech/AI: kept")) throw new Error("dead");
+    mocks.getTodaysCardSummaries.mockResolvedValue(EXISTING);
+    mocks.filterAlreadyCovered.mockRejectedValue(new Error("dedup broke"));
+    const lines = await run();
+    expectFinishedCleanly(lines);
+    expect(mocks.writeCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes the run when today's existing cards can't be loaded", async () => {
+    setup();
+    mocks.getTodaysCardSummaries.mockRejectedValue(new Error("db down"));
+    const lines = await run();
+    expectFinishedCleanly(lines);
+    expect(mocks.saveGeneratedCards).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not append an error event after done when building the cost sinks throws", async () => {
+    setup();
+    vi.mocked(defaultUsageSinks).mockImplementationOnce(() => {
+      throw new Error("sinks broke");
     });
     const lines = await run();
-    const reached = spy.mock.calls.some(([m]) => typeof m === "string" && m.startsWith("[digest] Tech/AI: kept"));
-    expect(reached).toBe(true);
-    expect(lines.some((l) => l.stage === "error")).toBe(false);
-  });
-  it("a failed cost record plus a dead console still settles and releases the claim", async () => {
-    setup();
-    vi.mocked(buildUsageRunRecord).mockImplementationOnce(() => {
-      throw new Error("record broke");
-    });
-    for (const level of ["log", "warn", "error"] as const) {
-      vi.spyOn(console, level).mockImplementation(() => {
-        throw new Error("dead");
-      });
-    }
-    const lines = await run();
-    expect(lines.at(-1)?.stage).toBe("done");
-    // No record means no trustworthy total, so the full reservation is kept.
-    expect(settleSpend).toHaveBeenCalledWith(expect.anything(), null);
-    expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
+    expectFinishedCleanly(lines);
   });
 });

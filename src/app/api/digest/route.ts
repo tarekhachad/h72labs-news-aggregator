@@ -200,7 +200,7 @@ async function* runDigestPipeline(
       existingCards = await getTodaysCardSummaries(supabase, digestId);
     } catch (err) {
       existingCardsFetchFailed = true;
-      console.error("[digest] failed to load today's existing cards, proceeding without them:", err);
+      bestEffortLog("error", "[digest] failed to load today's existing cards, proceeding without them:", err);
     }
     // Now decidable: a failed fetch leaves firstOfDay and sameDayTopUp
     // genuinely indistinguishable, which is what `unknown` means here — not
@@ -234,7 +234,7 @@ async function* runDigestPipeline(
           filterAlreadyCovered(clusters, existingCards)
         );
       } catch (err) {
-        console.error("[digest] cross-run dedup failed, proceeding without it:", err);
+        bestEffortLog("error", "[digest] cross-run dedup failed, proceeding without it:", err);
       }
     }
     // Recorded after the catch, so a dedup that failed open reports the
@@ -286,7 +286,7 @@ async function* runDigestPipeline(
     shape.notableCount = notableClusters.length;
     shape.cardsDroppedByCap = cuts.reduce((sum, cut) => sum + cut.dropped, 0);
     for (const cut of cuts) {
-      console.log(
+      bestEffortLog("log", 
         `[digest] ${cut.topic}: kept ${cut.allowance} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
       );
     }
@@ -313,7 +313,7 @@ async function* runDigestPipeline(
       if (result.status === "fulfilled") {
         cards.push({ ...result.value, generatedAt });
       } else {
-        console.error("[digest] writeCard failed:", result.reason);
+        bestEffortLog("error", "[digest] writeCard failed:", result.reason);
         const { cluster } = notableClusters[i];
         cardFailures.push(
           classifyCardFailure(result.reason, modelForCluster(cluster), cluster.articles.length)
@@ -461,7 +461,7 @@ async function* runDigestPipeline(
         crypto.randomUUID()
       );
     } catch (err) {
-      console.error("[digest] failed to build this run's cost record:", err);
+      bestEffortLog("error", "[digest] failed to build this run's cost record:", err);
     }
 
     await settleThenRelease(
@@ -484,7 +484,7 @@ async function* runDigestPipeline(
       try {
         await emitUsageRun(defaultUsageSinks(supabase), record);
       } catch (err) {
-        console.error("[digest] failed to write this run's cost record:", err);
+        bestEffortLog("error", "[digest] failed to write this run's cost record:", err);
       }
     }
   }

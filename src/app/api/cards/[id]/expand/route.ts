@@ -7,6 +7,7 @@ import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import { buildUsageRunRecord, type UsageRunRecord } from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 import { reserveSpend, settleAmount, settleSpend, spendRefusalResponse } from "@/lib/spend";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const CardId = z.string().uuid();
 
@@ -79,7 +80,7 @@ export async function POST(
     );
     generated = true;
   } catch (err) {
-    console.error("[cards/expand] generateExpandedReport failed:", err);
+    bestEffortLog("error", "[cards/expand] generateExpandedReport failed:", err);
     return new Response("Couldn't generate the full report — try again.", { status: 502 });
   } finally {
     // Labelled by what actually happened, matching the digest route: a
@@ -145,7 +146,7 @@ export async function POST(
         crypto.randomUUID()
       );
     } catch (err) {
-      console.error("[cards/expand] failed to build this run's cost record:", err);
+      bestEffortLog("error", "[cards/expand] failed to build this run's cost record:", err);
     }
 
     // Settled before the record is written, the same order as the digest
@@ -155,7 +156,7 @@ export async function POST(
       try {
         await emitUsageRun(defaultUsageSinks(supabase), record);
       } catch (err) {
-        console.error("[cards/expand] failed to write this run's cost record:", err);
+        bestEffortLog("error", "[cards/expand] failed to write this run's cost record:", err);
       }
     }
   }
@@ -180,7 +181,7 @@ export async function POST(
     // The user asked to read the report and got it — a failed cache write
     // shouldn't turn that into an error response. The next expand just
     // regenerates it instead of reading a cached value.
-    console.error("[cards/expand] failed to persist expanded report:", updateError);
+    bestEffortLog("error", "[cards/expand] failed to persist expanded report:", updateError);
   }
 
   return Response.json({ expandedReport });
