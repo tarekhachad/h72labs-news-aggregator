@@ -986,9 +986,9 @@ describe("triage log line", () => {
 
   it("survives a title that throws when read, without losing the batch's other verdicts", async () => {
     // The expensive case. A getter that succeeds while the prompt is built
-    // (so the call is made and BILLED) but throws on this later read would,
-    // if unguarded, escape judgeBatch and discard every verdict in that
-    // already-paid-for response — not just this cluster's.
+    // (so the call is made and BILLED) but throws on this later read must
+    // cost only this headline segment: not the line, and never the verdicts
+    // in that already-paid-for response.
     let reads = 0;
     const poisoned = makeCluster("Tech/AI", "placeholder");
     Object.defineProperty(poisoned.articles[0], "title", {
@@ -1151,9 +1151,8 @@ describe("triage log line", () => {
 
   it("survives a reason that throws when read, without losing the batch's other verdicts", async () => {
     // loggedReason shares loggedHeadline's failure surface exactly — same
-    // unguarded line, same already-billed response — but nothing pinned its
-    // guard: deleting loggedReason's try/catch outright left every other
-    // test in this file green.
+    // line, same already-billed response. The line asserted below pins its
+    // own guard: without it the whole line is lost, not just the reason.
     process.env.TRIAGE_REASONS = "1";
     const poisoned = { index: 1, notable: true, severity: 2 };
     Object.defineProperty(poisoned, "reason", {
@@ -1320,10 +1319,8 @@ describe("triage log line", () => {
   });
 
   it("logs without a title, and without throwing, for a cluster with no articles", async () => {
-    // The load-bearing case. This runs OUTSIDE the guarded console.log, so a
-    // throw here would escape judgeBatch into the split-retry ladder and
-    // re-send a whole batch of already-billed verdicts. Articles is typed
-    // Article[] with no non-empty guarantee, so this has to be total.
+    // Articles is typed Article[] with no non-empty guarantee, so the
+    // headline has to be total: the line still prints, just without it.
     mockParse.mockResolvedValue(verdictsFor(1));
     const { triageClusters } = await import("@/lib/triage");
     const empty: Cluster = { topic: "Tech/AI", articles: [] };

@@ -80,9 +80,25 @@ export function toNdjsonStream<E extends { stage: string }>(
           controller.enqueue(
             encoder.encode(JSON.stringify({ stage: "error", message: DIGEST_FAILED_MESSAGE }) + "\n")
           );
-          controller.close();
         } catch {
           // Client already disconnected/canceled the stream — nothing left to tell it.
+        }
+        // A throw out of the pipeline has already finished the generator and
+        // run its finally, so this is a no-op then. A throw from this side of
+        // the yield (an event JSON.stringify can't serialise) has not: the
+        // generator is still paused at its yield, holding the spend
+        // reservation and the generation claim until something resumes it.
+        // Resumed before the close, as the done branch does, so the response
+        // only ends once the claim is released.
+        try {
+          await events.return?.(undefined);
+        } catch (cleanupErr) {
+          bestEffortLog("error", "[digest] cleanup after a failed run threw:", cleanupErr);
+        }
+        try {
+          controller.close();
+        } catch {
+          // Already closed or cancelled — nothing left to end.
         }
       }
     },
@@ -103,7 +119,14 @@ export function toNdjsonStream<E extends { stage: string }>(
       // Best-effort: stops the pipeline from starting its next stage once
       // the client has gone away. A stage already in flight (e.g. a Claude
       // call mid-request) still runs to completion — this isn't a hard abort.
-      events.return?.(undefined);
+      //
+      // Not awaited, on purpose: the return only lands once that in-flight
+      // stage finishes, and cancel() must not wait on a paid call. But its
+      // promise is the only place a throw from the generator's finally ends
+      // up, so it needs a handler or that throw is an unhandled rejection.
+      events.return?.(undefined).catch((err: unknown) => {
+        bestEffortLog("error", "[digest] cleanup after a client disconnect threw:", err);
+      });
     },
   });
 }

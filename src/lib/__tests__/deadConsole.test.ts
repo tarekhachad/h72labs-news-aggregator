@@ -113,7 +113,9 @@ describe("toNdjsonStream with a dead console", () => {
 // The guarantee above holds only while every log line in these files goes
 // through bestEffortLog. A bare console call slipped back in would pass every
 // other test here unless it happened to sit on a path one of them reaches.
-describe("files on the paid cleanup path", () => {
+// triage.ts logs after a paid call; embeddings.ts logs inside the model load,
+// where a throw would fail clustering for the run.
+describe("files whose logs must not throw", () => {
   const FILES = [
     "src/app/api/digest/route.ts",
     "src/app/api/cards/[id]/expand/route.ts",
@@ -121,6 +123,8 @@ describe("files on the paid cleanup path", () => {
     "src/lib/generationClaim.ts",
     "src/lib/ndjsonStream.ts",
     "src/lib/runtimeMemory.ts",
+    "src/lib/triage.ts",
+    "src/lib/embeddings.ts",
   ];
 
   it.each(FILES)("%s has no bare console call", (file) => {

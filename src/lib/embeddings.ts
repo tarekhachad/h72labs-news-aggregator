@@ -1,5 +1,6 @@
 import path from "node:path";
 import { env, pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 // The model is vendored under models/ and loaded from there, never fetched or
 // written at runtime. A deployed serverless function's filesystem is read-only
@@ -18,12 +19,26 @@ env.localModelPath = path.join(process.cwd(), "models");
 // Loading the model is slow, so it's cached across calls within the same
 // server instance instead of reloaded per request. Shared by cluster.ts and
 // dedup.ts so both use one loaded instance instead of two.
+//
+// Only a load that works stays cached. The promise is stored before it
+// settles, so a failed load would otherwise be handed to every later caller:
+// one bad first attempt (a log line that threw, a model file read that
+// failed) and every digest on that warm instance fails at clustering until a
+// cold start. A failed load is dropped instead, and the next call tries again.
 let embedderPromise: Promise<FeatureExtractionPipeline> | null = null;
 function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!embedderPromise) {
-    embedderPromise = reportBackend().then(() =>
+    const loading = reportBackend().then(() =>
       pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2")
     );
+    embedderPromise = loading;
+    // Callers waiting on this load still see its rejection; this branch only
+    // clears the cache, and only of the load it was attached to. It is
+    // attached before any caller awaits, so it runs first: a caller that
+    // retries straight from its own catch already gets a fresh load.
+    loading.catch(() => {
+      if (embedderPromise === loading) embedderPromise = null;
+    });
   }
   return embedderPromise;
 }
@@ -40,11 +55,25 @@ function getEmbedder(): Promise<FeatureExtractionPipeline> {
 async function reportBackend(): Promise<void> {
   try {
     const ort = (await import("onnxruntime-node")) as { version?: string };
-    console.log(`[mem] onnx backend=native onnxruntime-node version=${ort.version ?? "unknown"}`);
+    bestEffortLog("log", `[mem] onnx backend=native onnxruntime-node version=${ort.version ?? "unknown"}`);
   } catch (err) {
-    console.log(
-      `[mem] onnx backend=wasm fallback — onnxruntime-node did not load: ${err instanceof Error ? err.message : "unknown error"}`
+    bestEffortLog(
+      "log",
+      `[mem] onnx backend=wasm fallback — onnxruntime-node did not load: ${loadFailureReason(err)}`
     );
+  }
+}
+
+/**
+ * The import error's message, for the line above. Total, because it is built
+ * outside bestEffortLog's guard and reportBackend must never reject: a
+ * diagnostic that failed would fail the model load it only reports on.
+ */
+function loadFailureReason(err: unknown): string {
+  try {
+    return err instanceof Error ? err.message : "unknown error";
+  } catch {
+    return "unknown error";
   }
 }
 

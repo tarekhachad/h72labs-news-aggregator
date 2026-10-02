@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
 import { recordCall } from "@/lib/usageCollector";
 import { FAIL_CLOSED, type TriageOutcome } from "@/lib/triageOutcome";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const client = new Anthropic();
 
@@ -221,9 +222,8 @@ function flattenForLog(value: string, maxPoints: number): string {
 /**
  * The model's reason for a verdict, when TRIAGE_REASONS=1 requested one.
  *
- * Total for the same reason loggedHeadline is — it runs on the same
- * unguarded line, where a throw would escape judgeBatch and re-send a whole
- * batch of already-billed verdicts. `reason` is `z.string()` with no `.max()`
+ * Total for the same reason loggedHeadline is: a throw here would lose the
+ * whole verdict line rather than just this segment. `reason` is `z.string()` with no `.max()`
  * (deliberately: a length violation would fail validation and kill a batch of
  * paid verdicts over a diagnostic field), so its length and contents are
  * whatever the model emitted, and the 12-word cap is a prompt instruction
@@ -254,25 +254,19 @@ function loggedReason(verdict: object): string {
  * per-verdict reasons. With this, a run at TRIAGE_REASONS=0 still yields a
  * full topic/title/verdict/severity table for every cluster.
  *
- * Never throws, and it has to not: this is called where `line` is built,
- * deliberately OUTSIDE the guarded console.log below, so anything escaping
- * here would propagate out of judgeBatch into the split-retry ladder and
- * re-send a whole batch of already-billed verdicts. The failure that makes
- * this worth being paranoid about is a `title` getter that succeeds while
- * clusterContext builds the prompt (so the call IS made and billed) and
- * throws on this later read: the whole response's verdicts are discarded,
- * not just this cluster's.
+ * Never throws. judgeBatch builds its verdict line inside a guard, so a throw
+ * here could no longer re-send a batch of already-billed verdicts, but it
+ * would still cost the whole line instead of just the headline. The failure
+ * that makes this worth being paranoid about is a `title` getter that
+ * succeeds while clusterContext builds the prompt (so the call IS made and
+ * billed) and throws on this later read.
  *
  * Hence the whole body sits in one try/catch rather than just the property
  * read — the transform calls that follow it (`String.prototype.replace` and
  * `.trim`, `Array.from`, `Array.prototype.slice`/`.join`, all via
  * flattenForLog) can throw just as the read can if anything has tampered
- * with those prototypes.
- * This is a deliberate exception to the narrow-guard rule the caller
- * follows: there, a guard around the index lookup would disguise a real
- * mapping bug as a lost log line; here, the function's entire contract is
- * "return a string, or nothing" and there is no in-band failure worth
- * surfacing.
+ * with those prototypes. The function's entire contract is "return a
+ * string, or nothing", so there is no in-band failure worth surfacing.
  *
  * Note the `cluster?.` chain is defence only — planTriageBatches leaves a
  * null cluster out of every batch, so one never reaches this.
@@ -364,28 +358,23 @@ async function judgeBatch(
       severity: verdict.severity,
     });
 
-    // Built outside the guard below on purpose. The guard exists for one
-    // thing — console.log itself failing — and widening it to cover this
-    // lookup would swallow a genuine TypeError too, quietly turning "the
-    // index mapping is broken" into "a log line went missing." The
-    // range check above is what guarantees this lookup resolves.
+    // The verdict is recorded above; everything from here only reports on
+    // it. This runs after the call has resolved and been billed, so a throw
+    // while building the line would be indistinguishable from the API call
+    // failing and would send a whole batch of already-paid-for verdicts back
+    // through the retry ladder. Hence the guard around building the line,
+    // not just around printing it (bestEffortLog covers that).
     //
-    // That's also why loggedHeadline — and loggedReason, called on the same
-    // line — are total rather than relying on this guard: sitting here,
-    // anything either threw would escape into the retry ladder and re-send a
-    // batch of already-billed verdicts. Both close their own failure modes
-    // internally instead (see their docstrings), so their safety doesn't
-    // depend on the range check above holding.
-    const cluster = clusters[indices[verdict.index]];
-    const line = `[triage] ${cluster.topic} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`;
-
-    // Guarded: this runs after the call has resolved and been billed, so an
-    // unguarded throw here would be indistinguishable from the API call
-    // failing and would send 20 already-paid-for verdicts back through the
-    // retry ladder. Same reasoning as usageCollector.ts's guarded logging;
-    // ROADMAP.md tracks the remaining unguarded instances of this shape.
+    // The topic comes from the argument, already validated at planning,
+    // rather than a second read of `cluster.topic`: a getter that worked
+    // then can throw now. loggedHeadline and loggedReason are total on their
+    // own as well (see their docstrings).
     try {
-      console.log(line);
+      const cluster = clusters[indices[verdict.index]];
+      bestEffortLog(
+        "log",
+        `[triage] ${topic} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`,
+      );
     } catch {
       // A lost log line must not cost a paid verdict.
     }
@@ -418,15 +407,7 @@ async function judgeWithSplitRetry(
     // triageClusters, and break the never-rejects contract that the route
     // gave up its own per-cluster catch to rely on — turning one failed
     // batch into a failed digest.
-    try {
-      console.error(
-        `[triage] batch of ${indices.length} for ${topic} failed:`,
-        err,
-      );
-    } catch {
-      // Deliberately empty: the batch is already being handled by falling
-      // through to the split-retry below.
-    }
+    bestEffortLog("error", `[triage] batch of ${indices.length} for ${topic} failed:`, err);
   }
 
   const unjudged = indices.filter((i) => !outcomes.has(i));
