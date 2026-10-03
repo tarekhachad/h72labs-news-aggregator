@@ -34,8 +34,8 @@ export default async function HistoryDatePage({
     redirect("/login");
   }
 
-  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
-  if (topics.length === 0 || preferredSources.length === 0) {
+  const { topics, timeZone } = await getUserProfile(supabase, user.id);
+  if (topics.length === 0) {
     redirect("/onboarding");
   }
 

@@ -14,7 +14,7 @@ export default async function OnboardingPage({
         <div className="text-center">
           <h1 className="text-2xl font-semibold">Set up your briefing</h1>
           <p className="mt-2 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-            Pick the topics and sources you want your daily digest built from.
+            Pick the topics your daily digest is built from, and any sources you prefer.
           </p>
         </div>
 

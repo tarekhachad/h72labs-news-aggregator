@@ -1,6 +1,10 @@
 import { TOPICS, SOURCES, type Topic, type Source } from "@/types";
+import { MAX_TOPICS, MIN_TOPICS } from "@/lib/profile";
 import { SubmitButton } from "@/components/SubmitButton";
+import { MultiSelect } from "@/components/ui/multi-select";
 
+// The two pickers submit as repeated `topics` / `preferredSources` form
+// fields, the names the onboarding and profile actions read with getAll().
 export function PreferencesForm({
   action,
   defaultTopics = [],
@@ -16,52 +20,28 @@ export function PreferencesForm({
 }) {
   return (
     <form action={action} className="flex flex-col gap-8">
-      <fieldset>
-        <legend className="mb-3 text-sm font-medium">Topics</legend>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {TOPICS.map((topic) => (
-            <label
-              key={topic}
-              // Colors are Tailwind arbitrary-value classes here, not the
-              // inline `style` this codebase otherwise defaults to for
-              // design-token colors — an inline style would always win
-              // over the has-[:checked]: class below regardless of
-              // specificity, silently defeating the checked-state toggle.
-              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-card-foreground)] transition-colors duration-150 has-[:checked]:border-[var(--color-primary)] has-[:checked]:bg-[var(--color-primary)] has-[:checked]:text-[var(--color-on-primary)]"
-            >
-              <input
-                type="checkbox"
-                name="topics"
-                value={topic}
-                defaultChecked={defaultTopics.includes(topic)}
-                className="cursor-pointer"
-              />
-              {topic}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <MultiSelect
+        id="preferences-topics"
+        name="topics"
+        label="Topics"
+        hint={`Pick ${MIN_TOPICS} to ${MAX_TOPICS}. Type to search, or scroll the list.`}
+        items={TOPICS}
+        defaultValue={defaultTopics}
+        max={MAX_TOPICS}
+        noun="topics"
+        placeholder="Search topics"
+      />
 
-      <fieldset>
-        <legend className="mb-3 text-sm font-medium">Preferred sources</legend>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {SOURCES.map((source) => (
-            <label
-              key={source}
-              className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-card-foreground)] transition-colors duration-150 has-[:checked]:border-[var(--color-primary)] has-[:checked]:bg-[var(--color-primary)] has-[:checked]:text-[var(--color-on-primary)]"
-            >
-              <input
-                type="checkbox"
-                name="preferredSources"
-                value={source}
-                defaultChecked={defaultSources.includes(source)}
-                className="cursor-pointer"
-              />
-              {source}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <MultiSelect
+        id="preferences-sources"
+        name="preferredSources"
+        label="Preferred sources"
+        hint="Optional. Pick none to read every source for your topics."
+        items={SOURCES}
+        defaultValue={defaultSources}
+        noun="sources"
+        placeholder="Search sources"
+      />
 
       {error && (
         <p className="text-center text-sm" style={{ color: "var(--color-destructive)" }}>

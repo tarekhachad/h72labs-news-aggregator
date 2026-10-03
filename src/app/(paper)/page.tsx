@@ -17,12 +17,11 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
+  const { topics, timeZone } = await getUserProfile(supabase, user.id);
 
-  // Gate on both — a profile with topics but zero preferred sources would
-  // otherwise pass this check and then silently produce an empty digest
-  // forever (ingestArticles filters strictly by preferred source).
-  if (topics.length === 0 || preferredSources.length === 0) {
+  // Topics only: they define the digest. Zero preferred sources is a
+  // finished profile that means "every source for my topics".
+  if (topics.length === 0) {
     redirect("/onboarding");
   }
 

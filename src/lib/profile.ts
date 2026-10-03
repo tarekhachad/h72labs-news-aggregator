@@ -7,19 +7,30 @@ import { DEFAULT_TIME_ZONE } from "@/lib/localDate";
 // of those "use server" files since such files may only export async
 // functions, not plain values like a zod schema.
 //
-// Deduping after the min-length check matters: user_topics/user_preferred_sources
+// Deduping before the insert matters: user_topics/user_preferred_sources
 // have a composite (user_id, topic) primary key, so a duplicate value reaching
 // saveUserProfile's insert would violate it — and since delete-then-insert
 // already committed the delete by that point, the failed insert would leave
 // the user with zero saved preferences instead of their prior selection.
+//
+// The limits count distinct picks, so a duplicate can neither make up the
+// third topic nor push a tenth over. Sources have no minimum: zero preferred
+// sources means every source for the reader's topics.
+export const MIN_TOPICS = 3;
+export const MAX_TOPICS = 10;
+
 export const ProfileInput = z.object({
   topics: z
     .array(z.enum(TOPICS))
-    .min(1, "Pick at least one topic")
-    .transform((topics) => Array.from(new Set(topics))),
+    .transform((topics) => Array.from(new Set(topics)))
+    .pipe(
+      z
+        .array(z.enum(TOPICS))
+        .min(MIN_TOPICS, `Pick at least ${MIN_TOPICS} topics`)
+        .max(MAX_TOPICS, `Pick at most ${MAX_TOPICS} topics`)
+    ),
   preferredSources: z
     .array(z.enum(SOURCES))
-    .min(1, "Pick at least one source")
     .transform((sources) => Array.from(new Set(sources))),
 });
 
@@ -79,9 +90,10 @@ export async function getUserProfile(
   if (topicError) throw new Error(`getUserProfile: failed to load topics: ${topicError.message}`);
   if (sourceError) throw new Error(`getUserProfile: failed to load sources: ${sourceError.message}`);
 
-  // Applied to preferredSources too. Its order is genuinely irrelevant to
-  // today's consumers (a Set in ingest.ts, .includes() in PreferencesForm) —
-  // but that's a property of today's callers, not of this function. One rule
+  // Applied to preferredSources too. The preference pickers show saved picks
+  // as chips in the order given here, and other consumers (a Set in
+  // ingest.ts) don't care — but that's a property of today's callers, not
+  // of this function. One rule
   // for both arrays is a contract that fits in the head, and the next
   // consumer that maps over sources inherits the fix instead of
   // rediscovering the bug.
@@ -143,11 +155,16 @@ export async function saveUserProfile(
     return { error: "Couldn't save your preferences — try again." };
   }
 
+  // Zero preferred sources is a valid profile, and the delete above already
+  // leaves it saved. The insert is skipped rather than sent with an empty
+  // body, whose handling is PostgREST's to decide, not ours.
   const [insertTopics, insertSources] = await Promise.all([
     supabase.from("user_topics").insert(topics.map((topic) => ({ user_id: userId, topic }))),
-    supabase
-      .from("user_preferred_sources")
-      .insert(preferredSources.map((source) => ({ user_id: userId, source }))),
+    preferredSources.length === 0
+      ? { error: null }
+      : supabase
+          .from("user_preferred_sources")
+          .insert(preferredSources.map((source) => ({ user_id: userId, source }))),
   ]);
   if (insertTopics.error || insertSources.error) {
     return { error: "Couldn't save your preferences — try again." };

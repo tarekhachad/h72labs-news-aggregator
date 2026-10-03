@@ -29,7 +29,7 @@ export default async function HistoryTopicPage({
   }
 
   const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
-  if (topics.length === 0 || preferredSources.length === 0) {
+  if (topics.length === 0) {
     redirect("/onboarding");
   }
 
@@ -49,7 +49,13 @@ export default async function HistoryTopicPage({
   return (
     <>
       <TimeZoneSync storedTimeZone={timeZone} />
-      <TopicPage cards={cards} topic={topic} userTopics={topics} basePath={`/history/${date}`} />
+      <TopicPage
+        cards={cards}
+        topic={topic}
+        userTopics={topics}
+        preferredSources={preferredSources}
+        basePath={`/history/${date}`}
+      />
     </>
   );
 }

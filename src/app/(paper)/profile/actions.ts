@@ -29,10 +29,11 @@ export async function updatePreferences(formData: FormData) {
 
   const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources);
   if (error) {
-    // If this leaves the user with an empty preference set, the home page's
-    // own gate (topics.length === 0) will bounce them to /onboarding instead
-    // of back here — pre-existing behavior of the shared delete-then-insert
-    // path, not something this action can fix on its own.
+    // A failure after the delete can leave the user with no saved topics;
+    // the page gates (topics.length === 0) then send them to /onboarding
+    // rather than back here. Zero sources alone never does: it is a valid
+    // profile. Fixing the topics case needs an atomic save, which the shared
+    // delete-then-insert path doesn't have.
     redirect(`/profile?prefsError=${encodeURIComponent(error)}`);
   }
 

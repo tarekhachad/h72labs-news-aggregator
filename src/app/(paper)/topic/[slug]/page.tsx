@@ -33,7 +33,7 @@ export default async function TopicRoutePage({
   // Matches Home's gate — a direct hit on this route (stale bookmark, typed
   // URL) before onboarding is complete would otherwise show a misleading
   // empty "no notable news" page instead of routing to setup.
-  if (topics.length === 0 || preferredSources.length === 0) {
+  if (topics.length === 0) {
     redirect("/onboarding");
   }
 
@@ -55,6 +55,7 @@ export default async function TopicRoutePage({
         cards={cards}
         topic={topic}
         userTopics={topics}
+        preferredSources={preferredSources}
         digestExistsToday={digestExistsToday}
       />
     </>
