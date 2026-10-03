@@ -19,7 +19,7 @@ Measured live on 2026-10-02 from a laptop with `scripts/verify-feeds.mts`. A Ver
 
 **A source ships only with at least one passing feed.** An outlet with only an all-news feed is filed only where that is accurate (a world-news feed under Geopolitics), never under a narrower topic.
 
-**Terms and robots rules are respected.** Reuters and AP forbid automated collection and are not included. A site that blocks our requests is left out; no block is worked around. The script enforces robots.txt rules; terms written as prose (often in robots.txt comments) were read by hand for every host in the catalog, and a new outlet whose terms forbid automated collection was left out. Several outlets that were already in the catalog carry similar prose; see *Outlet terms: a decision for Tarek* below. AllAfrica's RSS terms ask for credit and a link to its home page, which the card's source link to the article provides.
+**Terms and robots rules are respected.** Reuters and AP forbid automated collection and are not included. A site that blocks our requests is left out; no block is worked around. The script enforces robots.txt rules; terms written as prose (often in robots.txt comments) were read by hand for every host in the catalog, and a new outlet whose terms forbid automated collection was left out. Several outlets that were already in the catalog carry similar prose; see *Outlet terms* below. AllAfrica's RSS terms ask for credit and a link to its home page, which the card's source link to the article provides.
 
 ## How feeds are ordered within a topic
 
@@ -93,7 +93,9 @@ These passed the final run but sit close to a limit. Re-run the script before re
 - **Partly on topic:** IGN's all-content feed (about half TV and merchandise deals), NYT Energy & Environment under Energy & Oil (mostly climate policy), Fortune under US Finance (mostly AI in business), The Economist's International section under Geopolitics (global social trends), and Politico Europe, about a third of whose items are in German or French.
 - **The same feed under two topics:** Bloomberg Markets (US Finance, World Finance, Markets & Investing), BBC Business and The Economist's finance section (World Finance, Economy), CBS MoneyWatch (US Finance, Personal Finance), Carbon Brief (Climate, Energy Transition), InsideEVs (Energy Transition, Automotive), The Diplomat (Geopolitics, Asia-Pacific), Engadget (Tech/AI, Consumer Tech). Ingest keeps an article only the first time it sees its link, so a reader with both topics gets those articles under the topic that comes first.
 
-## Outlet terms: a decision for Tarek
+## Outlet terms
+
+**Decided by Tarek 2026-10-03: keep them (option A).** The outlets below stay in the catalog: their feeds are published and their robots rules allow them, though their terms prose restricts automated or AI use. Recorded in the vault's decision log. New outlets with such terms were left out.
 
 The brief says to skip any outlet whose terms forbid automated collection. Reading every catalog host's robots.txt comments found that prose on outlets that were in the catalog before this change, which this change kept as they were:
 
@@ -786,9 +788,9 @@ On judgement:
 - **Not news reporting:** The Conversation (academic commentary on every subject), Rice Media, Life in Norway, Keep Talking Greece, Polish News, Vindobona and Brno Daily (lifestyle or expatriate sites).
 - **Unreliable on the final run:** Mothership (Singapore), whose feed parsed in one run and failed the next with a character the parser rejects; Dakaractu (Senegal), which dropped the connection on the last two runs; NewsDay (Zimbabwe), which began refusing our requests (403); Nile Post (Uganda), which sends headlines only.
 
-### Judgement calls for Tarek
+### Judgement calls
 
-- **Countries that need The Guardian to reach 3:** Australia, Bangladesh, Iran, Iraq, Nepal, Palestine and South Korea. If *Outlet terms: a decision for Tarek* above ends with The Guardian removed, these seven drop out unless another feed is found. Mali and Algeria also use Le Monde, and the United States uses the NYT, but each still has 3 without them.
+- **Countries that need The Guardian to reach 3:** Australia, Bangladesh, Iran, Iraq, Nepal, Palestine and South Korea. They stay under Tarek's decision to keep The Guardian (*Outlet terms* above); if that decision is ever reversed, these seven drop out unless another feed is found. Mali and Algeria also use Le Monde, and the United States uses the NYT, but each still has 3 without them.
 - **State-owned or state-aligned outlets kept,** because each is a main national outlet in a country with an independent press alongside it, or the only English-language source: Anadolu Agency and Daily Sabah (Turkey), Fana (Ethiopia), Sidwaya (Burkina Faso), Daily News (Tanzania), KBC (Kenya), APS (Senegal), Antara (Indonesia), Andina (Peru), Agência Brasil (Brazil), Ukrinform (Ukraine), BTA (Bulgaria), Khmer Times (Cambodia), RTHK (Hong Kong).
 - **Advocacy outlets kept:** Mondoweiss and +972 Magazine (Palestine), JNS (Israel), Hungarian Conservative (Hungary).
 - **Places that are not UN member states:** Palestine, Hong Kong and Puerto Rico are offered alongside countries, since a reader looks for them in the same list.
