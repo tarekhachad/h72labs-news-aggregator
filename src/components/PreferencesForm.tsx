@@ -1,37 +1,28 @@
-import { TOPICS, SOURCES, type Topic, type Source } from "@/types";
-import { MAX_TOPICS, MIN_TOPICS } from "@/lib/profile";
+import { SOURCES, type Topic, type Source } from "@/types";
 import { SubmitButton } from "@/components/SubmitButton";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { COUNTRIES_TOPIC } from "@/config/countries";
+import { TopicPickers } from "@/components/TopicPickers";
 
-// The two pickers submit as repeated `topics` / `preferredSources` form
-// fields, the names the onboarding and profile actions read with getAll().
+// The pickers submit as repeated `topics` / `countries` / `preferredSources`
+// form fields, the names the onboarding and profile actions read with getAll().
 export function PreferencesForm({
   action,
   defaultTopics = [],
+  defaultCountries = [],
   defaultSources = [],
   submitLabel,
   error,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   defaultTopics?: Topic[];
+  defaultCountries?: string[];
   defaultSources?: Source[];
   submitLabel: string;
   error?: string;
 }) {
   return (
     <form action={action} className="flex flex-col gap-8">
-      <MultiSelect
-        id="preferences-topics"
-        name="topics"
-        label="Topics"
-        hint={`Pick ${MIN_TOPICS} to ${MAX_TOPICS}. Type to search, or scroll the list.`}
-        items={TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC)}
-        defaultValue={defaultTopics}
-        max={MAX_TOPICS}
-        noun="topics"
-        placeholder="Search topics"
-      />
+      <TopicPickers defaultTopics={defaultTopics} defaultCountries={defaultCountries} />
 
       <MultiSelect
         id="preferences-sources"

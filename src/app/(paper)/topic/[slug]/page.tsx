@@ -8,8 +8,11 @@ import { TimeZoneSync } from "@/components/TimeZoneSync";
 
 export default async function TopicRoutePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  /** `country` filters the Countries page; see TopicPage. */
+  searchParams?: Promise<{ country?: string | string[] }>;
 }) {
   const { slug } = await params;
   const topic = slugToTopic(slug);
@@ -48,6 +51,8 @@ export default async function TopicRoutePage({
     digestExistsForDate(supabase, user.id, today).catch(() => true),
   ]);
 
+  const country = (await searchParams)?.country;
+
   return (
     <>
       <TimeZoneSync storedTimeZone={timeZone} />
@@ -56,6 +61,7 @@ export default async function TopicRoutePage({
         topic={topic}
         userTopics={topics}
         preferredSources={preferredSources}
+        country={typeof country === "string" ? country : undefined}
         digestExistsToday={digestExistsToday}
       />
     </>

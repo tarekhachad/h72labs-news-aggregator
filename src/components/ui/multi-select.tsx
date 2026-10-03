@@ -22,6 +22,10 @@ import {
  * `max` stops further picks in the UI once reached (already-picked items
  * can still be removed). A default selection over `max` is kept as given,
  * with a notice asking the reader to trim it; the server enforces the limit.
+ *
+ * Two pickers can share one limit: each passes `countOf`, which counts both
+ * pickers' picks from its own, and the second passes `counterId` to be
+ * described by the first one's counter instead of showing its own.
  */
 export function MultiSelect<T extends string>({
   id,
@@ -33,6 +37,9 @@ export function MultiSelect<T extends string>({
   max,
   noun,
   placeholder,
+  countOf = (picked) => picked.length,
+  onValueChange,
+  counterId,
 }: {
   id: string
   name: string
@@ -45,12 +52,19 @@ export function MultiSelect<T extends string>({
   /** Plural noun for the counter and notices, e.g. "topics". */
   noun: string
   placeholder: string
+  /** What the counter shows and `max` limits, given this picker's picks. Defaults to how many are picked. */
+  countOf?: (picked: readonly T[]) => number
+  /** Called with every accepted change, for a parent that needs the picks. */
+  onValueChange?: (value: T[]) => void
+  /** Id of another picker's counter: this picker then shows no counter or over-limit notice of its own, and is described by that one. */
+  counterId?: string
 }) {
   const [value, setValue] = React.useState<T[]>(() => [...defaultValue])
   const chipsRef = React.useRef<HTMLDivElement>(null)
 
-  const atMax = max !== undefined && value.length >= max
-  const overMax = max !== undefined && value.length > max
+  const count = countOf(value)
+  const atMax = max !== undefined && count >= max
+  const overMax = max !== undefined && count > max
 
   function handleValueChange(next: T[], details: ComboboxPrimitive.Root.ChangeEventDetails) {
     // Base UI clears every pick on Escape in a closed list. Here that would
@@ -72,8 +86,9 @@ export function MultiSelect<T extends string>({
     }
     // Disabled items already stop a pick past the limit; this also covers
     // any path that adds a value without going through an item.
-    if (max !== undefined && next.length > max && next.length > value.length) return
+    if (max !== undefined && next.length > value.length && (atMax || countOf(next) > max)) return
     setValue(next)
+    onValueChange?.(next)
   }
 
   // Enter in a text input submits its form unless the keydown is
@@ -88,7 +103,7 @@ export function MultiSelect<T extends string>({
   }
 
   const hintId = `${id}-hint`
-  const countId = `${id}-count`
+  const countId = counterId ?? `${id}-count`
 
   return (
     <div className="flex flex-col gap-2">
@@ -96,14 +111,16 @@ export function MultiSelect<T extends string>({
         <label htmlFor={id} className="text-sm font-medium">
           {label}
         </label>
-        <span
-          id={countId}
-          aria-live="polite"
-          className="text-sm tabular-nums"
-          style={{ color: overMax ? "var(--color-destructive)" : "var(--color-muted-foreground)" }}
-        >
-          {max === undefined ? `${value.length} selected` : `${value.length} of ${max}`}
-        </span>
+        {counterId === undefined && (
+          <span
+            id={countId}
+            aria-live="polite"
+            className="text-sm tabular-nums"
+            style={{ color: overMax ? "var(--color-destructive)" : "var(--color-muted-foreground)" }}
+          >
+            {max === undefined ? `${count} selected` : `${count} of ${max}`}
+          </span>
+        )}
       </div>
       <p id={hintId} className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
         {hint}
@@ -147,9 +164,9 @@ export function MultiSelect<T extends string>({
         </ComboboxContent>
       </Combobox>
 
-      {overMax && (
+      {overMax && counterId === undefined && (
         <p role="status" className="text-sm" style={{ color: "var(--color-destructive)" }}>
-          {`You follow ${value.length} ${noun}; the limit is now ${max}. Remove ${value.length - max} before you next save.`}
+          {`You follow ${count} ${noun}; the limit is now ${max}. Remove ${count - max} before you next save.`}
         </p>
       )}
     </div>

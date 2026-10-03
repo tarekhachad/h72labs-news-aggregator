@@ -5,6 +5,7 @@ import type { Card } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
 import { expandErrorMessage } from "@/lib/spendMessage";
 import { safeExternalHref } from "@/lib/safeHref";
+import { cardTopicLabel } from "@/components/cardTopicLabel";
 
 /**
  * Renders one story card: the always-visible short summary, the lazy
@@ -90,7 +91,7 @@ export function CardItem({
           className="inline-block rounded-full px-3 py-1 text-xs font-medium"
           style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
         >
-          {card.topic}
+          {cardTopicLabel(card)}
         </span>
         <div className="flex items-center gap-3">
           <span className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>

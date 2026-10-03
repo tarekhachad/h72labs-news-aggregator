@@ -1,0 +1,257 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { TOPICS, type Topic } from "@/types";
+
+vi.mock("@/config/countries", async (importActual) => ({
+  ...(await importActual<typeof import("@/config/countries")>()),
+  COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Chad", "Mali", "Togo", "Niger"],
+}));
+
+const { COUNTRIES_TOPIC } = await import("@/config/countries");
+const { PreferencesForm } = await import("@/components/PreferencesForm");
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let container: HTMLDivElement;
+let root: Root;
+let submitted: FormData[];
+
+beforeEach(() => {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  submitted = [];
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  document.body.innerHTML = "";
+});
+
+async function renderForm(defaults: { topics?: Topic[]; countries?: string[] } = {}) {
+  await act(async () => {
+    root.render(
+      <PreferencesForm
+        action={(formData) => {
+          submitted.push(formData);
+        }}
+        defaultTopics={defaults.topics}
+        defaultCountries={defaults.countries}
+        submitLabel="Save"
+      />
+    );
+  });
+}
+
+const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
+const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement | null;
+const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+async function key(target: Element, k: string) {
+  const event = new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+  await act(async () => {
+    target.dispatchEvent(event);
+  });
+  await flush();
+  return event.defaultPrevented;
+}
+
+async function type(input: HTMLInputElement, text: string) {
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  await act(async () => {
+    setValue.call(input, text);
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        inputType: text === "" ? "deleteContentBackward" : "insertText",
+        data: text,
+      })
+    );
+  });
+  await flush();
+}
+
+async function open(input: HTMLInputElement) {
+  await act(async () => input.focus());
+  await key(input, "ArrowDown");
+}
+
+const optionEl = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')].find(
+    (o) => o.textContent === label
+  );
+const topicsList = TOPICS.filter((t) => t !== COUNTRIES_TOPIC);
+const counter = () => document.getElementById("preferences-topics-count")!.textContent;
+const fieldValues = (name: string) =>
+  [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)].map((i) => i.value);
+const notices = () =>
+  [...container.querySelectorAll('p[role="status"]')].filter((p) => p.textContent?.includes("limit is now"));
+const removeChip = async (label: string) => {
+  await act(async () =>
+    document.querySelector<HTMLButtonElement>(`[aria-label="Remove ${label}"]`)!.click()
+  );
+  await flush();
+};
+async function searchAndEnter(input: HTMLInputElement, text: string) {
+  await act(async () => input.focus());
+  await type(input, text);
+  return key(input, "Enter");
+}
+async function submit() {
+  await act(async () => container.querySelector("form")!.requestSubmit());
+  await flush();
+  return submitted.at(-1)!;
+}
+
+describe("QA: countries picker keyboard rules", () => {
+  it("Enter on an already-picked highlighted country never removes it", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
+    const input = countriesInput()!;
+    expect(await searchAndEnter(input, "Kenya")).toBe(true);
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+    await key(input, "Enter");
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("Enter on the already-picked Countries topic never unpicks it or drops its countries", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
+    expect(await searchAndEnter(topicsInput(), "Countries")).toBe(true);
+    expect(fieldValues("topics")).toContain(COUNTRIES_TOPIC);
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("at the limit, clicking or Entering a disabled country picks nothing and never submits", async () => {
+    await renderForm({
+      topics: [...topicsList.slice(0, 7), COUNTRIES_TOPIC],
+      countries: ["Kenya", "Morocco", "Uganda"],
+    });
+    expect(counter()).toBe("10 of 10");
+    const input = countriesInput()!;
+    await open(input);
+    await act(async () => optionEl("Ghana")!.click());
+    await flush();
+    expect(fieldValues("countries")).toEqual(["Kenya", "Morocco", "Uganda"]);
+    await key(input, "Escape");
+    expect(await searchAndEnter(input, "Ghana")).toBe(true);
+    expect(fieldValues("countries")).toEqual(["Kenya", "Morocco", "Uganda"]);
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("at the limit, Countries cannot be added from the topics picker by click or Enter", async () => {
+    await renderForm({ topics: topicsList.slice(0, 10) });
+    expect(counter()).toBe("10 of 10");
+    await open(topicsInput());
+    await act(async () => optionEl(COUNTRIES_TOPIC)!.click());
+    await flush();
+    expect(countriesInput()).toBeNull();
+    await key(topicsInput(), "Escape");
+    await searchAndEnter(topicsInput(), "Countries");
+    expect(countriesInput()).toBeNull();
+    expect(fieldValues("topics")).toEqual(topicsList.slice(0, 10));
+  });
+
+  it("Backspace in the closed countries input removes the last country, not Countries", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya", "Morocco"] });
+    const input = countriesInput()!;
+    await act(async () => input.focus());
+    await key(input, "Backspace");
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+    expect(fieldValues("topics")).toContain(COUNTRIES_TOPIC);
+    expect(counter()).toBe("4 of 10");
+  });
+
+  it("Escape in the topics picker keeps Countries and its countries, open or closed", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
+    const input = topicsInput();
+    await act(async () => input.focus());
+    await key(input, "Escape");
+    await open(input);
+    await key(input, "Escape");
+    await key(input, "Escape");
+    expect(fieldValues("topics")).toHaveLength(4);
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+  });
+});
+
+describe("QA: cross-picker state", () => {
+  it("clicking the Countries row in the open topics list unpicks it and drops countries from the submit", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya", "Ghana"] });
+    await open(topicsInput());
+    await act(async () => optionEl(COUNTRIES_TOPIC)!.click());
+    await flush();
+    expect(countriesInput()).toBeNull();
+    expect(fieldValues("countries")).toEqual([]);
+    expect(counter()).toBe("3 of 10");
+    expect((await submit()).getAll("countries")).toEqual([]);
+  });
+
+  it("over-limit saved selection: one notice, then none after unpicking Countries", async () => {
+    await renderForm({
+      topics: [...topicsList.slice(0, 9), COUNTRIES_TOPIC],
+      countries: ["Kenya", "Morocco", "Uganda", "Ghana"],
+    });
+    expect(counter()).toBe("13 of 10");
+    expect(notices()).toHaveLength(1);
+    expect(countriesInput()!.getAttribute("aria-describedby")).toContain("preferences-topics-count");
+    await removeChip(COUNTRIES_TOPIC);
+    expect(notices()).toHaveLength(0);
+    expect(counter()).toBe("9 of 10");
+  });
+
+  it("over-limit: no new pick in the countries picker, removals still work", async () => {
+    await renderForm({
+      topics: [...topicsList.slice(0, 9), COUNTRIES_TOPIC],
+      countries: ["Kenya", "Morocco", "Uganda", "Ghana"],
+    });
+    await open(countriesInput()!);
+    await act(async () => optionEl("Egypt")!.click());
+    await flush();
+    expect(fieldValues("countries")).toHaveLength(4);
+    await removeChip("Kenya");
+    expect(counter()).toBe("12 of 10");
+    expect(fieldValues("countries")).toEqual(["Morocco", "Uganda", "Ghana"]);
+  });
+
+  it("duplicate saved countries submit once, as they are counted", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya", "Kenya"] });
+    expect(counter()).toBe("4 of 10");
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+  });
+
+  it("a saved country missing from the offered list is counted and submitted consistently", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Atlantis"] });
+    expect(counter()).toBe("4 of 10");
+    expect(fieldValues("countries")).toEqual(["Atlantis"]);
+  });
+
+  it("re-picking Countries via click after dropping it starts empty", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
+    await removeChip(COUNTRIES_TOPIC);
+    await open(topicsInput());
+    await act(async () => optionEl(COUNTRIES_TOPIC)!.click());
+    await flush();
+    expect(fieldValues("countries")).toEqual([]);
+    expect(counter()).toBe("3 of 10");
+  });
+
+  it("Countries with zero countries adds nothing to the counter", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 2), COUNTRIES_TOPIC] });
+    expect(counter()).toBe("2 of 10");
+  });
+
+  it("submit: getAll(countries) matches picks in order", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Morocco", "Kenya"] });
+    expect((await submit()).getAll("countries")).toEqual(["Morocco", "Kenya"]);
+  });
+
+  it("with empty COUNTRIES the countries picker still renders without crashing", async () => {
+    await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC] });
+    expect(countriesInput()).not.toBeNull();
+    await open(countriesInput()!);
+    expect(optionEl("Kenya")).toBeDefined();
+  });
+});

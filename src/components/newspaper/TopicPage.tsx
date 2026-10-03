@@ -7,6 +7,9 @@ import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
 import { tierForSeverity } from "@/lib/gridTiers";
 import { packGrid } from "@/lib/packGrid";
 import { newRunCardIds } from "@/lib/newRun";
+import { topicToSlug } from "@/lib/topicSlug";
+import { COUNTRIES_TOPIC, countryToSlug } from "@/config/countries";
+import { CountryFilter } from "@/components/newspaper/CountryFilter";
 
 // Distinct outlets, so a story carrying two articles from one preferred
 // outlet doesn't outrank a story carrying two different preferred outlets.
@@ -33,6 +36,31 @@ export function orderBySeverity(cards: Card[], preferredSources: readonly Source
 }
 
 /**
+ * The Countries page's filter. Its options are the countries among the day's
+ * cards, not the reader's current picks, so a past day still filters by a
+ * country the reader has since dropped. A slug that names none of them shows
+ * every card.
+ */
+export function filterCountryCards(
+  cards: Card[],
+  countrySlug: string | undefined
+): { countries: string[]; activeSlug: string | null; shown: Card[] } {
+  const bySlug = new Map<string, string>();
+  for (const card of cards) {
+    if (card.subtopic && !bySlug.has(countryToSlug(card.subtopic))) {
+      bySlug.set(countryToSlug(card.subtopic), card.subtopic);
+    }
+  }
+  const countries = [...bySlug.values()].sort((a, b) => a.localeCompare(b));
+  const activeSlug = countrySlug !== undefined && bySlug.has(countrySlug) ? countrySlug : null;
+  const shown =
+    activeSlug === null
+      ? cards
+      : cards.filter((card) => card.subtopic && countryToSlug(card.subtopic) === activeSlug);
+  return { countries, activeSlug, shown };
+}
+
+/**
  * One topic's stories for a given day — server-renderable (no client state
  * of its own; NewsCard manages its own bookmark/sources state). Reused for
  * both "today" and a specific /history/[date] via a date-scoped query, per
@@ -45,6 +73,7 @@ export function TopicPage({
   preferredSources = [],
   basePath = "",
   digestExistsToday = true,
+  country,
 }: {
   cards: Card[];
   topic: Topic;
@@ -55,8 +84,11 @@ export function TopicPage({
   basePath?: string;
   /** False only on the live topic route before today's first digest exists — forwarded straight into TopicNav. Defaults true so history callers (which never pass this) stay ungated. */
   digestExistsToday?: boolean;
+  /** The Countries page's `?country=` slug; ignored on every other topic. */
+  country?: string;
 }) {
-  const ordered = orderBySeverity(cards, preferredSources);
+  const filter = topic === COUNTRIES_TOPIC ? filterCountryCards(cards, country) : null;
+  const ordered = orderBySeverity(filter?.shown ?? cards, preferredSources);
   const gridPositions = packGrid(
     ordered.map((card) => ({ id: card.id, tier: tierForSeverity(card.severity) }))
   );
@@ -75,6 +107,14 @@ export function TopicPage({
       />
 
       <h1 className="px-6 py-6 font-heading text-3xl font-bold md:px-10">{topic}</h1>
+
+      {filter && filter.countries.length > 0 && (
+        <CountryFilter
+          countries={filter.countries}
+          activeSlug={filter.activeSlug}
+          pageHref={`${basePath}/topic/${topicToSlug(topic)}`}
+        />
+      )}
 
       <div className="px-6 pb-10 md:px-10">
         {ordered.length === 0 ? (
@@ -96,7 +136,9 @@ export function TopicPage({
                     card={card}
                     tier={tierForSeverity(card.severity)}
                     gridPosition={gridPositions.get(card.id)}
-                    showTopicBadge={false}
+                    // Every card here shares the page's topic; a Countries
+                    // card still shows which country it covers.
+                    showTopicBadge={Boolean(card.subtopic)}
                     showNewBadge={newRunIds.has(card.id)}
                   />
                 ))}

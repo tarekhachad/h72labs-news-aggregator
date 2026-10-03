@@ -31,7 +31,7 @@ export default async function ProfilePage({
     redirect("/login");
   }
 
-  const { topics, preferredSources, timeZone } = await getUserProfile(supabase, user.id);
+  const { topics, preferredSources, countries, timeZone } = await getUserProfile(supabase, user.id);
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-12 px-6 py-16">
@@ -47,6 +47,7 @@ export default async function ProfilePage({
         <PreferencesForm
           action={updatePreferences}
           defaultTopics={topics}
+          defaultCountries={countries}
           defaultSources={preferredSources}
           submitLabel="Save preferences"
           error={prefsError}

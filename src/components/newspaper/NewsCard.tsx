@@ -15,6 +15,7 @@ import { labelColor } from "@/lib/labelColor";
 import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
 import { ENTRANCE_DURATION_SECONDS } from "@/lib/entranceTiming";
 import { safeExternalHref } from "@/lib/safeHref";
+import { cardTopicLabel } from "@/components/cardTopicLabel";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -424,7 +425,7 @@ export function NewsCard({
                         color: "var(--color-muted-foreground)",
                       }}
                     >
-                      {card.topic}
+                      {cardTopicLabel(card)}
                     </span>
                   )}
                   {/* The literal string "New", never a formatted time.

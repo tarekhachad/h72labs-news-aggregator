@@ -7,6 +7,7 @@ import type { Card } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Backdrop } from "@/components/newspaper/Backdrop";
 import { useInertBackground } from "@/hooks/useInertBackground";
+import { cardTopicLabel } from "@/components/cardTopicLabel";
 
 /**
  * The zoom/blur "focus mode" panel — clicking a card's body (not Sources,
@@ -116,7 +117,7 @@ export function FocusOverlay({
             className="w-fit rounded px-2 py-0.5 text-xs font-semibold"
             style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
           >
-            {card.topic}
+            {cardTopicLabel(card)}
           </span>
           <button
             ref={closeButtonRef}
