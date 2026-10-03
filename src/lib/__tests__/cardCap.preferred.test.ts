@@ -45,7 +45,7 @@ describe("applyCardCap with preferred sources", () => {
     ];
     const { kept, cuts } = applyCardCap(input, { ...TOP_UP, preferredSources: [PICKED, PICKED_TOO] });
     expect(labels(kept)).toEqual(["one", "two"]);
-    expect(cuts).toEqual([{ topic: TOPIC, allowance: 2, dropped: 1, total: 3, severities: [3] }]);
+    expect(cuts).toEqual([{ topic: TOPIC, subtopic: null, allowance: 2, dropped: 1, total: 3, severities: [3] }]);
   });
 
   it("counts distinct preferred outlets, not articles: one outlet filing twice is one", () => {

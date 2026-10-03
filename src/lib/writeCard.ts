@@ -69,10 +69,15 @@ export function preferredLeadNote(cluster: Cluster, preferred: PreferredSources)
   return `The reader's preferred sources for this story are listed first (${present.join(", ")}): lead with their reporting and use the other sources to fill gaps.`;
 }
 
-/** The user message sent to the writer for an already-ordered cluster. Exported for tests. */
+/**
+ * The user message sent to the writer for an already-ordered cluster. A
+ * Countries cluster names its country ("Countries: Uganda"), so the writer
+ * knows which country's story it is telling. Exported for tests.
+ */
 export function buildWriteCardContent(cluster: Cluster, preferred?: PreferredSources): string {
   const note = preferredLeadNote(cluster, preferred);
-  return `Topic: ${cluster.topic}\n\n${note === null ? "" : `${note}\n\n`}${sourceTextFor(cluster)}`;
+  const topic = cluster.subtopic ? `${cluster.topic}: ${cluster.subtopic}` : cluster.topic;
+  return `Topic: ${topic}\n\n${note === null ? "" : `${note}\n\n`}${sourceTextFor(cluster)}`;
 }
 
 async function generateSummary(cluster: Cluster, preferred: PreferredSources) {
@@ -223,5 +228,9 @@ export async function writeCard(
     // Genuine placeholder: unknown until rank.ts's cross-topic ranking pass
     // runs, which happens after writeCard in the pipeline.
     frontPageRank: null,
+    // What the Countries page filters on; null for every other topic. `||`
+    // so an empty string is stored as none, the unit triage, the cap and
+    // dedup already judged it as.
+    subtopic: cluster.subtopic || null,
   };
 }

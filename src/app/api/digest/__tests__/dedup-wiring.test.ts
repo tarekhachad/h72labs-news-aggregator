@@ -17,7 +17,7 @@ import type { Cluster } from "@/types";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -57,7 +57,7 @@ vi.mock("@/lib/profile", () => ({
 
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 
 vi.mock("@/lib/cluster", () => ({
@@ -130,7 +130,7 @@ beforeEach(() => {
     topics: ["Tech/AI"],
     preferredSources: ["BBC"],
   });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.filterAlreadyCovered.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);

@@ -57,9 +57,11 @@ export interface TriagedCluster {
   triageSeverity?: number;
 }
 
-/** What one topic lost to the cap, for logging. */
+/** What one unit (a topic, or a country within Countries) lost to the cap, for logging. */
 export interface TopicCut {
   topic: Topic;
+  /** The country within Countries; null for every other topic. */
+  subtopic: string | null;
   /** What this run was allowed for this topic: the per-run allowance, or less if the ceiling bound it. */
   allowance: number;
   dropped: number;
@@ -74,9 +76,10 @@ export interface CardCapOptions {
    * Today's already-persisted cards, or null when that lookup failed. Null
    * means "unknown", never "none" — an empty array is a genuinely empty
    * digest, and conflating the two would hand a top-up the first-run
-   * allowance every time the lookup broke.
+   * allowance every time the lookup broke. Counted per unit, like the
+   * clusters: a Countries card counts only against its own country.
    */
-  existingCards: readonly { topic: Topic }[] | null;
+  existingCards: readonly { topic: Topic; subtopic?: string | null }[] | null;
   /**
    * The reader's picked outlets. Optional, and absent behaves exactly like
    * empty: the ordering is then severity, article count, input order.
@@ -122,16 +125,29 @@ export function topicAllowance(perRunAllowance: number, existingForTopic: number
   return Math.max(0, Math.min(perRunAllowance, DAILY_CARDS_PER_TOPIC_CEILING - existingForTopic));
 }
 
+/**
+ * The key a card or cluster is capped under: its topic and, within
+ * Countries, its country, so each picked country gets the full allowance and
+ * ceiling of a topic. A missing or empty subtopic is the same unit as none.
+ */
+function unitKey(topic: Topic, subtopic: string | null | undefined): string {
+  return JSON.stringify([topic, subtopic || null]);
+}
+
 /** Counted here rather than by the caller, so a wrong map cannot be handed in. */
-function countByTopic(cards: readonly { topic: Topic }[]): Map<Topic, number> {
-  const counts = new Map<Topic, number>();
-  for (const card of cards) counts.set(card.topic, (counts.get(card.topic) ?? 0) + 1);
+function countByUnit(cards: readonly { topic: Topic; subtopic?: string | null }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    const key = unitKey(card.topic, card.subtopic);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
   return counts;
 }
 
 /**
  * Keeps at most this run's per-topic allowance of the highest-severity
- * clusters per topic, **preserving the input's ordering** — `kept` is a
+ * clusters per unit (a topic, or a country within Countries),
+ * **preserving the input's ordering** — `kept` is a
  * subsequence of `notable`, not a severity-ranked list, so nothing
  * downstream sees a reordering it didn't ask for.
  *
@@ -181,25 +197,27 @@ export function applyCardCap<T extends TriagedCluster>(
   options: CardCapOptions
 ): { kept: T[]; cuts: TopicCut[] } {
   const perRunAllowance = perRunAllowanceFor(options.runShape);
-  const existingByTopic = options.existingCards === null ? null : countByTopic(options.existingCards);
+  const existingByUnit = options.existingCards === null ? null : countByUnit(options.existingCards);
 
   // Counted once per cluster, not inside the comparator, which runs O(n log n) times.
   const preferredCount = notable.map((item) =>
     countPreferredSources(item.cluster.articles, options.preferredSources)
   );
 
-  const indicesByTopic = new Map<Topic, number[]>();
+  const indicesByUnit = new Map<string, { topic: Topic; subtopic: string | null; indices: number[] }>();
   notable.forEach((item, i) => {
-    const group = indicesByTopic.get(item.cluster.topic);
-    if (group === undefined) indicesByTopic.set(item.cluster.topic, [i]);
-    else group.push(i);
+    const { topic, subtopic } = item.cluster;
+    const key = unitKey(topic, subtopic);
+    const group = indicesByUnit.get(key);
+    if (group === undefined) indicesByUnit.set(key, { topic, subtopic: subtopic || null, indices: [i] });
+    else group.indices.push(i);
   });
 
   const keptIndices = new Set<number>();
   const cuts: TopicCut[] = [];
 
-  for (const [topic, indices] of indicesByTopic) {
-    // The explicit null test matters and is not the same as `?.get(topic) ?? 0`:
+  for (const [key, { topic, subtopic, indices }] of indicesByUnit) {
+    // The explicit null test matters and is not the same as `?.get(key) ?? 0`:
     // a failed lookup must skip the ceiling, not apply it against zero. The two
     // are indistinguishable while the ceiling exceeds every allowance, which is
     // why no test here can tell them apart — the test that keeps the ceiling
@@ -207,7 +225,7 @@ export function applyCardCap<T extends TriagedCluster>(
     // line is the reason to come back and read.
     const allowance = topicAllowance(
       perRunAllowance,
-      existingByTopic === null ? null : (existingByTopic.get(topic) ?? 0)
+      existingByUnit === null ? null : (existingByUnit.get(key) ?? 0)
     );
 
     if (indices.length <= allowance) {
@@ -230,6 +248,7 @@ export function applyCardCap<T extends TriagedCluster>(
     const dropped = ranked.slice(allowance);
     cuts.push({
       topic,
+      subtopic,
       allowance,
       dropped: dropped.length,
       total: indices.length,

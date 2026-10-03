@@ -16,7 +16,17 @@ export interface CardRow {
   front_page_rank: number | null;
   title: string | null;
   labels: string[] | null;
+  /** Null for every card but a Countries one, and on rows written before the column existed. */
+  subtopic: string | null;
 }
+
+/**
+ * The columns every full-card read selects, matching CardRow. One list, so a
+ * column added to a card reaches the feed, the topic pages and the Saved view
+ * together rather than in whichever select someone remembered to edit.
+ */
+export const CARD_COLUMNS =
+  "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic";
 
 /** Shared DB-row -> Card mapper — also used by bookmarks.ts's getSavedCards
  * so the two don't hand-roll the same field mapping independently. */
@@ -39,6 +49,9 @@ export function rowToCard(row: CardRow, bookmarkedIds: Set<string>): Card {
     // to the lowest tier rather than letting a null flow into gridTiers.ts.
     severity: row.severity ?? 1,
     frontPageRank: row.front_page_rank,
+    // `?? null` and not a straight copy: a select that leaves the column out
+    // gives undefined, and Card's contract for a non-country card is null.
+    subtopic: row.subtopic ?? null,
   };
 }
 
@@ -73,9 +86,7 @@ export async function getDigestForDate(
   const [{ data: cardRows, error: cardsError }, bookmarkedIds] = await Promise.all([
     supabase
       .from("cards")
-      .select(
-        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels"
-      )
+      .select(CARD_COLUMNS)
       .eq("digest_id", digestRow.id)
       // Secondary key on id: published_at ties are common (minute-granularity
       // RSS timestamps, or writeCard's now()-fallback for undated items), and
@@ -174,9 +185,7 @@ export async function getCardsForTopicOnDate(
   const [{ data: cardRows, error: cardsError }, bookmarkedIds] = await Promise.all([
     supabase
       .from("cards")
-      .select(
-        "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels"
-      )
+      .select(CARD_COLUMNS)
       .eq("digest_id", digestRow.id)
       .eq("topic", topic)
       .order("published_at", { ascending: false })
@@ -206,11 +215,18 @@ export async function getTodaysCardSummaries(
   supabase: SupabaseClient,
   digestId: string
 ): Promise<
-  { id: string; topic: Topic; shortSummary: string; severity: number; sources: Card["sources"] }[]
+  {
+    id: string;
+    topic: Topic;
+    subtopic: string | null;
+    shortSummary: string;
+    severity: number;
+    sources: Card["sources"];
+  }[]
 > {
   const { data, error } = await supabase
     .from("cards")
-    .select("id, topic, short_summary, severity, sources")
+    .select("id, topic, subtopic, short_summary, severity, sources")
     .eq("digest_id", digestId);
 
   if (error) throw new Error(`getTodaysCardSummaries: ${error.message}`);
@@ -218,6 +234,7 @@ export async function getTodaysCardSummaries(
   return (data ?? []).map((row) => ({
     id: row.id as string,
     topic: row.topic as Topic,
+    subtopic: (row.subtopic as string | null | undefined) ?? null,
     shortSummary: row.short_summary as string,
     severity: (row.severity as number | null) ?? 1,
     // A malformed or missing list counts as no sources rather than failing
@@ -429,6 +446,7 @@ export async function saveGeneratedCards(
       publishedAt: card.publishedAt,
       severity: card.severity,
       frontPageRank: card.frontPageRank,
+      subtopic: card.subtopic ?? null,
     })),
     p_generated_at: generatedAt,
     p_existing_rank_updates: existingRankUpdates,

@@ -13,7 +13,7 @@ import type { Reservation } from "@/lib/spend";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -142,7 +142,7 @@ beforeEach(() => {
       order.push("emit");
     },
   ]);
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   mocks.triageClusters.mockImplementation(async (cs: Cluster[]) => {
@@ -256,7 +256,7 @@ describe("digest route: spend caps", () => {
       availableAt: "2026-09-18T17:00:00.000Z",
     });
     expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), { claimId: CLAIM_ID });
-    expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    expect(mocks.ingestUnits).not.toHaveBeenCalled();
     expect(mocks.settleSpend).not.toHaveBeenCalled();
   });
 
@@ -270,7 +270,7 @@ describe("digest route: spend caps", () => {
 
     expect(res.status).toBe(503);
     expect(mocks.releaseGenerationClaim).toHaveBeenCalledTimes(1);
-    expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    expect(mocks.ingestUnits).not.toHaveBeenCalled();
   });
 
   it("settles a completed run to its billed total, before release and before the record", async () => {

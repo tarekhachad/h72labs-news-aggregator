@@ -14,7 +14,7 @@ import type { Card, Cluster, Topic } from "@/types";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -121,7 +121,7 @@ beforeEach(() => {
     // boost; preferred-wiring.test.ts covers it with one.
     preferredSources: [],
   });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.filterAlreadyCovered.mockImplementation(async (cs: Cluster[]) => cs);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   mocks.writeCard.mockImplementation(async (c: Cluster, severity: number) =>

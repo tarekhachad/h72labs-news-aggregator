@@ -366,7 +366,7 @@ begin
   -- as digests.last_generated_at below, byte-for-byte — that's what the
   -- feed's run-divider relies on to group a run's cards, rather than
   -- trusting two separate now() calls to agree.
-  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank, title, labels)
+  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic)
   select
     (c->>'id')::uuid,
     p_digest_id,
@@ -383,7 +383,11 @@ begin
     -- (possibly empty) labels array today — this guards only against a
     -- future caller that omits the key entirely, so a missing `labels`
     -- key can't insert a literal JSON null into a `not null` column.
-    coalesce(c->'labels', '[]'::jsonb)
+    coalesce(c->'labels', '[]'::jsonb),
+    -- The country a Countries card covers. A missing key gives null, which
+    -- is every other topic's card and every card sent by code older than
+    -- the V2.5 block at the bottom of this file.
+    c->>'subtopic'
   from jsonb_array_elements(p_cards) as c;
 
   -- rank.ts's cross-topic front-page ranking pass, applied to cards already
@@ -1376,3 +1380,53 @@ update public.spend_config
 set digest_per_topic_usd = 0.065,
     digest_max_topics = 10
 where id = 1;
+
+-- V2.5 migration: Countries, stored as (topic, subtopic). MUST be run by hand,
+-- BEFORE the code that reads it is deployed, and then followed by re-running
+-- the persist_generated_cards definition above (its insert now names
+-- cards.subtopic, which has to exist first).
+--
+-- A reader picks countries inside the Countries topic, and every card a
+-- country produces is tagged with it so the Countries page can filter by
+-- country. Both are stored generically, as a topic plus a subtopic, so a
+-- later subtopic (a football league inside Football) needs no new table.
+--
+-- Safe to run before the new code deploys, and that is the order to use: it
+-- only adds. The old code never sends `subtopic` (persist_generated_cards
+-- reads a missing key as null) and never reads user_subtopics, so nothing it
+-- does changes. The other order is the broken one: new code reading
+-- cards.subtopic or user_subtopics before they exist fails every digest and
+-- profile load.
+--
+-- user_subtopics follows user_topics exactly: composite primary key, own-row
+-- select / insert / delete policies and no update policy, because saving
+-- preferences replaces the whole set (delete, then insert).
+--
+-- Safe to re-run: `if not exists` on the column and table, and each policy is
+-- dropped before it is created.
+alter table public.cards add column if not exists subtopic text;
+
+create table if not exists public.user_subtopics (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  topic text not null,
+  subtopic text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, topic, subtopic)
+);
+
+alter table public.user_subtopics enable row level security;
+
+drop policy if exists "select own subtopics" on public.user_subtopics;
+create policy "select own subtopics"
+  on public.user_subtopics for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "insert own subtopics" on public.user_subtopics;
+create policy "insert own subtopics"
+  on public.user_subtopics for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "delete own subtopics" on public.user_subtopics;
+create policy "delete own subtopics"
+  on public.user_subtopics for delete
+  using (auth.uid() = user_id);

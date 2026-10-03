@@ -54,20 +54,35 @@ describe("ProfileInput edges", () => {
 type Call = { op: string; table: string; rows?: unknown[] };
 
 // Every step's outcome is scripted, so each error path can be hit on its own.
-function scripted(fail: { deleteTopics?: boolean; deleteSources?: boolean; insertTopics?: boolean; insertSources?: boolean } = {}) {
+function scripted(
+  fail: {
+    deleteTopics?: boolean;
+    deleteSources?: boolean;
+    deleteCountries?: boolean;
+    insertTopics?: boolean;
+    insertSources?: boolean;
+    insertCountries?: boolean;
+  } = {}
+) {
   const calls: Call[] = [];
   const err = { message: "boom" };
+  const pick = (table: string, topics?: boolean, sources?: boolean, countries?: boolean) =>
+    table === "user_topics" ? topics : table === "user_preferred_sources" ? sources : countries;
   const from = vi.fn((table: string) => ({
-    delete: () => ({
-      eq: () => {
-        calls.push({ op: "delete", table });
-        const failed = table === "user_topics" ? fail.deleteTopics : fail.deleteSources;
-        return Promise.resolve({ error: failed ? err : null });
-      },
-    }),
+    delete: () => {
+      calls.push({ op: "delete", table });
+      const result = { error: pick(table, fail.deleteTopics, fail.deleteSources, fail.deleteCountries) ? err : null };
+      // The countries delete narrows with a second .eq(), so the chain stays
+      // chainable as well as awaitable.
+      const chain = {
+        eq: () => chain,
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+      };
+      return chain;
+    },
     insert: (rows: unknown[]) => {
       calls.push({ op: "insert", table, rows });
-      const failed = table === "user_topics" ? fail.insertTopics : fail.insertSources;
+      const failed = pick(table, fail.insertTopics, fail.insertSources, fail.insertCountries);
       return Promise.resolve({ error: failed ? err : null });
     },
   }));
@@ -79,34 +94,54 @@ const FAIL = { error: "Couldn't save your preferences — try again." };
 describe("saveUserProfile error paths around the empty-sources guard", () => {
   it("zero sources: a topics insert failure is still reported", async () => {
     const { client, calls } = scripted({ insertTopics: true });
-    await expect(saveUserProfile(client, "u", topics(3), [])).resolves.toEqual(FAIL);
+    await expect(saveUserProfile(client, "u", topics(3), [], [])).resolves.toEqual(FAIL);
     expect(calls.filter((c) => c.op === "insert").map((c) => c.table)).toEqual(["user_topics"]);
   });
 
   it("zero sources: a failed sources delete stops before any insert", async () => {
     const { client, calls } = scripted({ deleteSources: true });
-    await expect(saveUserProfile(client, "u", topics(3), [])).resolves.toEqual(FAIL);
+    await expect(saveUserProfile(client, "u", topics(3), [], [])).resolves.toEqual(FAIL);
     expect(calls.some((c) => c.op === "insert")).toBe(false);
   });
 
   it("zero sources: the sources table is still cleared (old picks don't linger)", async () => {
     const { client, calls } = scripted();
-    await expect(saveUserProfile(client, "u", topics(3), [])).resolves.toEqual({ error: null });
+    await expect(saveUserProfile(client, "u", topics(3), [], [])).resolves.toEqual({ error: null });
     expect(calls).toContainEqual({ op: "delete", table: "user_preferred_sources" });
   });
 
   it("some sources: a sources insert failure is reported", async () => {
     const { client } = scripted({ insertSources: true });
-    await expect(saveUserProfile(client, "u", topics(3), [SOURCES[0]])).resolves.toEqual(FAIL);
+    await expect(saveUserProfile(client, "u", topics(3), [SOURCES[0]], [])).resolves.toEqual(FAIL);
   });
 
   it("one source is inserted, not skipped (the guard is exactly zero)", async () => {
     const { client, calls } = scripted();
-    await saveUserProfile(client, "u", topics(3), [SOURCES[1]]);
+    await saveUserProfile(client, "u", topics(3), [SOURCES[1]], []);
     expect(calls).toContainEqual({
       op: "insert",
       table: "user_preferred_sources",
       rows: [{ user_id: "u", source: SOURCES[1] }],
     });
+  });
+});
+
+describe("saveUserProfile error paths for countries", () => {
+  it("a failed countries delete stops before any insert", async () => {
+    const { client, calls } = scripted({ deleteCountries: true });
+    await expect(saveUserProfile(client, "u", topics(3), [], ["Kenya"])).resolves.toEqual(FAIL);
+    expect(calls.some((c) => c.op === "insert")).toBe(false);
+  });
+
+  it("a countries insert failure is reported", async () => {
+    const { client } = scripted({ insertCountries: true });
+    await expect(saveUserProfile(client, "u", topics(3), [], ["Kenya"])).resolves.toEqual(FAIL);
+  });
+
+  it("zero countries: the Countries rows are still cleared, with no insert", async () => {
+    const { client, calls } = scripted();
+    await expect(saveUserProfile(client, "u", topics(3), [], [])).resolves.toEqual({ error: null });
+    expect(calls).toContainEqual({ op: "delete", table: "user_subtopics" });
+    expect(calls.some((c) => c.op === "insert" && c.table === "user_subtopics")).toBe(false);
   });
 });

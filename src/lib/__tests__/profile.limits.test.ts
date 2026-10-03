@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SOURCES, TOPICS } from "@/types";
+
+// COUNTRIES is empty until the country catalog lands.
+vi.mock("@/config/countries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countries")>()),
+  COUNTRIES: ["Uganda", "Kenya", "Morocco", "Ghana"],
+}));
 import {
   MAX_TOPICS,
   MIN_TOPICS,
@@ -74,12 +80,18 @@ describe("ProfileInput limits", () => {
   });
 });
 
-// An in-memory stand-in for the two preference tables, implementing only the
+// An in-memory stand-in for the three preference tables, implementing only the
 // calls saveUserProfile and getUserProfile make. The empty-insert guard is the
 // thing under test, so `insert` refuses an empty array outright: if the guard
 // were removed, the round trip below would fail instead of quietly passing
 // on whatever PostgREST might do with an empty body.
-function makeTableFake(initial: { user_topics?: string[]; user_preferred_sources?: string[] } = {}) {
+function makeTableFake(
+  initial: {
+    user_topics?: string[];
+    user_preferred_sources?: string[];
+    user_subtopics?: Array<{ topic: string; subtopic: string }>;
+  } = {}
+) {
   const userId = "user-1";
   const tables: Record<string, Array<Record<string, string>>> = {
     user_topics: (initial.user_topics ?? []).map((topic) => ({ user_id: userId, topic })),
@@ -87,6 +99,21 @@ function makeTableFake(initial: { user_topics?: string[]; user_preferred_sources
       user_id: userId,
       source,
     })),
+    user_subtopics: (initial.user_subtopics ?? []).map((row) => ({ user_id: userId, ...row })),
+  };
+  // A filter chain that is also awaitable, so `.eq(a).eq(b)` narrows like
+  // PostgREST does and awaiting it runs the operation on what matched.
+  const filtered = <T>(run: (match: (row: Record<string, string>) => boolean) => T) => {
+    const conditions: Array<[string, string]> = [];
+    const match = (row: Record<string, string>) => conditions.every(([k, v]) => row[k] === v);
+    const chain = {
+      eq: (key: string, value: string) => {
+        conditions.push([key, value]);
+        return chain;
+      },
+      then: (resolve: (v: T) => unknown) => Promise.resolve(run(match)).then(resolve),
+    };
+    return chain;
   };
   const insert = vi.fn();
 
@@ -101,12 +128,11 @@ function makeTableFake(initial: { user_topics?: string[]; user_preferred_sources
     const rows = tables[table];
     if (!rows) throw new Error(`fake supabase: unexpected table ${table}`);
     return {
-      delete: () => ({
-        eq: (key: string, value: string) => {
-          tables[table] = rows.filter((row) => row[key] !== value);
-          return Promise.resolve({ error: null });
-        },
-      }),
+      delete: () =>
+        filtered((match) => {
+          tables[table] = tables[table].filter((row) => !match(row));
+          return { error: null };
+        }),
       insert: (newRows: Array<Record<string, string>>) => {
         insert(table, newRows);
         if (newRows.length === 0) {
@@ -115,15 +141,11 @@ function makeTableFake(initial: { user_topics?: string[]; user_preferred_sources
         tables[table].push(...newRows);
         return Promise.resolve({ error: null });
       },
-      select: (column: string) => ({
-        eq: (key: string, value: string) =>
-          Promise.resolve({
-            data: tables[table]
-              .filter((row) => row[key] === value)
-              .map((row) => ({ [column]: row[column] })),
-            error: null,
-          }),
-      }),
+      select: (column: string) =>
+        filtered((match) => ({
+          data: tables[table].filter(match).map((row) => ({ [column]: row[column] })),
+          error: null,
+        })),
     };
   };
 
@@ -137,7 +159,7 @@ describe("saveUserProfile with zero sources", () => {
       user_preferred_sources: SOURCES.slice(0, 2),
     });
 
-    await expect(saveUserProfile(client, userId, topics(3), [])).resolves.toEqual({ error: null });
+    await expect(saveUserProfile(client, userId, topics(3), [], [])).resolves.toEqual({ error: null });
 
     expect(insert).toHaveBeenCalledTimes(1);
     expect(insert).toHaveBeenCalledWith(
@@ -154,7 +176,7 @@ describe("saveUserProfile with zero sources", () => {
     const { client, insert, userId } = makeTableFake();
     const sources = SOURCES.slice(0, 2);
 
-    await expect(saveUserProfile(client, userId, topics(3), sources)).resolves.toEqual({
+    await expect(saveUserProfile(client, userId, topics(3), sources, [])).resolves.toEqual({
       error: null,
     });
 
@@ -172,5 +194,137 @@ describe("getUserProfile with more than the maximum saved", () => {
     const { client, userId } = makeTableFake({ user_topics: saved });
 
     expect((await getUserProfile(client, userId)).topics).toEqual(saved);
+  });
+});
+
+// Countries count as reading units: the Countries topic itself counts as
+// nothing, each picked country as one.
+describe("ProfileInput with countries", () => {
+  const nonCountry = TOPICS.filter((t) => t !== "Countries");
+  const parse = (picked: readonly string[], countries?: string[]) =>
+    ProfileInput.safeParse({ topics: picked, preferredSources: [], countries });
+
+  it("accepts a form with no countries field at all, as before", () => {
+    const parsed = ProfileInput.safeParse({ topics: nonCountry.slice(0, 3), preferredSources: [] });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual([]);
+  });
+
+  it("accepts 2 topics plus Countries with one country: 3 units", () => {
+    const parsed = parse([...nonCountry.slice(0, 2), "Countries"], ["Kenya"]);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual(["Kenya"]);
+    expect(parsed.data?.topics).toEqual([...nonCountry.slice(0, 2), "Countries"]);
+  });
+
+  it("accepts Countries alone with 3 countries", () => {
+    expect(parse(["Countries"], ["Kenya", "Uganda", "Ghana"]).success).toBe(true);
+  });
+
+  it("rejects Countries with no country", () => {
+    const parsed = parse([...nonCountry.slice(0, 3), "Countries"], []);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Pick at least one country, or remove Countries");
+  });
+
+  it("rejects 1 topic plus Countries with one country: 2 units, with a message that counts countries", () => {
+    const parsed = parse([nonCountry[0], "Countries"], ["Kenya"]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe(
+      "Pick at least 3 topics and countries (each country counts as one)"
+    );
+  });
+
+  it("accepts 6 topics plus 4 countries: exactly 10 units", () => {
+    const parsed = parse([...nonCountry.slice(0, 6), "Countries"], ["Kenya", "Uganda", "Ghana", "Morocco"]);
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects 8 topics plus 3 countries: 11 units", () => {
+    const parsed = parse([...nonCountry.slice(0, 8), "Countries"], ["Kenya", "Uganda", "Ghana"]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe(
+      "Pick at most 10 topics and countries (each country counts as one)"
+    );
+  });
+
+  it("counts a repeated country once", () => {
+    const parsed = parse([nonCountry[0], "Countries"], ["Kenya", "Kenya", "Uganda"]);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual(["Kenya", "Uganda"]);
+  });
+
+  it("drops countries picked without the Countries topic, unknown ones included", () => {
+    const parsed = parse(nonCountry.slice(0, 3), ["Kenya", "Atlantis"]);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual([]);
+  });
+
+  it("does not let dropped countries count toward the limits", () => {
+    const parsed = parse(nonCountry.slice(0, 2), ["Kenya", "Uganda"]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Pick at least 3 topics");
+  });
+
+  it("rejects a country not on offer when Countries is picked", () => {
+    const parsed = parse([...nonCountry.slice(0, 2), "Countries"], ["Atlantis"]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Atlantis isn't a country you can pick");
+  });
+
+  it("rejects a non-string countries entry", () => {
+    const parsed = parse([...nonCountry.slice(0, 2), "Countries"], [new File([], "x") as unknown as string]);
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe("saveUserProfile with countries", () => {
+  it("replaces the saved Countries rows and reads them back in curated order", async () => {
+    const { client, insert, userId } = makeTableFake({
+      user_topics: ["Countries", TOPICS[0]],
+      user_subtopics: [{ topic: "Countries", subtopic: "Ghana" }],
+    });
+    const picked = [TOPICS[0], TOPICS[1], "Countries"] as typeof TOPICS[number][];
+
+    await expect(saveUserProfile(client, userId, picked, [], ["Morocco", "Uganda"])).resolves.toEqual({
+      error: null,
+    });
+
+    expect(insert).toHaveBeenCalledWith("user_subtopics", [
+      { user_id: userId, topic: "Countries", subtopic: "Morocco" },
+      { user_id: userId, topic: "Countries", subtopic: "Uganda" },
+    ]);
+    expect((await getUserProfile(client, userId)).countries).toEqual(["Uganda", "Morocco"]);
+  });
+
+  it("clears saved countries without an empty insert when none are picked", async () => {
+    const { client, insert, userId } = makeTableFake({
+      user_topics: ["Countries"],
+      user_subtopics: [{ topic: "Countries", subtopic: "Ghana" }],
+    });
+
+    await expect(saveUserProfile(client, userId, topics(3), [], [])).resolves.toEqual({ error: null });
+
+    expect(insert).not.toHaveBeenCalledWith("user_subtopics", expect.anything());
+    expect((await getUserProfile(client, userId)).countries).toEqual([]);
+  });
+
+  it("leaves another topic's subtopics alone", async () => {
+    const { client, userId } = makeTableFake({
+      user_subtopics: [
+        { topic: "Countries", subtopic: "Ghana" },
+        { topic: "Football", subtopic: "Premier League" },
+      ],
+    });
+
+    await saveUserProfile(client, userId, topics(3), [], []);
+
+    // Read back through a Football-scoped select on the same fake.
+    const rows = await (client.from("user_subtopics").select("subtopic") as unknown as {
+      eq: (k: string, v: string) => { eq: (k: string, v: string) => PromiseLike<{ data: unknown }> };
+    })
+      .eq("user_id", userId)
+      .eq("topic", "Football");
+    expect(rows.data).toEqual([{ subtopic: "Premier League" }]);
   });
 });

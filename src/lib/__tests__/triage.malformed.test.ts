@@ -79,8 +79,8 @@ describe("triage with malformed clusters", () => {
     const { planTriageBatches } = await import("@/lib/triage");
 
     expect(planTriageBatches(mixedClusters())).toEqual([
-      { topic: "Tech/AI", indices: [0, 6] },
-      { topic: "Morocco", indices: [2] },
+      { topic: "Tech/AI", subtopic: null, indices: [0, 6] },
+      { topic: "Morocco", subtopic: null, indices: [2] },
     ]);
   });
 

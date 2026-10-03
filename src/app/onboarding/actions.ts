@@ -17,6 +17,7 @@ export async function saveProfile(formData: FormData) {
   const parsed = ProfileInput.safeParse({
     topics: formData.getAll("topics"),
     preferredSources: formData.getAll("preferredSources"),
+    countries: formData.getAll("countries"),
   });
 
   if (!parsed.success) {
@@ -24,9 +25,9 @@ export async function saveProfile(formData: FormData) {
     redirect(`/onboarding?error=${encodeURIComponent(message)}`);
   }
 
-  const { topics, preferredSources } = parsed.data;
+  const { topics, preferredSources, countries } = parsed.data;
 
-  const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources);
+  const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources, countries);
   if (error) {
     redirect(`/onboarding?error=${encodeURIComponent(error)}`);
   }

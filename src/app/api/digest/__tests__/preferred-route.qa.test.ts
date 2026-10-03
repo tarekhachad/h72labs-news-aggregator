@@ -12,7 +12,7 @@ import { MAX_SEVERITY } from "@/lib/preferredSources";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -112,7 +112,7 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-42" } } });
   setProfile([PICKED]);
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue([]);
   triageReturns([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
@@ -164,21 +164,28 @@ describe("gate", () => {
     const { status, record } = await run();
     expect(status).toBe(200);
     expect(record?.outcome).toBe("complete");
-    expect(mocks.ingestArticles).toHaveBeenCalledWith(TOPICS.slice(0, 2), [], expect.anything());
+    expect(mocks.ingestUnits).toHaveBeenCalledWith(
+      TOPICS.slice(0, 2).map((topic) => ({ topic, subtopic: null })),
+      [],
+      expect.anything()
+    );
   });
 });
 
 describe("reservation is sized to the topics actually read", () => {
-  it.each([1, MAX_TOPICS_PER_DIGEST - 1, MAX_TOPICS_PER_DIGEST, TOPICS.length])(
+  // Without Countries, which counts as no unit of its own: each topic here is
+  // exactly one unit.
+  const plainTopics = TOPICS.filter((t) => t !== "Countries");
+  it.each([1, MAX_TOPICS_PER_DIGEST - 1, MAX_TOPICS_PER_DIGEST, plainTopics.length])(
     "profile with %i topics",
     async (n) => {
-      const topics = TOPICS.slice(0, n) as Topic[];
+      const topics = plainTopics.slice(0, n) as Topic[];
       setProfile([], topics);
       await run();
       const reserved = mocks.reserveSpend.mock.calls[0][2].topicCount;
       expect(reserved).toBe(Math.min(n, MAX_TOPICS_PER_DIGEST));
       // And the reservation equals the number of topics handed to ingest.
-      expect(mocks.ingestArticles.mock.calls[0][0]).toHaveLength(reserved);
+      expect(mocks.ingestUnits.mock.calls[0][0]).toHaveLength(reserved);
       expect(emitted[0].topicsDropped).toBe(n - reserved);
     }
   );
@@ -186,7 +193,8 @@ describe("reservation is sized to the topics actually read", () => {
   it("the worst-case feed count the reservation assumes holds for the topics handed to ingest", async () => {
     setProfile([...SOURCES] as Source[], [...TOPICS] as Topic[]);
     await run();
-    const [topicsRead, prefs] = mocks.ingestArticles.mock.calls[0];
+    const [unitsRead, prefs] = mocks.ingestUnits.mock.calls[0];
+    const topicsRead = (unitsRead as { topic: Topic }[]).map((u) => u.topic);
     expect(planFeeds(topicsRead, prefs).length).toBeLessThanOrEqual(
       mocks.reserveSpend.mock.calls[0][2].topicCount * MAX_FEEDS_PER_TOPIC
     );

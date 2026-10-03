@@ -33,6 +33,19 @@ A user's preferred news outlets (curated multi-select from `SOURCES` — e.g. NY
 | `user_id` | Which user |
 | `source` | One of the curated outlet options |
 
+## `user_subtopics`
+
+A user's picks inside a topic that has subtopics (V2.5). Today that is only **Countries**: each country a reader picks is a row with `topic = 'Countries'`. Stored generically, as a topic plus a subtopic, so a later subtopic (a football league inside Football) needs no new table. Each picked country is its own reading unit: it counts toward the 3-to-10 limit (the Countries topic itself counts as nothing) and runs through the pipeline as a topic of its own.
+
+| Field | What it holds |
+|---|---|
+| `user_id` | Which user |
+| `topic` | The topic the pick sits inside (`Countries`) |
+| `subtopic` | The pick itself, one of `COUNTRIES` in `src/config/countries.ts` (e.g. "Uganda") |
+| `created_at` | When it was saved |
+
+Primary key `(user_id, topic, subtopic)`. Same RLS as `user_topics`: own-row select, insert and delete, no update, since saving preferences replaces the whole set. A save replaces only the `Countries` rows. A country saved without the Countries topic, or no longer offered, is ignored on read.
+
 ## `user_settings`
 
 One row per user, holding the timezone their "today" is computed in. A user with no row is treated as UTC until their first page load writes one.
@@ -95,6 +108,7 @@ One row per story card — the core unit of content. A single `digest` can (and 
 | `front_page_rank` | 1-6 if this card is one of today's front-page picks, null otherwise. Reassigned across a day's generation runs by `rank.ts`'s cross-topic ranking pass, applied via `persist_generated_cards()` — can be cleared back to null if a later run's bigger stories bump it out (Phase 4.4 Track A) |
 | `title` | Short headline (5-8 words), written by the same Sonnet call as `short_summary` (Phase 5.5). Nullable; a pre-5.5 row has none, and the app renders that as no title row rather than a migration backfill |
 | `labels` | 1-2 free-form, LLM-generated tags for the story's specific angle — `string[]` stored as `jsonb`, matching `sources`' precedent. Color-coded client-side via a deterministic hash (`src/lib/labelColor.ts`), not a stored color (Phase 5.5). Defaults to `'[]'::jsonb`, never null |
+| `subtopic` | The country a Countries card covers (e.g. "Uganda"), which the Countries page filters on; null for every other topic's card and for rows written before the column existed (V2.5) |
 
 ## `bookmarks`
 
@@ -112,6 +126,7 @@ Links a user to a card they've saved — no content is duplicated here, since th
 
 ```
 users ──< user_topics
+      ──< user_subtopics
       ──< user_preferred_sources
       ──< digests ──< cards ──< bookmarks >── users
 ```

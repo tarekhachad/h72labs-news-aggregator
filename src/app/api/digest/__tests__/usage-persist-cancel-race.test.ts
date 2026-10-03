@@ -24,7 +24,7 @@ import type { UsageRunRecord } from "@/lib/usageRecord";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -59,7 +59,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -180,7 +180,7 @@ afterEach(() => {
 describe("digest route: cancelling mid-stage races pull() and cancel() on the same generator", () => {
   it("releases the mutex and emits the record exactly once when the client cancels while ingest is still in flight", async () => {
     let resolveIngest: (v: unknown[]) => void = () => {};
-    mocks.ingestArticles.mockImplementation(
+    mocks.ingestUnits.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveIngest = resolve;
@@ -192,12 +192,12 @@ describe("digest route: cancelling mid-stage races pull() and cancel() on the sa
     const reader = res.body!.getReader();
 
     // Pull the first chunk (the "ingesting" stage event) so pull() is
-    // genuinely mid-flight, awaiting ingestArticles, when we cancel.
+    // genuinely mid-flight, awaiting ingestUnits, when we cancel.
     const firstChunk = await reader.read();
     expect(firstChunk.done).toBe(false);
 
     // Assert the premise rather than assuming it. This test's whole value
-    // rests on the generator being genuinely suspended INSIDE ingestArticles
+    // rests on the generator being genuinely suspended INSIDE ingestUnits
     // when cancel() lands -- that is what makes cancel()'s events.return?.()
     // contend with the generator's already-pending events.next(), issued by
     // the stream's second pull(). (On THIS path only cancel() calls return():
@@ -209,16 +209,16 @@ describe("digest route: cancelling mid-stage races pull() and cancel() on the sa
     // uncontended, and this test would pass while exercising nothing. Waiting
     // on it also removes the timing assumption: the race is set up
     // deterministically instead of hopefully.
-    await vi.waitFor(() => expect(mocks.ingestArticles).toHaveBeenCalled());
+    await vi.waitFor(() => expect(mocks.ingestUnits).toHaveBeenCalled());
 
-    // Cancel now, WHILE ingestArticles is still unresolved. The first pull()
+    // Cancel now, WHILE ingestUnits is still unresolved. The first pull()
     // already handed back a chunk; the second one is parked in events.next(),
-    // which is what resumed the generator into ingestArticles. So this pits
+    // which is what resumed the generator into ingestUnits. So this pits
     // cancel()'s events.return?.() against that pending next(), on the same
     // generator.
     const cancelPromise = reader.cancel();
 
-    // Let ingestArticles resolve after cancellation has been requested, the
+    // Let ingestUnits resolve after cancellation has been requested, the
     // way a real in-flight API call would outlive a client disconnect.
     resolveIngest([]);
 

@@ -86,7 +86,9 @@ export async function isSameStory(
  * Filters out clusters that are the same real-world story as a card already
  * persisted earlier today, so a second/third same-day "Complete today's
  * news" run doesn't re-cover a story that's already on the digest. Compares
- * only within the same topic, and only against today's cards (an evolving
+ * only within the same unit (a topic, or one country within Countries:
+ * a Uganda story is never checked against a Kenya card), and only against
+ * today's cards (an evolving
  * story getting fresh daily coverage on a later day is normal, not a bug).
  * Two-stage, mirroring the same reasoning ROADMAP.md's deferred entry
  * already worked through for same-run near-duplicates: a cheap embedding
@@ -96,7 +98,7 @@ export async function isSameStory(
  */
 export async function filterAlreadyCovered(
   clusters: Cluster[],
-  existingCards: { topic: Topic; shortSummary: string }[]
+  existingCards: { topic: Topic; subtopic?: string | null; shortSummary: string }[]
 ): Promise<Cluster[]> {
   if (existingCards.length === 0) return clusters;
 
@@ -105,11 +107,16 @@ export async function filterAlreadyCovered(
   // string twice.
   const texts = clusters.map(clusterText);
 
-  const topics = new Set(clusters.map((c) => c.topic));
+  // A missing or empty subtopic is the same unit as none, as in triage.
+  const unitKey = (item: { topic: Topic; subtopic?: string | null }) =>
+    JSON.stringify([item.topic, item.subtopic || null]);
+  const units = new Map(
+    clusters.map((c) => [unitKey(c), c.subtopic ? `${c.topic}: ${c.subtopic}` : c.topic] as const)
+  );
   const survivingByIndex = new Array<boolean>(clusters.length).fill(true);
 
-  // Topics are independent of each other, so process them concurrently.
-  // This fan-out is one group per topic, however many clusters that topic
+  // Units are independent of each other, so process them concurrently.
+  // This fan-out is one group per unit, however many clusters that unit
   // holds — deliberately NOT the same shape as triageClusters' batching,
   // which splits a topic further into ≤20-cluster batches. The inner
   // `checks` fan-out below is the one to compare against triage: it still
@@ -117,11 +124,11 @@ export async function filterAlreadyCovered(
   // exactly the one-call-per-item pattern F.4.5 removed from triage and
   // did not touch here. See ROADMAP.md's deferred section.
   await Promise.all(
-    Array.from(topics).map(async (topic) => {
+    Array.from(units).map(async ([key, label]) => {
       const topicClusterIndices = clusters
-        .map((c, i) => (c.topic === topic ? i : -1))
+        .map((c, i) => (unitKey(c) === key ? i : -1))
         .filter((i) => i !== -1);
-      const topicCards = existingCards.filter((c) => c.topic === topic);
+      const topicCards = existingCards.filter((c) => unitKey(c) === key);
       if (topicCards.length === 0) return;
 
       const [clusterVectors, cardVectors] = await Promise.all([
@@ -156,7 +163,7 @@ export async function filterAlreadyCovered(
           // just confirmed is a duplicate.
           bestEffortLog(
             "log",
-            `[dedup] ${topic} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
+            `[dedup] ${label} — excluded as already covered (similarity ${bestSimilarity.toFixed(3)})`
           );
         }
       });

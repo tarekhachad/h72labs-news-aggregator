@@ -10,13 +10,13 @@ import type { Cluster } from "@/types";
 // which getLatestGeneratedAtForUser then reads back). This file drives POST
 // three times in a row against the same simulated user/day, manually
 // advancing the mocked cursor between calls the way the real DB round-trip
-// would, and asserts each run's ingestArticles call sees the PREVIOUS run's
+// would, and asserts each run's ingestUnits call sees the PREVIOUS run's
 // stamp -- not the first run's, not null, and not something stale.
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock("@/lib/profile", () => ({
 
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 
 vi.mock("@/lib/cluster", () => ({
@@ -129,7 +129,7 @@ beforeEach(() => {
     topics: ["Tech/AI"],
     preferredSources: ["BBC"],
   });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.filterAlreadyCovered.mockImplementation(
     async (clusters: Cluster[]) => clusters,
@@ -161,9 +161,9 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       "2026-08-12T22:00:00.000Z",
     );
     await runPost();
-    expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
+    expect(mocks.ingestUnits).toHaveBeenNthCalledWith(
       1,
-      ["Tech/AI"],
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-12T22:00:00.000Z",
     );
@@ -176,9 +176,9 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       "2026-08-13T10:00:00.000Z",
     );
     await runPost();
-    expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
+    expect(mocks.ingestUnits).toHaveBeenNthCalledWith(
       2,
-      ["Tech/AI"],
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-13T10:00:00.000Z",
     );
@@ -191,14 +191,14 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       "2026-08-13T11:30:00.000Z",
     );
     await runPost();
-    expect(mocks.ingestArticles).toHaveBeenNthCalledWith(
+    expect(mocks.ingestUnits).toHaveBeenNthCalledWith(
       3,
-      ["Tech/AI"],
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-13T11:30:00.000Z",
     );
 
-    expect(mocks.ingestArticles).toHaveBeenCalledTimes(3);
+    expect(mocks.ingestUnits).toHaveBeenCalledTimes(3);
     // Every run wrote into the SAME digest row -- this is same-day
     // multi-run, not a new row per run. Asserted on the write rather than on
     // the claim, because the claim is keyed on the user and carries no row.

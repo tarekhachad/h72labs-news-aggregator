@@ -13,7 +13,7 @@ import { TOP_UP_CARDS_PER_TOPIC } from "@/lib/cardCap";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -128,7 +128,7 @@ beforeEach(() => {
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-42" } } });
   setProfile([PICKED, PICKED_TOO]);
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   mocks.filterAlreadyCovered.mockImplementation(async (cs: Cluster[]) => cs);
   mocks.claimGenerationForUser.mockResolvedValue({ claimId: "11111111-1111-4111-8111-111111111111" });
@@ -336,7 +336,7 @@ describe("digest route: preferred sources", () => {
     ]);
     expect(record.clustersBoosted).toBe(0);
     expect(record.sourceCount).toBe(0);
-    expect(mocks.ingestArticles).toHaveBeenCalledWith([TOPIC], [], expect.anything());
+    expect(mocks.ingestUnits).toHaveBeenCalledWith([{ topic: TOPIC, subtopic: null }], [], expect.anything());
     expect(mocks.rankFrontPage.mock.calls[0][0].map((c: { preferredSourceCount: number }) => c.preferredSourceCount)).toEqual([0, 0]);
   });
 
@@ -349,7 +349,9 @@ describe("digest route: preferred sources", () => {
 
     const record = await run();
 
-    expect(mocks.ingestArticles.mock.calls[0][0]).toEqual(topics.slice(0, MAX_TOPICS_PER_DIGEST));
+    expect(mocks.ingestUnits.mock.calls[0][0]).toEqual(
+      topics.slice(0, MAX_TOPICS_PER_DIGEST).map((topic) => ({ topic, subtopic: null }))
+    );
     expect(record.topicsDropped).toBe(3);
     expect(record.topicCount).toBe(MAX_TOPICS_PER_DIGEST + 3);
     expect(warn.mock.calls.some(([line]) => String(line).includes("skipping"))).toBe(true);

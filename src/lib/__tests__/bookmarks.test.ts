@@ -41,7 +41,7 @@ describe("getSavedCards", () => {
     // the actual select string is what catches a regression, same as
     // digests.dedup.test.ts does for getTodaysCardSummaries.
     expect(select).toHaveBeenCalledWith(
-      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, digests(date))"
+      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic, digests(date))"
     );
 
     expect(result).toHaveLength(1);

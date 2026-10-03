@@ -234,6 +234,6 @@ describe("what leaves the cap", () => {
     ).items;
     const { kept, cuts } = applyCardCap(boosted, { ...TOP_UP, preferredSources: PREFERRED });
     expect(kept.map((k) => k.label)).toEqual(["t5", "t4"]);
-    expect(cuts).toEqual([{ topic: T1, allowance: TOP_UP_CARDS_PER_TOPIC, dropped: 1, total: 3, severities: [4] }]);
+    expect(cuts).toEqual([{ topic: T1, subtopic: null, allowance: TOP_UP_CARDS_PER_TOPIC, dropped: 1, total: 3, severities: [4] }]);
   });
 });

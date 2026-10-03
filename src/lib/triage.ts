@@ -113,34 +113,53 @@ function verdictSchema(withReasons: boolean) {
 
 export interface TriageBatch {
   topic: Topic;
+  /** The country within Countries this batch judges; null for every other topic. */
+  subtopic: string | null;
   /** Indices into the original clusters array. */
   indices: number[];
 }
 
 /**
- * The topic to batch a cluster under, or null when the cluster is too
- * malformed to plan (null, or no string topic). Total on purpose: it runs
- * before any batch is sent, so a throw here would reject triageClusters and
- * lose the whole digest's triage over one bad cluster — the never-rejects
- * contract the route relies on.
+ * The unit to batch a cluster under (its topic, and its country within
+ * Countries), or null when the cluster is too malformed to plan (null, or no
+ * string topic). Total on purpose: it runs before any batch is sent, so a
+ * throw here would reject triageClusters and lose the whole digest's triage
+ * over one bad cluster — the never-rejects contract the route relies on.
+ * A subtopic that isn't a non-empty string plans as none.
  */
-function plannableTopic(cluster: Cluster): Topic | null {
+function plannableUnit(cluster: Cluster): { topic: Topic; subtopic: string | null } | null {
   try {
     const topic: unknown = cluster?.topic;
-    return typeof topic === "string" ? (topic as Topic) : null;
+    if (typeof topic !== "string") return null;
+    const subtopic: unknown = cluster.subtopic;
+    return {
+      topic: topic as Topic,
+      subtopic: typeof subtopic === "string" && subtopic !== "" ? subtopic : null,
+    };
   } catch {
     return null;
   }
 }
 
 /**
- * Groups clusters into the batches triage will actually send: per-topic,
- * then split into size-evened chunks.
+ * How a unit is named to the model and in logs: the topic alone, or
+ * "Countries: Uganda", so a country is judged against its own typical day
+ * rather than every picked country's at once.
+ */
+function unitLabel(topic: Topic, subtopic: string | null): string {
+  return subtopic === null ? topic : `${topic}: ${subtopic}`;
+}
+
+/**
+ * Groups clusters into the batches triage will actually send: per reading
+ * unit (a topic, or one country within Countries), then split into
+ * size-evened chunks.
  *
- * Per-topic because the prompt's whole calibration is topic-relative
+ * Per unit because the prompt's whole calibration is topic-relative
  * ("a typical day's coverage for this exact topic") — mixing topics in one
- * call would ask the model to hold several different bars at once. The
- * extra partial calls that costs are worth ~$0.006.
+ * call would ask the model to hold several different bars at once, and a
+ * quiet country's day is not Uganda's and Kenya's together. The extra
+ * partial calls that costs are worth ~$0.006.
  *
  * Size-evened because `ceil(n / MAX)`-sized chunks leave a runt: 62
  * clusters would go 20/20/20/2, and a 2-cluster batch is judged at a very
@@ -157,17 +176,20 @@ function plannableTopic(cluster: Cluster): Topic | null {
  * and triageBatchCount never predicts a call for it.
  */
 export function planTriageBatches(clusters: Cluster[]): TriageBatch[] {
-  const byTopic = new Map<Topic, number[]>();
+  // Keyed on the pair as one string; a JSON array can't collide the way a
+  // joined "topic: subtopic" could.
+  const byUnit = new Map<string, { topic: Topic; subtopic: string | null; indices: number[] }>();
   clusters.forEach((cluster, index) => {
-    const topic = plannableTopic(cluster);
-    if (topic === null) return;
-    const existing = byTopic.get(topic);
-    if (existing) existing.push(index);
-    else byTopic.set(topic, [index]);
+    const unit = plannableUnit(cluster);
+    if (unit === null) return;
+    const key = JSON.stringify([unit.topic, unit.subtopic]);
+    const existing = byUnit.get(key);
+    if (existing) existing.indices.push(index);
+    else byUnit.set(key, { ...unit, indices: [index] });
   });
 
   const batches: TriageBatch[] = [];
-  for (const [topic, indices] of byTopic) {
+  for (const { topic, subtopic, indices } of byUnit.values()) {
     const batchCount = Math.ceil(indices.length / MAX_CLUSTERS_PER_BATCH);
     // Distribute the remainder one cluster at a time across the leading
     // batches rather than slicing at a fixed stride — a fixed stride of
@@ -179,7 +201,7 @@ export function planTriageBatches(clusters: Cluster[]): TriageBatch[] {
     let start = 0;
     for (let b = 0; b < batchCount; b += 1) {
       const size = base + (b < remainder ? 1 : 0);
-      batches.push({ topic, indices: indices.slice(start, start + size) });
+      batches.push({ topic, subtopic, indices: indices.slice(start, start + size) });
       start += size;
     }
   }
@@ -297,7 +319,8 @@ function clusterContext(cluster: Cluster): string {
 }
 
 /**
- * One Claude call judging `indices` (all of one topic), returning only the
+ * One Claude call judging `indices` (all of one unit, named by `unit`, see
+ * unitLabel), returning only the
  * verdicts it could confidently match back. Callers treat anything absent
  * from the returned map as unjudged — that's what drives the split-retry
  * ladder rather than a silent rejection.
@@ -312,7 +335,7 @@ function clusterContext(cluster: Cluster): string {
 async function judgeBatch(
   clusters: Cluster[],
   indices: number[],
-  topic: Topic,
+  unit: string,
 ): Promise<Map<number, TriageOutcome>> {
   const withReasons = reasonsEnabled();
   const list = indices
@@ -329,7 +352,7 @@ async function judgeBatch(
     messages: [
       {
         role: "user",
-        content: `Topic: ${topic}\n\nClusters:\n\n${list}\n\nFor each numbered cluster: does it belong in today's briefing, and how significant is it relative to this topic's own typical-day baseline?`,
+        content: `Topic: ${unit}\n\nClusters:\n\n${list}\n\nFor each numbered cluster: does it belong in today's briefing, and how significant is it relative to this topic's own typical-day baseline?`,
       },
     ],
     output_config: { format: zodOutputFormat(verdictSchema(withReasons)) },
@@ -338,7 +361,7 @@ async function judgeBatch(
 
   if (!response.parsed_output) {
     throw new Error(
-      `triage: no parsed output for ${topic} batch of ${indices.length} (stop_reason: ${response.stop_reason})`,
+      `triage: no parsed output for ${unit} batch of ${indices.length} (stop_reason: ${response.stop_reason})`,
     );
   }
 
@@ -364,7 +387,7 @@ async function judgeBatch(
     // through the retry ladder. Hence the guard around building the line,
     // not just around printing it (bestEffortLog covers that).
     //
-    // The topic comes from the argument, already validated at planning,
+    // The unit comes from the argument, already validated at planning,
     // rather than a second read of `cluster.topic`: a getter that worked
     // then can throw now. loggedHeadline and loggedReason are total on their
     // own as well (see their docstrings).
@@ -372,7 +395,7 @@ async function judgeBatch(
       const cluster = clusters[indices[verdict.index]];
       bestEffortLog(
         "log",
-        `[triage] ${topic} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`,
+        `[triage] ${unit} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`,
       );
     } catch {
       // A lost log line must not cost a paid verdict.
@@ -391,13 +414,13 @@ async function judgeBatch(
 async function judgeWithSplitRetry(
   clusters: Cluster[],
   indices: number[],
-  topic: Topic,
+  unit: string,
   depth: number,
 ): Promise<Map<number, TriageOutcome>> {
   let outcomes = new Map<number, TriageOutcome>();
 
   try {
-    outcomes = await judgeBatch(clusters, indices, topic);
+    outcomes = await judgeBatch(clusters, indices, unit);
   } catch (err) {
     // Guarded for the same reason judgeBatch's log is, and it matters more
     // here: this catch is the only thing standing between a failed batch
@@ -406,7 +429,7 @@ async function judgeWithSplitRetry(
     // triageClusters, and break the never-rejects contract that the route
     // gave up its own per-cluster catch to rely on — turning one failed
     // batch into a failed digest.
-    bestEffortLog("error", `[triage] batch of ${indices.length} for ${topic} failed:`, err);
+    bestEffortLog("error", `[triage] batch of ${indices.length} for ${unit} failed:`, err);
   }
 
   const unjudged = indices.filter((i) => !outcomes.has(i));
@@ -421,7 +444,7 @@ async function judgeWithSplitRetry(
     (h) => h.length > 0,
   );
   const retried = await Promise.all(
-    halves.map((half) => judgeWithSplitRetry(clusters, half, topic, depth + 1)),
+    halves.map((half) => judgeWithSplitRetry(clusters, half, unit, depth + 1)),
   );
 
   for (const map of retried) {
@@ -450,7 +473,7 @@ export async function triageClusters(
   const batches = planTriageBatches(clusters);
   const results = await Promise.all(
     batches.map((batch) =>
-      judgeWithSplitRetry(clusters, batch.indices, batch.topic, 0),
+      judgeWithSplitRetry(clusters, batch.indices, unitLabel(batch.topic, batch.subtopic), 0),
     ),
   );
 

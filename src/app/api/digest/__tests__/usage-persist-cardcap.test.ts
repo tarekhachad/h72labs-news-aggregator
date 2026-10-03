@@ -31,7 +31,7 @@ import type { UsageRunRecord } from "@/lib/usageRecord";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -66,7 +66,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -139,7 +139,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
   // Pass-through: dedup only runs once the digest has cards, so this is
   // needed by the top-up case and inert for the first-run ones.

@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+// COUNTRIES is empty until the country catalog lands.
+vi.mock("@/config/countries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countries")>()),
+  COUNTRIES: ["Uganda", "Kenya", "Morocco"],
+}));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: mocks.getUser } })),
 }));
@@ -26,12 +31,15 @@ vi.mock("@/lib/profile", async (importActual) => ({
 const { saveProfile } = await import("@/app/onboarding/actions");
 const { updatePreferences } = await import("@/app/(paper)/profile/actions");
 
-function form(topics: readonly string[], sources: readonly string[]) {
+function form(topics: readonly string[], sources: readonly string[], countries: readonly string[] = []) {
   const formData = new FormData();
   for (const topic of topics) formData.append("topics", topic);
   for (const source of sources) formData.append("preferredSources", source);
+  for (const country of countries) formData.append("countries", country);
   return formData;
 }
+
+const nonCountry = TOPICS.filter((t) => t !== "Countries");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,6 +64,7 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
       expect.anything(),
       "user-1",
       TOPICS.slice(0, 3),
+      [],
       []
     );
   });
@@ -68,7 +77,8 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
       expect.anything(),
       "user-1",
       TOPICS.slice(0, 10),
-      SOURCES.slice(0, 2)
+      SOURCES.slice(0, 2),
+      []
     );
   });
 
@@ -84,5 +94,44 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
       `REDIRECT:${errorBase}${encodeURIComponent("Pick at most 10 topics")}`
     );
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("reads every repeated countries field and saves the picks", async () => {
+    const picked = [...nonCountry.slice(0, 2), "Countries"];
+    await expect(action(form(picked, [], ["Morocco", "Uganda"]))).rejects.toThrow(`REDIRECT:${ok}`);
+    expect(mocks.saveUserProfile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      picked,
+      [],
+      ["Morocco", "Uganda"]
+    );
+  });
+
+  it("sends Countries with no country back with its message, saving nothing", async () => {
+    await expect(action(form([...nonCountry.slice(0, 3), "Countries"], []))).rejects.toThrow(
+      `REDIRECT:${errorBase}${encodeURIComponent("Pick at least one country, or remove Countries")}`
+    );
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("sends 8 topics plus 3 countries back with the maximum message, saving nothing", async () => {
+    await expect(
+      action(form([...nonCountry.slice(0, 8), "Countries"], [], ["Uganda", "Kenya", "Morocco"]))
+    ).rejects.toThrow(
+      `REDIRECT:${errorBase}${encodeURIComponent("Pick at most 10 topics and countries (each country counts as one)")}`
+    );
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("drops countries sent without the Countries topic", async () => {
+    await expect(action(form(nonCountry.slice(0, 3), [], ["Kenya"]))).rejects.toThrow(`REDIRECT:${ok}`);
+    expect(mocks.saveUserProfile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      nonCountry.slice(0, 3),
+      [],
+      []
+    );
   });
 });

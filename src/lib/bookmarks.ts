@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Card } from "@/types";
-import { rowToCard, type CardRow } from "@/lib/digests";
+import { CARD_COLUMNS, rowToCard, type CardRow } from "@/lib/digests";
 
 // Postgres unique_violation — see https://www.postgresql.org/docs/current/errcodes-appendix.html
 const UNIQUE_VIOLATION = "23505";
@@ -97,9 +97,7 @@ export async function getSavedCards(
 ): Promise<SavedCard[]> {
   const { data, error } = await supabase
     .from("bookmarks")
-    .select(
-      "cards(id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, digests(date))"
-    )
+    .select(`cards(${CARD_COLUMNS}, digests(date))`)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 

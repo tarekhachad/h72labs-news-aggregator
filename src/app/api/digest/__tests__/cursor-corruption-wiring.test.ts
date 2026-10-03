@@ -71,6 +71,31 @@ vi.mock("@/lib/profile", () => ({
 
 // @/lib/ingest is deliberately NOT mocked here -- that's the point of this
 // file. Only its network dependency (rss-parser, mocked above) is faked.
+//
+// The one exception is ingestUnits, the route's entry point, which is a
+// placeholder until the country-ingest lane builds it. It is routed to the
+// real ingestArticles for the plain topics these profiles hold, so the real
+// cursor guard below is still what decides which articles survive. Remove
+// this shim once ingestUnits is real.
+vi.mock("@/lib/ingest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ingest")>();
+  let placeholder = false;
+  try {
+    await actual.ingestUnits([], [], null);
+  } catch {
+    placeholder = true;
+  }
+  return placeholder
+    ? {
+        ...actual,
+        ingestUnits: (
+          units: { topic: Parameters<typeof actual.ingestArticles>[0][number] }[],
+          preferred: Parameters<typeof actual.ingestArticles>[1],
+          since: string | null
+        ) => actual.ingestArticles(units.map((u) => u.topic), preferred, since),
+      }
+    : actual;
+});
 
 vi.mock("@/lib/cluster", () => ({
   clusterArticles: mocks.clusterArticles,

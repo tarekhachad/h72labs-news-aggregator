@@ -14,6 +14,7 @@ function makeRow(overrides: Partial<CardRow> = {}): CardRow {
     front_page_rank: null,
     title: null,
     labels: null,
+    subtopic: null,
     ...overrides,
   };
 }
@@ -68,5 +69,22 @@ describe("rowToCard: title/labels mapping (Phase 5.5)", () => {
   it("passes through real labels unchanged", () => {
     const card = rowToCard(makeRow({ labels: ["Funding", "Startups"] }), new Set());
     expect(card.labels).toEqual(["Funding", "Startups"]);
+  });
+});
+
+describe("rowToCard: subtopic mapping", () => {
+  it("passes a Countries card's country through", () => {
+    const card = rowToCard(makeRow({ topic: "Countries", subtopic: "Uganda" }), new Set());
+    expect(card.subtopic).toBe("Uganda");
+  });
+
+  it("maps a null subtopic (every other topic's card) to null", () => {
+    expect(rowToCard(makeRow({ subtopic: null }), new Set()).subtopic).toBeNull();
+  });
+
+  it("maps a row with no subtopic key at all to null, not undefined", () => {
+    const row = makeRow();
+    delete (row as Partial<CardRow>).subtopic;
+    expect(rowToCard(row, new Set()).subtopic).toBeNull();
   });
 });

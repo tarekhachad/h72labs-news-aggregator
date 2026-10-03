@@ -69,8 +69,8 @@ describe("planTriageBatches", () => {
     ]);
 
     expect(batches).toHaveLength(2);
-    expect(batches[0]).toEqual({ topic: "Tech/AI", indices: [0, 1, 2] });
-    expect(batches[1]).toEqual({ topic: "Morocco", indices: [3, 4] });
+    expect(batches[0]).toEqual({ topic: "Tech/AI", subtopic: null, indices: [0, 1, 2] });
+    expect(batches[1]).toEqual({ topic: "Morocco", subtopic: null, indices: [3, 4] });
   });
 
   it("never mixes topics in one batch, even when interleaved", async () => {

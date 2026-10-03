@@ -18,6 +18,7 @@ export async function updatePreferences(formData: FormData) {
   const parsed = ProfileInput.safeParse({
     topics: formData.getAll("topics"),
     preferredSources: formData.getAll("preferredSources"),
+    countries: formData.getAll("countries"),
   });
 
   if (!parsed.success) {
@@ -25,9 +26,9 @@ export async function updatePreferences(formData: FormData) {
     redirect(`/profile?prefsError=${encodeURIComponent(message)}`);
   }
 
-  const { topics, preferredSources } = parsed.data;
+  const { topics, preferredSources, countries } = parsed.data;
 
-  const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources);
+  const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources, countries);
   if (error) {
     // A failure after the delete can leave the user with no saved topics;
     // the page gates (topics.length === 0) then send them to /onboarding

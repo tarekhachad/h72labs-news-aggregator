@@ -2,6 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getUserProfile } from "@/lib/profile";
 
+// COUNTRIES is empty until the country catalog lands; these tests need some
+// offered countries, in a known order that is not alphabetical.
+vi.mock("@/config/countries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countries")>()),
+  COUNTRIES: ["Uganda", "Kenya", "Morocco"],
+}));
+
 // profile.ts had no tests at all before this file, and all seven route
 // wiring tests vi.mock the module wholesale — so nothing anywhere exercised
 // the real getUserProfile.
@@ -25,6 +32,8 @@ interface TableResponse {
 function makeFakeSupabase(responses: {
   user_topics?: Partial<TableResponse>;
   user_preferred_sources?: Partial<TableResponse>;
+  /** Omitted means no saved countries. */
+  user_subtopics?: Partial<TableResponse>;
   /** Omitted means the user has no settings row, the state before TimeZoneSync first writes one. */
   user_settings?: Partial<TableResponse>;
 }) {
@@ -37,9 +46,11 @@ function makeFakeSupabase(responses: {
         ? responses.user_topics
         : table === "user_preferred_sources"
           ? responses.user_preferred_sources
-          : table === "user_settings"
-            ? (responses.user_settings ?? { data: null })
-            : undefined;
+          : table === "user_subtopics"
+            ? (responses.user_subtopics ?? { data: [] })
+            : table === "user_settings"
+              ? (responses.user_settings ?? { data: null })
+              : undefined;
     if (configured === undefined) {
       throw new Error(`fake supabase: unexpected table ${table}`);
     }
@@ -273,5 +284,75 @@ describe("getUserProfile", () => {
     expect(profile.topics).toEqual(["Tech/AI"]);
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+const countryRows = (...countries: string[]) => countries.map((subtopic) => ({ subtopic }));
+
+describe("getUserProfile: countries", () => {
+  it("returns saved countries in COUNTRIES order, not the order the DB hands them back", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Countries", "Tech/AI") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: countryRows("Morocco", "Uganda", "Kenya") },
+    });
+
+    expect((await getUserProfile(client, "user-1")).countries).toEqual(["Uganda", "Kenya", "Morocco"]);
+  });
+
+  it("drops a saved country no longer offered, and collapses duplicates", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Countries") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: countryRows("Atlantis", "Kenya", "Kenya") },
+    });
+
+    expect((await getUserProfile(client, "user-1")).countries).toEqual(["Kenya"]);
+  });
+
+  it("returns no countries when the Countries topic isn't saved, whatever the rows say", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Tech/AI") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: countryRows("Kenya") },
+    });
+
+    expect((await getUserProfile(client, "user-1")).countries).toEqual([]);
+  });
+
+  it("reads null country data as none", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Countries") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: null },
+    });
+
+    expect((await getUserProfile(client, "user-1")).countries).toEqual([]);
+  });
+
+  it("throws on a countries read error rather than reading the reader as having none", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Countries") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: null, error: { message: "no such table" } },
+    });
+
+    await expect(getUserProfile(client, "user-1")).rejects.toThrow(
+      "getUserProfile: failed to load countries: no such table"
+    );
+  });
+
+  it("reads only this user's Countries rows from user_subtopics", async () => {
+    const { client, select, eq } = makeFakeSupabase({
+      user_topics: { data: topicRows("Countries") },
+      user_preferred_sources: { data: [] },
+      user_subtopics: { data: countryRows("Kenya") },
+    });
+
+    await getUserProfile(client, "user-42");
+
+    expect(select).toHaveBeenCalledWith("user_subtopics", "subtopic");
+    expect(eq).toHaveBeenCalledWith("user_subtopics", "user_id", "user-42");
+    expect(eq).toHaveBeenCalledWith("user_subtopics", "topic", "Countries");
   });
 });

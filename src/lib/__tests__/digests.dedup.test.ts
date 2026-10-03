@@ -13,11 +13,12 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
 }
 
 describe("getTodaysCardSummaries", () => {
-  it("queries the cards table, selecting id + topic + short_summary + severity + sources, scoped to one digest_id", async () => {
+  it("queries the cards table, selecting id + topic + subtopic + short_summary + severity + sources, scoped to one digest_id", async () => {
     const sources = [{ title: "t", url: "https://example.com/a", source: SOURCES[0], snippet: "s" }];
     const rows = [
       { id: "card-1", topic: "Tech/AI", short_summary: "AI story", severity: 4, sources },
       { id: "card-2", topic: "US Finance", short_summary: "Finance story", severity: null, sources: [] },
+      { id: "card-3", topic: "Countries", subtopic: "Uganda", short_summary: "Uganda story", severity: 3, sources: [] },
     ];
     const { client, from, select, eq } = makeFakeSupabase({ data: rows, error: null });
 
@@ -25,14 +26,16 @@ describe("getTodaysCardSummaries", () => {
     const result = await getTodaysCardSummaries(client as any, "digest-123");
 
     expect(from).toHaveBeenCalledWith("cards");
-    expect(select).toHaveBeenCalledWith("id, topic, short_summary, severity, sources");
+    expect(select).toHaveBeenCalledWith("id, topic, subtopic, short_summary, severity, sources");
     expect(eq).toHaveBeenCalledWith("digest_id", "digest-123");
 
     expect(result).toEqual([
-      { id: "card-1", topic: "Tech/AI", shortSummary: "AI story", severity: 4, sources },
+      // A row with no subtopic key (every non-country card) reads as null.
+      { id: "card-1", topic: "Tech/AI", subtopic: null, shortSummary: "AI story", severity: 4, sources },
       // Null severity (a row persisted before the column existed) defaults
       // to the lowest tier, same fallback rowToCard uses.
-      { id: "card-2", topic: "US Finance", shortSummary: "Finance story", severity: 1, sources: [] },
+      { id: "card-2", topic: "US Finance", subtopic: null, shortSummary: "Finance story", severity: 1, sources: [] },
+      { id: "card-3", topic: "Countries", subtopic: "Uganda", shortSummary: "Uganda story", severity: 3, sources: [] },
     ]);
   });
 

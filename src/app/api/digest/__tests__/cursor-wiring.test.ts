@@ -6,7 +6,7 @@ import type { Cluster } from "@/types";
 // a cursor at all) and getLatestGeneratedAtForUser (how far back to read --
 // the user's last successful run, whatever day that was). This test drives
 // the REAL route.ts POST handler end-to-end and asserts the cursor that
-// actually reaches ingestArticles is getLatestGeneratedAtForUser's return
+// actually reaches ingestUnits is getLatestGeneratedAtForUser's return
 // value, not anything derived from upsertDigestForToday or today's row --
 // a regression here would silently resurrect the old "resets to null every
 // midnight" bug even though getLatestGeneratedAtForUser itself is correct.
@@ -14,7 +14,7 @@ import type { Cluster } from "@/types";
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserProfile: vi.fn(),
-  ingestArticles: vi.fn(),
+  ingestUnits: vi.fn(),
   clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(),
   triageClusters: vi.fn(),
@@ -54,7 +54,7 @@ vi.mock("@/lib/profile", () => ({
 
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 
 vi.mock("@/lib/cluster", () => ({
@@ -127,7 +127,7 @@ beforeEach(() => {
     topics: ["Tech/AI"],
     preferredSources: ["BBC"],
   });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
   mocks.filterAlreadyCovered.mockResolvedValue(FAKE_CLUSTERS);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
@@ -150,13 +150,13 @@ async function runPost() {
 }
 
 describe("digest route: since-cursor wiring (F.4.4)", () => {
-  it("passes getLatestGeneratedAtForUser's value through to ingestArticles as the since-cursor", async () => {
+  it("passes getLatestGeneratedAtForUser's value through to ingestUnits as the since-cursor", async () => {
     mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-08-01T03:00:00Z");
 
     await runPost();
 
-    expect(mocks.ingestArticles).toHaveBeenCalledWith(
-      ["Tech/AI"],
+    expect(mocks.ingestUnits).toHaveBeenCalledWith(
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-01T03:00:00Z",
     );
@@ -171,13 +171,13 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     );
   });
 
-  it("passes null through to ingestArticles for a user who has never generated", async () => {
+  it("passes null through to ingestUnits for a user who has never generated", async () => {
     mocks.getLatestGeneratedAtForUser.mockResolvedValue(null);
 
     await runPost();
 
-    expect(mocks.ingestArticles).toHaveBeenCalledWith(
-      ["Tech/AI"],
+    expect(mocks.ingestUnits).toHaveBeenCalledWith(
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       null,
     );
@@ -186,15 +186,15 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
   it("uses the cross-day cursor even on a brand-new day's first run, not today's (empty) row", async () => {
     // Today's row was just created by upsertDigestForToday (no cursor of its
     // own -- the function doesn't even return one anymore), but the user
-    // generated yesterday. ingestArticles must see yesterday's timestamp,
+    // generated yesterday. ingestUnits must see yesterday's timestamp,
     // not null / not today's row.
     mocks.upsertDigestForToday.mockResolvedValue({ digestId: "digest-today" });
     mocks.getLatestGeneratedAtForUser.mockResolvedValue("2026-08-12T23:50:00Z");
 
     await runPost();
 
-    expect(mocks.ingestArticles).toHaveBeenCalledWith(
-      ["Tech/AI"],
+    expect(mocks.ingestUnits).toHaveBeenCalledWith(
+      [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-12T23:50:00Z",
     );
@@ -216,7 +216,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), {
       claimId: CLAIM_ID,
     });
-    expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    expect(mocks.ingestUnits).not.toHaveBeenCalled();
   });
 
   it("reads and writes nothing at all when the claim is already held", async () => {
@@ -232,7 +232,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     expect(res.status).toBe(409);
     expect(mocks.upsertDigestForToday).not.toHaveBeenCalled();
     expect(mocks.getLatestGeneratedAtForUser).not.toHaveBeenCalled();
-    expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    expect(mocks.ingestUnits).not.toHaveBeenCalled();
     // Nothing was claimed, so nothing may be released -- a release here would
     // be clearing the claim that refused this request, which belongs to the
     // run still using it.
@@ -254,7 +254,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
     expect(mocks.releaseGenerationClaim).toHaveBeenCalledWith(expect.anything(), {
       claimId: CLAIM_ID,
     });
-    expect(mocks.ingestArticles).not.toHaveBeenCalled();
+    expect(mocks.ingestUnits).not.toHaveBeenCalled();
   });
 
   it("calls upsertDigestForToday and getLatestGeneratedAtForUser concurrently, not one after the other", async () => {

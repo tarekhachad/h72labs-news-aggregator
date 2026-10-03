@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { ingestArticles, planFeeds, topicsToRead } from "@/lib/ingest";
+import { ingestUnits, planFeeds } from "@/lib/ingest";
+import { countReadingUnits, readingUnits } from "@/lib/readingUnits";
 import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
@@ -93,7 +94,7 @@ async function* runDigestPipeline(
   // one place in this function that must not acquire new ways to fail.
   userId: string,
   digestId: string,
-  profile: { topics: Topic[]; preferredSources: Source[] },
+  profile: { topics: Topic[]; preferredSources: Source[]; countries: string[] },
   sinceIso: string | null,
   reservation: Reservation,
   claim: GenerationClaim
@@ -153,7 +154,9 @@ async function* runDigestPipeline(
     topicsDropped: number | null;
   } = {
     runShape: deriveRunShape(sinceIso, null),
-    topicCount: profile.topics.length,
+    // The profile's size in reading units, the same count its 3-to-10 limit
+    // uses: the Countries topic counts as nothing, each country as one.
+    topicCount: countReadingUnits(profile.topics, profile.countries),
     sourceCount: profile.preferredSources.length,
     articleCount: null,
     clusterCount: null,
@@ -167,7 +170,7 @@ async function* runDigestPipeline(
     rankApplied: null,
     clustersBoosted: null,
     // Known before anything runs: it depends only on the profile.
-    topicsDropped: topicsToRead(profile.topics).dropped.length,
+    topicsDropped: readingUnits(profile.topics, profile.countries).dropped,
   };
 
   // The whole body is wrapped so the generation claim (see
@@ -178,20 +181,27 @@ async function* runDigestPipeline(
   // any other early return from a generator).
   try {
     yield { stage: "ingesting" };
-    // A profile can hold more topics than one digest reads; the rest are
-    // skipped, never read past the bound the spend reservation assumes.
-    const { read: topicsRead, dropped: topicsSkipped } = topicsToRead(profile.topics);
-    if (topicsSkipped.length > 0) {
+    // Each unit is a topic, or one picked country within Countries, and is
+    // read as a topic of its own. A profile can hold more units than one
+    // digest reads; the rest are skipped, never read past the bound the spend
+    // reservation assumes.
+    const units = readingUnits(profile.topics, profile.countries);
+    if (units.dropped > 0) {
       bestEffortLog("warn",
-        `[digest] profile has ${profile.topics.length} topics; reading ${topicsRead.length}, skipping ${topicsSkipped.join(", ")}`
+        `[digest] profile has ${units.read.length + units.dropped} topics and countries; reading ${units.read.length}, skipping ${units.dropped}`
       );
     }
     memoryMark("before ingest", {
-      topics: topicsRead.length,
+      topics: units.read.length,
       sources: profile.preferredSources.length,
-      feeds: planFeeds(topicsRead, profile.preferredSources).length,
+      // Feeds of the plain topics only: a country's feeds are planned inside
+      // ingestUnits, so a reader with countries reads more than this.
+      feeds: planFeeds(
+        units.read.filter((u) => u.subtopic === null).map((u) => u.topic),
+        profile.preferredSources
+      ).length,
     });
-    const articles = await ingestArticles(topicsRead, profile.preferredSources, sinceIso);
+    const articles = await ingestUnits(units.read, profile.preferredSources, sinceIso);
     shape.articleCount = articles.length;
     // longestText is here because it is the one input to clustering with no
     // bound at all: a single feed item has arrived at 48,191 characters.
@@ -315,8 +325,9 @@ async function* runDigestPipeline(
     shape.notableCount = notableClusters.length;
     shape.cardsDroppedByCap = cuts.reduce((sum, cut) => sum + cut.dropped, 0);
     for (const cut of cuts) {
-      bestEffortLog("log", 
-        `[digest] ${cut.topic}: kept ${cut.allowance} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
+      const unit = cut.subtopic === null ? cut.topic : `${cut.topic}: ${cut.subtopic}`;
+      bestEffortLog("log",
+        `[digest] ${unit}: kept ${cut.allowance} of ${cut.total} notable — dropped ${cut.dropped} at severity ${cut.severities.join(", ")}`
       );
     }
 
@@ -618,11 +629,11 @@ export async function POST() {
   }
 
   // After the claim, so a request refused with 409 above leaves no ledger
-  // row to undo. Sized from the topics this run will actually read (a
-  // profile can hold more than a digest reads); the database computes the
-  // amount and checks every limit.
+  // row to undo. Sized from the units this run will actually read (each
+  // picked country is one, and a profile can hold more than a digest reads);
+  // the database computes the amount and checks every limit.
   const reserved = await reserveSpend(supabase, "digest", {
-    topicCount: topicsToRead(profile.topics).read.length,
+    topicCount: readingUnits(profile.topics, profile.countries).read.length,
     ref: digestId,
     keepAlive: (task) => after(task),
   });

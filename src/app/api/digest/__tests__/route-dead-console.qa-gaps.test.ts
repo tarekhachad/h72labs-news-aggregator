@@ -5,7 +5,7 @@ import { defaultUsageSinks } from "@/lib/usageSinks";
 // each with a fully dead console. Every one of these sits on a path where a
 // throwing log line would turn a run that should finish into a failed one.
 const mocks = vi.hoisted(() => ({
-  getUser: vi.fn(), getUserProfile: vi.fn(), ingestArticles: vi.fn(), clusterArticles: vi.fn(),
+  getUser: vi.fn(), getUserProfile: vi.fn(), ingestUnits: vi.fn(), clusterArticles: vi.fn(),
   filterAlreadyCovered: vi.fn(), triageClusters: vi.fn(), writeCard: vi.fn(), rankFrontPage: vi.fn(),
   upsertDigestForToday: vi.fn(), getLatestGeneratedAtForUser: vi.fn(), saveGeneratedCards: vi.fn(),
   claimGenerationForUser: vi.fn(), releaseGenerationClaim: vi.fn(), getTodaysCardSummaries: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => ({ aut
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/ingest", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ingest")>()),
-  ingestArticles: mocks.ingestArticles,
+  ingestUnits: mocks.ingestUnits,
 }));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
@@ -49,7 +49,7 @@ function setup() {
   vi.clearAllMocks();
   mocks.getUser.mockResolvedValue({ data: { user: { id: "u" } } });
   mocks.getUserProfile.mockResolvedValue({ topics: ["Tech/AI"], preferredSources: ["BBC"] });
-  mocks.ingestArticles.mockResolvedValue([]);
+  mocks.ingestUnits.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(CL);
   mocks.filterAlreadyCovered.mockResolvedValue(CL);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
