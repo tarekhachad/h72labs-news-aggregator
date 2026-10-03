@@ -3,6 +3,7 @@ import { FEEDS } from "@/config/feeds";
 import { isImplausiblyFuture } from "@/lib/cursor";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 import { TOPICS, type Article, type Source, type Topic } from "@/types";
+import type { ReadingUnit } from "@/lib/readingUnits";
 
 const parser = new Parser({
   timeout: 10_000,
@@ -321,4 +322,20 @@ export async function ingestArticles(
   // in one feed and not another. Counted twice, it would make a one-source
   // story look corroborated.
   return dedupeArticles(results.flat().filter((a) => new Date(a.publishedAt) >= cutoff));
+}
+
+/**
+ * Wave 5's ingest by reading unit (src/lib/readingUnits.ts): up to 6 feed
+ * slots per unit, a country unit reading its own feeds, each article tagged
+ * with its unit's subtopic. Built by V2.5 L10; nothing calls it before then.
+ */
+export async function ingestUnits(
+  units: readonly ReadingUnit[],
+  preferredSources: readonly Source[],
+  sinceIso: string | null
+): Promise<Article[]> {
+  void units;
+  void preferredSources;
+  void sinceIso;
+  throw new Error("ingestUnits is built in V2.5 L10");
 }

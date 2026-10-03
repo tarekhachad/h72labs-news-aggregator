@@ -20,6 +20,7 @@ const TOPIC_TO_SLUG: Record<Topic, string> = {
   "US Politics": "us-politics",
   "Morocco Politics": "morocco-politics",
   "French Politics": "french-politics",
+  Countries: "countries",
   Geopolitics: "geopolitics",
   Morocco: "morocco",
   "UK Politics": "uk-politics",

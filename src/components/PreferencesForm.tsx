@@ -2,6 +2,7 @@ import { TOPICS, SOURCES, type Topic, type Source } from "@/types";
 import { MAX_TOPICS, MIN_TOPICS } from "@/lib/profile";
 import { SubmitButton } from "@/components/SubmitButton";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { COUNTRIES_TOPIC } from "@/config/countries";
 
 // The two pickers submit as repeated `topics` / `preferredSources` form
 // fields, the names the onboarding and profile actions read with getAll().
@@ -25,7 +26,7 @@ export function PreferencesForm({
         name="topics"
         label="Topics"
         hint={`Pick ${MIN_TOPICS} to ${MAX_TOPICS}. Type to search, or scroll the list.`}
-        items={TOPICS}
+        items={TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC)}
         defaultValue={defaultTopics}
         max={MAX_TOPICS}
         noun="topics"

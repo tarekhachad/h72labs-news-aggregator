@@ -73,7 +73,7 @@ function inCuratedOrder<T extends string>(curated: readonly T[], rows: string[])
 export async function getUserProfile(
   supabase: SupabaseClient,
   userId: string
-): Promise<{ topics: Topic[]; preferredSources: Source[]; timeZone: string }> {
+): Promise<{ topics: Topic[]; preferredSources: Source[]; countries: string[]; timeZone: string }> {
   const [
     { data: topicRows, error: topicError },
     { data: sourceRows, error: sourceError },
@@ -107,7 +107,8 @@ export async function getUserProfile(
     (sourceRows ?? []).map((r) => r.source as string)
   );
 
-  return { topics, preferredSources, timeZone };
+  // Countries are read and saved by wave 5 (V2.5 L11); empty until then.
+  return { topics, preferredSources, countries: [], timeZone };
 }
 
 /**

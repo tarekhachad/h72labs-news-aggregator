@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FEEDS } from "@/config/feeds";
 import { SOURCES, TOPICS } from "@/types";
+import { COUNTRIES_TOPIC } from "@/config/countries";
 
 // The catalog's shape rules. Whether each feed is live is a network question,
 // answered by scripts/verify-feeds.mts; these hold the rules that need no
@@ -10,8 +11,10 @@ const MIN_FEEDS_PER_TOPIC = 3;
 
 describe("topic and source catalog", () => {
   it("gives every shipped topic at least 3 feeds", () => {
+    // Countries reads per-country feeds (src/config/countries.ts), not FEEDS.
     const thin = TOPICS.filter(
-      (topic) => Object.keys(FEEDS[topic] ?? {}).length < MIN_FEEDS_PER_TOPIC
+      (topic) =>
+        topic !== COUNTRIES_TOPIC && Object.keys(FEEDS[topic] ?? {}).length < MIN_FEEDS_PER_TOPIC
     );
     expect(thin).toEqual([]);
   });

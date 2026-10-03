@@ -151,6 +151,10 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     "Le Figaro": "https://www.lefigaro.fr/rss/figaro_politique.xml",
   },
 
+  // Countries has no feeds of its own: each picked country reads from
+  // COUNTRY_FEEDS in src/config/countries.ts.
+  Countries: {},
+
   Geopolitics: {
     "The Guardian": "https://www.theguardian.com/world/rss",
     France24: "https://www.france24.com/en/rss",

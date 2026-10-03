@@ -16,6 +16,10 @@ export const TOPICS = [
   "US Politics",
   "Morocco Politics",
   "French Politics",
+  // A container: each country a reader picks inside it is its own reading
+  // unit (src/lib/readingUnits.ts). Placed before the regional topics so an
+  // article shared with one of them is tagged with the reader's country.
+  "Countries",
   "Geopolitics",
   "Morocco",
   "UK Politics",
@@ -231,11 +235,15 @@ export interface Article {
   url: string;
   source: Source;
   topic: Topic;
+  /** The country within Countries this article was read for; null or absent otherwise. */
+  subtopic?: string | null;
   publishedAt: string;
 }
 
 export interface Cluster {
   topic: Topic;
+  /** Taken from the same article as `topic`. */
+  subtopic?: string | null;
   articles: Article[];
 }
 
@@ -281,6 +289,8 @@ export interface Card {
    * of the same day, not just assigned once.
    */
   frontPageRank: number | null;
+  /** The country within Countries this card covers; null or absent for every other topic. */
+  subtopic?: string | null;
 }
 
 export interface Digest {

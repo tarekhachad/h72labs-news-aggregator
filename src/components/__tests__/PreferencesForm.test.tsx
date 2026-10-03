@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
 import { MAX_TOPICS, ProfileInput } from "@/lib/profile";
 import { PreferencesForm } from "@/components/PreferencesForm";
+import { COUNTRIES_TOPIC } from "@/config/countries";
 
 // The preferences form as a reader uses it: real Base UI Combobox, real DOM
 // events, and a real form submission whose FormData is what the onboarding
@@ -136,7 +137,7 @@ describe("PreferencesForm pickers", () => {
     const listbox = document.querySelector('[role="listbox"]')!;
     expect(listbox.getAttribute("aria-label")).toBe("Topics");
     expect(listbox.getAttribute("aria-multiselectable")).toBe("true");
-    expect(optionLabels()).toEqual([...TOPICS]);
+    expect(optionLabels()).toEqual(TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC));
   });
 
   it("selects an item with a click, showing a chip and a form value", async () => {
@@ -171,7 +172,7 @@ describe("PreferencesForm pickers", () => {
     expect(document.querySelector('[data-slot="combobox-empty"]')!.textContent).toBe("No match.");
 
     await type(input, "");
-    expect(optionLabels()).toEqual([...TOPICS]);
+    expect(optionLabels()).toEqual(TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC));
     expect(document.querySelector('[data-slot="combobox-empty"]')!.textContent).toBe("");
   });
 

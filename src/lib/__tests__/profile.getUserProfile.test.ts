@@ -164,11 +164,13 @@ describe("getUserProfile", () => {
     await expect(getUserProfile(empty.client, "user-1")).resolves.toEqual({
       topics: [],
       preferredSources: [],
+      countries: [],
       timeZone: "UTC",
     });
     await expect(getUserProfile(nulls.client, "user-1")).resolves.toEqual({
       topics: [],
       preferredSources: [],
+      countries: [],
       timeZone: "UTC",
     });
   });
