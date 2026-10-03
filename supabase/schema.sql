@@ -659,6 +659,8 @@ create table public.usage_runs (
   -- judged not notable, which is the only other way a cluster disappears there.
   triage_failed_closed integer,
   rank_applied boolean,                -- null = ranking never attempted
+  clusters_boosted integer,            -- clusters lifted by a preferred outlet; null = unmeasured
+  topics_dropped integer,              -- topics over the 10-topic read limit; null = unmeasured
 
   total_calls integer not null,
   total_calls_without_usage integer not null,
@@ -703,6 +705,11 @@ create index usage_runs_user_priced_at_idx
 -- other count here: null is "unmeasured", 0 is a measurement.
 alter table public.usage_runs add column if not exists card_failures jsonb;
 alter table public.usage_runs add column if not exists triage_failed_closed integer;
+-- V2.4: the run record also carries how many clusters a preferred outlet
+-- lifted and how many topics fell past the 10-topic read limit. Insert
+-- names every column, so these must exist before the code that writes them.
+alter table public.usage_runs add column if not exists clusters_boosted integer;
+alter table public.usage_runs add column if not exists topics_dropped integer;
 
 alter table public.usage_runs enable row level security;
 

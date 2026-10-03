@@ -139,7 +139,7 @@ describe("getUserProfile", () => {
 
   it("drops a stored value no longer in the curated list without disturbing order", async () => {
     const { client } = makeFakeSupabase({
-      user_topics: { data: topicRows("Tennis", "Cricket", "Tech/AI") },
+      user_topics: { data: topicRows("Tennis", "Curling Weekly", "Tech/AI") },
       user_preferred_sources: { data: sourceRows("NYT", "Teletext") },
     });
 

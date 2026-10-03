@@ -48,10 +48,9 @@ describe("/login confirmed parameter", () => {
   });
 });
 
-describe("/ after sign-in sends a user with no topics or sources to /onboarding", () => {
+describe("/ after sign-in sends a user with no topics to /onboarding", () => {
   it.each([
     [[], []],
-    [["tech-ai"], []],
     [[], ["bbc"]],
   ])("topics=%j sources=%j -> /onboarding", async (topics, preferredSources) => {
     vi.resetModules();
