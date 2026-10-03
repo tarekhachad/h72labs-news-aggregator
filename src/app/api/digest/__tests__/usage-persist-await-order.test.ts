@@ -61,7 +61,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: mocks.getUser } })),
 }));
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
-vi.mock("@/lib/ingest", () => ({ ingestArticles: mocks.ingestArticles }));
+vi.mock("@/lib/ingest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ingest")>()),
+  ingestArticles: mocks.ingestArticles,
+}));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
 vi.mock("@/lib/triage", async () => {

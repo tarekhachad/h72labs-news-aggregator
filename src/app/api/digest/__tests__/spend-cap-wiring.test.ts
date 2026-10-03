@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Card, Cluster } from "@/types";
+import { SOURCES, TOPICS, type Card, type Cluster } from "@/types";
+import { MAX_TOPICS_PER_DIGEST } from "@/lib/ingest";
 import type { Reservation } from "@/lib/spend";
 
 // Drives the REAL digest route through its stream, with the spend module's
@@ -33,7 +34,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: mocks.getUser } })),
 }));
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
-vi.mock("@/lib/ingest", () => ({ ingestArticles: mocks.ingestArticles }));
+vi.mock("@/lib/ingest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ingest")>()),
+  ingestArticles: mocks.ingestArticles,
+}));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({ filterAlreadyCovered: mocks.filterAlreadyCovered }));
 vi.mock("@/lib/triage", async () => {
@@ -185,11 +189,8 @@ describe("digest route: spend caps", () => {
   // user with an incomplete profile would mint a claim, return 400 without
   // releasing it, and lock themselves out for the staleness window on every
   // attempt -- while every test still passed.
-  it.each([
-    ["no topics", { topics: [], preferredSources: ["BBC"] }],
-    ["no preferred sources", { topics: ["Tech/AI"], preferredSources: [] }],
-  ])("claims nothing and reserves nothing when onboarding is incomplete: %s", async (_label, profile) => {
-    mocks.getUserProfile.mockResolvedValue(profile);
+  it("claims nothing and reserves nothing when onboarding is incomplete: no topics", async () => {
+    mocks.getUserProfile.mockResolvedValue({ topics: [], preferredSources: [SOURCES[0]] });
 
     const { POST } = await import("@/app/api/digest/route");
     const res = await POST();
@@ -198,6 +199,38 @@ describe("digest route: spend caps", () => {
     expect(mocks.claimGenerationForUser).not.toHaveBeenCalled();
     expect(mocks.releaseGenerationClaim).not.toHaveBeenCalled();
     expect(mocks.reserveSpend).not.toHaveBeenCalled();
+  });
+
+  // Preferred sources are optional: zero picked means every source for the
+  // reader's topics, so it is a normal run, not an incomplete profile.
+  it("runs a profile with topics and no preferred sources", async () => {
+    mocks.getUserProfile.mockResolvedValue({ topics: [TOPICS[0]], preferredSources: [] });
+
+    const { POST } = await import("@/app/api/digest/route");
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(mocks.claimGenerationForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.reserveSpend).toHaveBeenCalledTimes(1);
+  });
+
+  it("reserves for the topics a run will read, never more than the per-digest bound", async () => {
+    const topics = TOPICS.slice(0, MAX_TOPICS_PER_DIGEST + 3);
+    mocks.getUserProfile.mockResolvedValue({ topics, preferredSources: [] });
+
+    const { POST } = await import("@/app/api/digest/route");
+    await POST();
+
+    expect(mocks.reserveSpend.mock.calls[0][2].topicCount).toBe(MAX_TOPICS_PER_DIGEST);
+  });
+
+  it("reserves for the profile's own count when it is under the bound", async () => {
+    mocks.getUserProfile.mockResolvedValue({ topics: TOPICS.slice(0, 3), preferredSources: [] });
+
+    const { POST } = await import("@/app/api/digest/route");
+    await POST();
+
+    expect(mocks.reserveSpend.mock.calls[0][2].topicCount).toBe(3);
   });
 
   it("makes no reservation when the claim is refused", async () => {

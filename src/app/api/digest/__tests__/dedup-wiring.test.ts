@@ -55,7 +55,8 @@ vi.mock("@/lib/profile", () => ({
   getUserProfile: mocks.getUserProfile,
 }));
 
-vi.mock("@/lib/ingest", () => ({
+vi.mock("@/lib/ingest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ingest")>()),
   ingestArticles: mocks.ingestArticles,
 }));
 

@@ -1,5 +1,6 @@
 import type { Cluster, Topic } from "@/types";
 import type { RunShape } from "@/lib/usageRecord";
+import { countPreferredSources, type PreferredSources } from "@/lib/preferredSources";
 
 /**
  * How many stories one topic can contribute on the first run of a digest.
@@ -49,6 +50,11 @@ export const DAILY_CARDS_PER_TOPIC_CEILING = 14;
 export interface TriagedCluster {
   cluster: Cluster;
   severity: number;
+  /**
+   * Triage's own grade, present only on a cluster that received the
+   * preferred-source boost (see boostPreferredClusters).
+   */
+  triageSeverity?: number;
 }
 
 /** What one topic lost to the cap, for logging. */
@@ -71,6 +77,11 @@ export interface CardCapOptions {
    * allowance every time the lookup broke.
    */
   existingCards: readonly { topic: Topic }[] | null;
+  /**
+   * The reader's picked outlets. Optional, and absent behaves exactly like
+   * empty: the ordering is then severity, article count, input order.
+   */
+  preferredSources?: PreferredSources;
 }
 
 /**
@@ -142,8 +153,15 @@ function countByTopic(cards: readonly { topic: Topic }[]): Map<Topic, number> {
  * least significant stories within their own topic — but it's why the cut
  * is logged rather than dropped silently.
  *
- * Ties at the allowance boundary are broken first by how many sources
- * corroborate the story, then by input order. Corroboration is the same
+ * Ties at the allowance boundary are broken first by triage's own grade
+ * among boosted clusters, an unboosted one counting below every grade: the
+ * boost's cap at 5 flattens a triage 4 and a triage 5 into one 5, and this
+ * keeps them in triage's order while a boosted story still beats an
+ * unboosted one at the same severity. Then by how many of the
+ * reader's preferred outlets carried the story (more first), then by how
+ * many sources corroborate it, then by input order. A picked outlet is the
+ * reader telling us whose reporting they want, so among stories triage
+ * graded the same it decides first. Corroboration is the same
  * signal `modelForCluster` in writeCard.ts already acts on when it routes a
  * multi-source cluster to Sonnet: one source is one account of events, and
  * several independent outlets carrying a story is evidence about the story
@@ -164,6 +182,11 @@ export function applyCardCap<T extends TriagedCluster>(
 ): { kept: T[]; cuts: TopicCut[] } {
   const perRunAllowance = perRunAllowanceFor(options.runShape);
   const existingByTopic = options.existingCards === null ? null : countByTopic(options.existingCards);
+
+  // Counted once per cluster, not inside the comparator, which runs O(n log n) times.
+  const preferredCount = notable.map((item) =>
+    countPreferredSources(item.cluster.articles, options.preferredSources)
+  );
 
   const indicesByTopic = new Map<Topic, number[]>();
   notable.forEach((item, i) => {
@@ -192,12 +215,14 @@ export function applyCardCap<T extends TriagedCluster>(
       continue;
     }
     // Sorted on a copy so the map's own arrays stay in input order. Indices
-    // start ascending and Array#sort is stable, so clusters equal on both
-    // severity and corroboration keep their original relative order — that's
-    // the final tie-break above.
+    // start ascending and Array#sort is stable, so clusters equal on
+    // severity, preferred outlets and corroboration keep their original
+    // relative order — that's the final tie-break above.
     const ranked = [...indices].sort(
       (a, b) =>
         notable[b].severity - notable[a].severity ||
+        (notable[b].triageSeverity ?? 0) - (notable[a].triageSeverity ?? 0) ||
+        preferredCount[b] - preferredCount[a] ||
         notable[b].cluster.articles.length - notable[a].cluster.articles.length
     );
     for (const i of ranked.slice(0, allowance)) keptIndices.add(i);

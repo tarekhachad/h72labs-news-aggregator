@@ -35,6 +35,31 @@ Pick up to 6 stories for the front page, ranked 1 (most significant overall) thr
 
 Respond with the index (from the numbered list) and rank (1-6) of each pick — nothing else.`;
 
+// Added only when at least one candidate carries a preferred source, so a
+// reader with none (or a pool none of them covered) gets the prompt above
+// byte for byte.
+const PREFERRED_SOURCES_NOTE = `Each candidate also shows how many of the reader's preferred news sources covered it. Between stories of similar importance, rank the one covered by more of the reader's preferred sources higher; never let that lift a clearly less significant story above a more significant one.`;
+
+export interface RankCandidate {
+  topic: Topic;
+  severity: number;
+  text: string;
+  /** Distinct preferred outlets that covered the story. Absent reads as 0. */
+  preferredSourceCount?: number;
+}
+
+/** The system prompt and numbered candidate list exactly as sent to the ranker. Exported for tests. */
+export function buildRankPrompt(candidates: readonly RankCandidate[]): { system: string; list: string } {
+  const withPreferred = candidates.some((c) => (c.preferredSourceCount ?? 0) > 0);
+  const list = candidates
+    .map((c, i) => {
+      const preferred = withPreferred ? `, preferred sources ${c.preferredSourceCount ?? 0}` : "";
+      return `${i}. [${c.topic}, severity ${c.severity}${preferred}] ${c.text.slice(0, SUMMARY_CHARS_PER_CANDIDATE)}`;
+    })
+    .join("\n\n");
+  return { system: withPreferred ? `${SYSTEM_PROMPT}\n\n${PREFERRED_SOURCES_NOTE}` : SYSTEM_PROMPT, list };
+}
+
 /**
  * One Claude call for the WHOLE candidate pool, rather than the fan-out
  * triageClusters/isSameStory use — ranking is inherently a cross-cluster
@@ -44,6 +69,11 @@ Respond with the index (from the numbered list) and rank (1-6) of each pick — 
  * ~20 same-topic clusters since F.4.5, but still growing with the profile's
  * topic and cluster count — see ROADMAP.md's deferred section) the way a
  * per-item version would.
+ *
+ * The reader's preferred outlets are information for the ranker, not a
+ * rule applied after it: Claude assigns unique ranks, so there is never a
+ * literal tie to break in code. Each candidate's count is shown, and the
+ * prompt asks for it to decide between stories of similar importance.
  *
  * Fails open, mirroring dedup.ts's isSameStory rather than triageClusters'
  * fail-closed convention: this is a refinement layer on top of core
@@ -55,23 +85,18 @@ Respond with the index (from the numbered list) and rank (1-6) of each pick — 
  * considered and none of them made the front page."
  */
 export async function rankFrontPage(
-  candidates: { topic: Topic; severity: number; text: string }[]
+  candidates: RankCandidate[]
 ): Promise<(number | null)[] | null> {
   if (candidates.length === 0) return [];
 
   try {
-    const list = candidates
-      .map(
-        (c, i) =>
-          `${i}. [${c.topic}, severity ${c.severity}] ${c.text.slice(0, SUMMARY_CHARS_PER_CANDIDATE)}`
-      )
-      .join("\n\n");
+    const { system, list } = buildRankPrompt(candidates);
 
     const response = await recordCall("rank", "claude-haiku-4-5", () =>
       client.messages.parse({
         model: "claude-haiku-4-5",
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system,
         messages: [
           {
             role: "user",

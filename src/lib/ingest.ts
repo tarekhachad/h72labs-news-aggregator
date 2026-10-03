@@ -1,7 +1,8 @@
 import Parser from "rss-parser";
 import { FEEDS } from "@/config/feeds";
 import { isImplausiblyFuture } from "@/lib/cursor";
-import type { Article, Source, Topic } from "@/types";
+import { bestEffortLog } from "@/lib/bestEffortLog";
+import { TOPICS, type Article, type Source, type Topic } from "@/types";
 
 const parser = new Parser({
   timeout: 10_000,
@@ -48,9 +49,200 @@ async function fetchFeed(
 const LOOKBACK_CEILING_MS = 48 * 60 * 60 * 1000;
 
 /**
- * Pulls the RSS feeds configured for the given topics and preferred
- * sources, in parallel. A single feed failing (e.g. an outlet is briefly
- * down) doesn't take down the whole digest — it's logged and skipped.
+ * The most feeds one digest reads for one topic.
+ *
+ * The catalog keeps every verified feed for a topic; a digest reads at most
+ * this many of them. Together with MAX_TOPICS_PER_DIGEST it bounds a run at
+ * 60 feeds, the worst case the spend reservation and the 120 s function limit
+ * were measured against. Raising either is a cost decision, not a tweak.
+ */
+export const MAX_FEEDS_PER_TOPIC = 6;
+
+/**
+ * The most topics one digest reads. A saved profile can hold more; the rest
+ * are skipped (see topicsToRead) rather than read past the bound.
+ */
+export const MAX_TOPICS_PER_DIGEST = 10;
+
+/**
+ * Splits a profile's topics into the ones this digest reads and the ones it
+ * skips: the first MAX_TOPICS_PER_DIGEST in curated (TOPICS) order.
+ *
+ * Sorted here rather than trusting the caller's order, so the bound picks the
+ * same topics however the list arrives. A name no longer in TOPICS (a renamed
+ * topic still saved on an old profile) sorts after every known one, so it can
+ * never take a slot from a topic that has feeds. Duplicates are read once.
+ */
+export function topicsToRead(topics: readonly Topic[]): { read: Topic[]; dropped: Topic[] } {
+  const position = (t: Topic) => {
+    const i = (TOPICS as readonly string[]).indexOf(t);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const ordered = [...new Set(topics)].sort((a, b) => position(a) - position(b));
+  return {
+    read: ordered.slice(0, MAX_TOPICS_PER_DIGEST),
+    dropped: ordered.slice(MAX_TOPICS_PER_DIGEST),
+  };
+}
+
+export interface PlannedFeed {
+  topic: Topic;
+  source: Source;
+  url: string;
+}
+
+/**
+ * Which feeds this digest reads, in fetch order: for each topic, up to
+ * MAX_FEEDS_PER_TOPIC "slots". The reader's preferred outlets take a topic's
+ * slots first, the rest fill from the topic's own feed order (FEEDS lists a
+ * topic's strongest feeds first), and both groups keep that feed order.
+ *
+ * With no preferred outlets a topic simply gets its first slots' worth of
+ * feeds. A preferred outlet with no feed for a topic doesn't apply to that
+ * topic. Applies the topic bound itself, so no caller can plan past it.
+ */
+export function planFeeds(
+  topics: readonly Topic[],
+  preferredSources: readonly Source[] = []
+): PlannedFeed[] {
+  const preferred = new Set(preferredSources);
+  const plan: PlannedFeed[] = [];
+  for (const topic of topicsToRead(topics).read) {
+    const feeds = Object.entries(FEEDS[topic] ?? {}) as [Source, string][];
+    const slots = [
+      ...feeds.filter(([source]) => preferred.has(source)),
+      ...feeds.filter(([source]) => !preferred.has(source)),
+    ].slice(0, MAX_FEEDS_PER_TOPIC);
+    for (const [source, url] of slots) plan.push({ topic, source, url });
+  }
+  return plan;
+}
+
+/**
+ * Query parameters that only say how a reader arrived, never which article
+ * it is. Matched case-insensitively; anything starting `utm_` counts too.
+ */
+const TRACKING_PARAMS = new Set([
+  "fbclid",
+  "gclid",
+  "dclid",
+  "msclkid",
+  "ocid",
+  "mc_cid",
+  "mc_eid",
+  "smid",
+  "cmpid",
+  "igshid",
+  "at_medium",
+  "at_campaign",
+]);
+
+function isNoiseParam(name: string, value: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower.startsWith("utm_") || TRACKING_PARAMS.has(lower)) return true;
+  // The AMP rendering of the same page, selected by query rather than path.
+  return lower === "amp" || (lower === "outputtype" && value.toLowerCase() === "amp");
+}
+
+/**
+ * A comparison key for an article URL: the same article reached through
+ * tracking tags, an AMP or mobile host or path, a trailing slash, a fragment,
+ * http vs https, or reordered query parameters maps to one key.
+ *
+ * Only a key — the article keeps the URL its feed gave, which is the one
+ * shown to the reader. A string that isn't an http(s) URL keys on itself
+ * (trimmed), which is exact matching; an empty one has no key, because two
+ * articles both missing a link are not the same article.
+ */
+export function normalizeArticleUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return trimmed;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return trimmed;
+
+  // URL has already lower-cased the scheme and host and dropped a default port.
+  const host = url.hostname.replace(/^(?:www|amp|m)\./, "");
+  const pathWithoutSlash = url.pathname.replace(/\/+$/, "");
+  // An /amp prefix or suffix marks the AMP copy of another page, never the
+  // site's home page, so it is only stripped when something is left.
+  const withoutAmp = pathWithoutSlash
+    .replace(/^\/amp(?=\/)/, "")
+    .replace(/\/amp$/, "")
+    .replace(/\/+$/, "");
+  const path = withoutAmp || pathWithoutSlash || "/";
+  const params = [...url.searchParams.entries()]
+    .filter(([name, value]) => !isNoiseParam(name, value))
+    .sort(([a, av], [b, bv]) => (a < b ? -1 : a > b ? 1 : av < bv ? -1 : av > bv ? 1 : 0));
+  const query = params.length > 0 ? `?${new URLSearchParams(params).toString()}` : "";
+  // A fragment is normally a position on the page and is dropped, except a
+  // hash route ("#/article/1", "#!article-1"), where it names the article.
+  // The route gets the same slash treatment as the path; an empty one is no
+  // route at all.
+  const route = url.hash.startsWith("#!") ? url.hash.slice(2) : url.hash.startsWith("#/") ? url.hash.slice(1) : "";
+  const routeKey = route.replace(/^\/+/, "").replace(/\/+$/, "");
+  const fragment = routeKey === "" ? "" : `#/${routeKey}`;
+
+  return `${host}${url.port ? `:${url.port}` : ""}${path}${query}${fragment}`;
+}
+
+/**
+ * A comparison key for a headline: case, Unicode compatibility forms,
+ * punctuation and spacing don't distinguish two headlines. Null for a
+ * headline with no letters or digits, so untitled items never collapse into
+ * each other.
+ */
+export function normalizeTitle(title: string): string | null {
+  const key = title
+    .normalize("NFKC")
+    .toLowerCase()
+    // Enclosing marks (a keycap) and variation selectors (emoji vs text
+    // presentation) only restyle the symbol before them. Combining marks
+    // are otherwise kept: in an abugida a vowel sign is part of the word.
+    .replace(/[\p{Me}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}]/gu, "")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
+    .trim();
+  return /[\p{L}\p{N}]/u.test(key) ? key : null;
+}
+
+/**
+ * Drops repeat sightings of one article, keeping the first.
+ *
+ * Two articles are the same when their URLs normalise to the same key, or
+ * when one outlet published both under the same normalised headline (the
+ * same piece syndicated into two of its feeds, or re-issued under a new
+ * link). The title check is same-outlet only: two outlets running an
+ * identical wire headline are two sources, which is what clustering and the
+ * card's source count should see.
+ */
+export function dedupeArticles(articles: readonly Article[]): Article[] {
+  const seenUrls = new Set<string>();
+  const seenTitles = new Set<string>();
+  return articles.filter((a) => {
+    const urlKey = normalizeArticleUrl(a.url);
+    const titleBody = normalizeTitle(a.title);
+    // JSON-encoded so no outlet name or headline can forge another pair's key.
+    const titleKey = titleBody === null ? null : JSON.stringify([a.source, titleBody]);
+    if ((urlKey !== null && seenUrls.has(urlKey)) || (titleKey !== null && seenTitles.has(titleKey))) {
+      return false;
+    }
+    if (urlKey !== null) seenUrls.add(urlKey);
+    if (titleKey !== null) seenTitles.add(titleKey);
+    return true;
+  });
+}
+
+/**
+ * Pulls the RSS feeds planFeeds picks for the given topics, in parallel. A
+ * single feed failing (e.g. an outlet is briefly down) doesn't take down the
+ * whole digest — it's logged and skipped.
+ *
+ * Preferred sources decide which feeds fill a topic's slots, never which
+ * articles survive: with none picked, every topic still reads its feeds.
  *
  * Only articles published after `sinceIso` are kept, so a slow-moving feed
  * can't hand back stale multi-day-old items in a "daily" digest, and so a
@@ -63,38 +255,14 @@ export async function ingestArticles(
   preferredSources: Source[],
   sinceIso: string | null
 ): Promise<Article[]> {
-  const preferred = new Set(preferredSources);
-  const jobs: Promise<Article[]>[] = [];
-
-  for (const topic of topics) {
-    const sourcesForTopic = FEEDS[topic] ?? {};
-    for (const [source, feedUrl] of Object.entries(sourcesForTopic) as [
-      Source,
-      string
-    ][]) {
-      if (!preferred.has(source)) continue;
-      jobs.push(
-        fetchFeed(topic, source, feedUrl).catch((err) => {
-          console.error(`[ingest] failed ${source}/${topic}:`, err.message);
-          return [];
-        })
-      );
-    }
-  }
+  const jobs = planFeeds(topics, preferredSources).map(({ topic, source, url }) =>
+    fetchFeed(topic, source, url).catch((err) => {
+      bestEffortLog("error", `[ingest] failed ${source}/${topic}:`, err instanceof Error ? err.message : err);
+      return [];
+    })
+  );
 
   const results = await Promise.all(jobs);
-  const articles = results.flat();
-
-  // The same real-world story can appear in more than one feed we pull —
-  // e.g. a BBC article syndicated into both its Technology and World
-  // feeds when the profile includes both topics. Keep the first sighting
-  // only, so it doesn't end up double-counted in the same cluster.
-  const seen = new Set<string>();
-  const deduped = articles.filter((a) => {
-    if (seen.has(a.url)) return false;
-    seen.add(a.url);
-    return true;
-  });
 
   // A malformed sinceIso (e.g. a corrupted stored timestamp) must not
   // silently turn into a cutoff of "everything fails the >= check" — it's
@@ -131,23 +299,26 @@ export async function ingestArticles(
   let cutoff = ceiling;
   if (parsedSince && !Number.isNaN(parsedSince.getTime())) {
     if (isImplausiblyFuture(parsedSince, now)) {
-      // Guarded for the same reason usageCollector.ts guards its own logging:
-      // a diagnostic on a critical path must not be able to fail the thing it
-      // is reporting on. Unguarded, a throwing logger here would turn a
-      // deliberate graceful fallback into a failed digest run — the exact
-      // shape of the F.2 bug where an unguarded console.log dropped a card
-      // and turned a successful expand into a 502.
-      try {
-        console.warn(
-          `[ingest] since-cursor ${parsedSince.toISOString()} is implausibly far ahead of this machine's clock — treating as corrupt and falling back to the ${LOOKBACK_CEILING_MS / (60 * 60 * 1000)}h window`
-        );
-      } catch {
-        // Losing the line is strictly better than losing the digest.
-      }
+      // Best-effort: a diagnostic on a critical path must not be able to fail
+      // the thing it is reporting on. A throwing logger here would turn a
+      // deliberate graceful fallback into a failed digest run.
+      bestEffortLog(
+        "warn",
+        `[ingest] since-cursor ${parsedSince.toISOString()} is implausibly far ahead of this machine's clock — treating as corrupt and falling back to the ${LOOKBACK_CEILING_MS / (60 * 60 * 1000)}h window`
+      );
     } else if (parsedSince > ceiling) {
       cutoff = parsedSince;
     }
   }
 
-  return deduped.filter((a) => new Date(a.publishedAt) >= cutoff);
+  // The cutoff runs before duplicate removal, not after: the title check
+  // matches different links from one outlet, so a stale item seen first
+  // would otherwise knock out a fresh one and then be cut itself, leaving
+  // neither.
+  //
+  // The same article can arrive more than once — a BBC piece syndicated into
+  // both its Technology and World feeds, or one link carrying tracking tags
+  // in one feed and not another. Counted twice, it would make a one-source
+  // story look corroborated.
+  return dedupeArticles(results.flat().filter((a) => new Date(a.publishedAt) >= cutoff));
 }

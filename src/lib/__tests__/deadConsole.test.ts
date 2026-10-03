@@ -125,6 +125,11 @@ describe("files whose logs must not throw", () => {
     "src/lib/runtimeMemory.ts",
     "src/lib/triage.ts",
     "src/lib/embeddings.ts",
+    "src/lib/ingest.ts",
+    "src/lib/preferredSources.ts",
+    "src/lib/cardCap.ts",
+    "src/lib/rank.ts",
+    "src/lib/writeCard.ts",
   ];
 
   it.each(FILES)("%s has no bare console call", (file) => {

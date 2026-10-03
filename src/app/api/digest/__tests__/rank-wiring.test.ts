@@ -52,7 +52,8 @@ vi.mock("@/lib/profile", () => ({
   getUserProfile: mocks.getUserProfile,
 }));
 
-vi.mock("@/lib/ingest", () => ({
+vi.mock("@/lib/ingest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ingest")>()),
   ingestArticles: mocks.ingestArticles,
 }));
 
@@ -146,7 +147,9 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
   mocks.getUserProfile.mockResolvedValue({
     topics: ["Tech/AI"],
-    preferredSources: ["BBC"],
+    // No picked outlets: this suite pins the wiring without the preferred-source
+    // boost; preferred-wiring.test.ts covers it with one.
+    preferredSources: [],
   });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.clusterArticles.mockResolvedValue(FAKE_CLUSTERS);
@@ -196,8 +199,8 @@ describe("digest route: front-page ranking wiring", () => {
 
     expect(mocks.rankFrontPage).toHaveBeenCalledTimes(1);
     expect(mocks.rankFrontPage).toHaveBeenCalledWith([
-      { topic: "Tech/AI", severity: 2, text: "existing card summary" },
-      { topic: "Tech/AI", severity: 4, text: "new card summary" },
+      { topic: "Tech/AI", severity: 2, text: "existing card summary", preferredSourceCount: 0 },
+      { topic: "Tech/AI", severity: 4, text: "new card summary", preferredSourceCount: 0 },
     ]);
   });
 
@@ -228,7 +231,7 @@ describe("digest route: front-page ranking wiring", () => {
     expect(lines[lines.length - 1].stage).toBe("done");
     expect(mocks.rankFrontPage).toHaveBeenCalledTimes(1);
     expect(mocks.rankFrontPage).toHaveBeenCalledWith([
-      { topic: "Tech/AI", severity: 2, text: "existing card summary" },
+      { topic: "Tech/AI", severity: 2, text: "existing card summary", preferredSourceCount: 0 },
     ]);
     expect(existingRankUpdatesArg()).toEqual([
       { id: "card-existing-1", frontPageRank: 2 },

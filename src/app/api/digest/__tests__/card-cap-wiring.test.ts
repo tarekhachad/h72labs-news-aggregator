@@ -46,7 +46,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: mocks.getUser } })),
 }));
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
-vi.mock("@/lib/ingest", () => ({ ingestArticles: mocks.ingestArticles }));
+vi.mock("@/lib/ingest", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ingest")>()),
+  ingestArticles: mocks.ingestArticles,
+}));
 vi.mock("@/lib/cluster", () => ({ clusterArticles: mocks.clusterArticles }));
 vi.mock("@/lib/dedup", () => ({
   filterAlreadyCovered: mocks.filterAlreadyCovered,
@@ -128,7 +131,9 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
   mocks.getUserProfile.mockResolvedValue({
     topics: ["Tech/AI"],
-    preferredSources: ["BBC"],
+    // No picked outlets: this suite pins the wiring without the preferred-source
+    // boost; preferred-wiring.test.ts covers it with one.
+    preferredSources: [],
   });
   mocks.ingestArticles.mockResolvedValue([]);
   mocks.getTodaysCardSummaries.mockResolvedValue([]);
@@ -270,7 +275,7 @@ describe("digest route: per-topic card cap", () => {
     );
     mocks.getUserProfile.mockResolvedValue({
       topics: ["Tech/AI", "Morocco"],
-      preferredSources: ["BBC"],
+      preferredSources: [],
     });
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
     mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>

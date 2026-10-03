@@ -197,16 +197,20 @@ export async function getCardsForTopicOnDate(
  * which only reads topic/shortSummary) and the cross-topic front-page
  * ranking pass (src/lib/rank.ts, which additionally needs id + severity to
  * fold earlier runs' cards into today's re-ranked candidate pool and know
- * which row to update). One shared query rather than two near-duplicate
- * ones — dedup.ts's structural typing just ignores the extra fields.
+ * which row to update, and the sources, so a re-ranked existing card's
+ * preferred outlets count the same as a new card's). One shared query rather
+ * than two near-duplicate ones — dedup.ts's structural typing just ignores
+ * the extra fields.
  */
 export async function getTodaysCardSummaries(
   supabase: SupabaseClient,
   digestId: string
-): Promise<{ id: string; topic: Topic; shortSummary: string; severity: number }[]> {
+): Promise<
+  { id: string; topic: Topic; shortSummary: string; severity: number; sources: Card["sources"] }[]
+> {
   const { data, error } = await supabase
     .from("cards")
-    .select("id, topic, short_summary, severity")
+    .select("id, topic, short_summary, severity, sources")
     .eq("digest_id", digestId);
 
   if (error) throw new Error(`getTodaysCardSummaries: ${error.message}`);
@@ -216,6 +220,9 @@ export async function getTodaysCardSummaries(
     topic: row.topic as Topic,
     shortSummary: row.short_summary as string,
     severity: (row.severity as number | null) ?? 1,
+    // A malformed or missing list counts as no sources rather than failing
+    // the lookup, which would skip ranking for the whole run.
+    sources: Array.isArray(row.sources) ? (row.sources as Card["sources"]) : [],
   }));
 }
 

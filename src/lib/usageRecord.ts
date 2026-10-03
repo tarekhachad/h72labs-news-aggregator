@@ -209,6 +209,22 @@ export interface UsageRunContext {
   /** null = ranking was never attempted; false = attempted and failed open. */
   rankApplied: boolean | null;
   /**
+   * Judged-notable clusters that got the preferred-source severity boost,
+   * counted before the card cap (see boostPreferredClusters).
+   *
+   * Optional, unlike the fields above, so contexts built before it existed
+   * still type-check; absent is written as null ("never measured"), the same
+   * as a run that ended before triage.
+   */
+  clustersBoosted?: number | null;
+  /**
+   * Profile topics this run skipped because the profile holds more than a
+   * digest reads (see topicsToRead). `topicCount` stays the profile's count,
+   * so the topics actually read are `topicCount - topicsDropped`. Optional and
+   * written as null when absent, for the same reason as `clustersBoosted`.
+   */
+  topicsDropped?: number | null;
+  /**
    * The same map `usage.report()` was given. Not stored on the record — it
    * is an input to `isFloor`, and keeping the derived verdict rather than the
    * raw expectation is what lets a consumer act on one boolean instead of
@@ -326,6 +342,8 @@ export function buildUsageRunRecord(
 
   return {
     ...rest,
+    clustersBoosted: rest.clustersBoosted ?? null,
+    topicsDropped: rest.topicsDropped ?? null,
     schemaVersion: 1,
     runId,
     // getTime() on an Invalid Date is NaN, and toISOString() would throw a
@@ -400,6 +418,8 @@ export function toJsonlLine(record: UsageRunRecord): string {
     cardFailures: record.cardFailures,
     triageFailedClosed: record.triageFailedClosed,
     rankApplied: record.rankApplied,
+    clustersBoosted: record.clustersBoosted ?? null,
+    topicsDropped: record.topicsDropped ?? null,
     totalCalls: record.totalCalls,
     totalCallsWithoutUsage: record.totalCallsWithoutUsage,
     totalTokens: record.totalTokens,
@@ -466,6 +486,8 @@ export const COLUMN_OF = {
   cardFailures: "card_failures",
   triageFailedClosed: "triage_failed_closed",
   rankApplied: "rank_applied",
+  clustersBoosted: "clusters_boosted",
+  topicsDropped: "topics_dropped",
   totalCalls: "total_calls",
   totalCallsWithoutUsage: "total_calls_without_usage",
   totalTokens: "total_tokens",
@@ -537,6 +559,8 @@ export function toUsageRunRow(record: UsageRunRecord): UsageRunRow {
     [COLUMN_OF.cardFailures]: record.cardFailures,
     [COLUMN_OF.triageFailedClosed]: record.triageFailedClosed,
     [COLUMN_OF.rankApplied]: record.rankApplied,
+    [COLUMN_OF.clustersBoosted]: record.clustersBoosted ?? null,
+    [COLUMN_OF.topicsDropped]: record.topicsDropped ?? null,
     [COLUMN_OF.totalCalls]: record.totalCalls,
     [COLUMN_OF.totalCallsWithoutUsage]: record.totalCallsWithoutUsage,
     [COLUMN_OF.totalTokens]: record.totalTokens,

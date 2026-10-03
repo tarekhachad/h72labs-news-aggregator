@@ -352,6 +352,8 @@ describe("toUsageRunRow: key-shape adversarial", () => {
         "card_failures",
         "triage_failed_closed",
         "rank_applied",
+        "clusters_boosted",
+        "topics_dropped",
         "total_calls",
         "total_calls_without_usage",
         "total_tokens",

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { getTodaysCardSummaries } from "@/lib/digests";
+import { SOURCES, TOPICS } from "@/types";
 
 // Minimal fake Supabase client that mimics the chainable
 // .from().select().eq() shape getTodaysCardSummaries uses, and records how
@@ -12,10 +13,11 @@ function makeFakeSupabase(response: { data: unknown; error: unknown }) {
 }
 
 describe("getTodaysCardSummaries", () => {
-  it("queries the cards table, selecting id + topic + short_summary + severity, scoped to one digest_id", async () => {
+  it("queries the cards table, selecting id + topic + short_summary + severity + sources, scoped to one digest_id", async () => {
+    const sources = [{ title: "t", url: "https://example.com/a", source: SOURCES[0], snippet: "s" }];
     const rows = [
-      { id: "card-1", topic: "Tech/AI", short_summary: "AI story", severity: 4 },
-      { id: "card-2", topic: "US Finance", short_summary: "Finance story", severity: null },
+      { id: "card-1", topic: "Tech/AI", short_summary: "AI story", severity: 4, sources },
+      { id: "card-2", topic: "US Finance", short_summary: "Finance story", severity: null, sources: [] },
     ];
     const { client, from, select, eq } = makeFakeSupabase({ data: rows, error: null });
 
@@ -23,15 +25,27 @@ describe("getTodaysCardSummaries", () => {
     const result = await getTodaysCardSummaries(client as any, "digest-123");
 
     expect(from).toHaveBeenCalledWith("cards");
-    expect(select).toHaveBeenCalledWith("id, topic, short_summary, severity");
+    expect(select).toHaveBeenCalledWith("id, topic, short_summary, severity, sources");
     expect(eq).toHaveBeenCalledWith("digest_id", "digest-123");
 
     expect(result).toEqual([
-      { id: "card-1", topic: "Tech/AI", shortSummary: "AI story", severity: 4 },
+      { id: "card-1", topic: "Tech/AI", shortSummary: "AI story", severity: 4, sources },
       // Null severity (a row persisted before the column existed) defaults
       // to the lowest tier, same fallback rowToCard uses.
-      { id: "card-2", topic: "US Finance", shortSummary: "Finance story", severity: 1 },
+      { id: "card-2", topic: "US Finance", shortSummary: "Finance story", severity: 1, sources: [] },
     ]);
+  });
+
+  it("reads a missing or malformed sources value as no sources, without failing the lookup", async () => {
+    const rows = [
+      { id: "a", topic: TOPICS[0], short_summary: "x", severity: 2, sources: null },
+      { id: "b", topic: TOPICS[0], short_summary: "y", severity: 2 },
+      { id: "c", topic: TOPICS[0], short_summary: "z", severity: 2, sources: "not a list" },
+    ];
+    const { client } = makeFakeSupabase({ data: rows, error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await getTodaysCardSummaries(client as any, "digest-123");
+    expect(result.map((r) => r.sources)).toEqual([[], [], []]);
   });
 
   it("returns an empty array when there are no cards yet", async () => {

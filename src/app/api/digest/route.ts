@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { ingestArticles } from "@/lib/ingest";
+import { ingestArticles, planFeeds, topicsToRead } from "@/lib/ingest";
 import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
@@ -26,6 +26,7 @@ import {
 } from "@/lib/generationClaim";
 import type { Card, Source, Topic } from "@/types";
 import { applyCardCap } from "@/lib/cardCap";
+import { boostPreferredClusters, countPreferredSources } from "@/lib/preferredSources";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
 import type { UsageStage } from "@/lib/usage";
 import {
@@ -147,6 +148,8 @@ async function* runDigestPipeline(
     cardFailures: CardFailure[] | null;
     triageFailedClosed: number | null;
     rankApplied: boolean | null;
+    clustersBoosted: number | null;
+    topicsDropped: number | null;
   } = {
     runShape: deriveRunShape(sinceIso, null),
     topicCount: profile.topics.length,
@@ -161,6 +164,9 @@ async function* runDigestPipeline(
     cardFailures: null,
     triageFailedClosed: null,
     rankApplied: null,
+    clustersBoosted: null,
+    // Known before anything runs: it depends only on the profile.
+    topicsDropped: topicsToRead(profile.topics).dropped.length,
   };
 
   // The whole body is wrapped so the generation claim (see
@@ -171,8 +177,20 @@ async function* runDigestPipeline(
   // any other early return from a generator).
   try {
     yield { stage: "ingesting" };
-    memoryMark("before ingest", { topics: profile.topics.length, sources: profile.preferredSources.length });
-    const articles = await ingestArticles(profile.topics, profile.preferredSources, sinceIso);
+    // A profile can hold more topics than one digest reads; the rest are
+    // skipped, never read past the bound the spend reservation assumes.
+    const { read: topicsRead, dropped: topicsSkipped } = topicsToRead(profile.topics);
+    if (topicsSkipped.length > 0) {
+      bestEffortLog("warn",
+        `[digest] profile has ${profile.topics.length} topics; reading ${topicsRead.length}, skipping ${topicsSkipped.join(", ")}`
+      );
+    }
+    memoryMark("before ingest", {
+      topics: topicsRead.length,
+      sources: profile.preferredSources.length,
+      feeds: planFeeds(topicsRead, profile.preferredSources).length,
+    });
+    const articles = await ingestArticles(topicsRead, profile.preferredSources, sinceIso);
     shape.articleCount = articles.length;
     // longestText is here because it is the one input to clustering with no
     // bound at all: a single feed item has arrived at 48,191 characters.
@@ -263,11 +281,20 @@ async function* runDigestPipeline(
     );
     memoryMark("after triage", { clusters: survivingClusters.length });
     shape.triageFailedClosed = outcomes.filter(isFailClosed).length;
-    const triaged = survivingClusters.map((cluster, i) => ({
-      cluster,
-      notable: outcomes[i].notable,
-      severity: outcomes[i].severity,
-    }));
+    // The reader's picked outlets lift a judged-notable story one severity
+    // step, here in code rather than in triage's prompt, so triage's verdicts
+    // stay a judgement of the story alone. Before the cap, so a boosted story
+    // can win a place it would otherwise lose. Never applied to a reject or a
+    // fail-closed cluster.
+    const { items: triaged, boosted } = boostPreferredClusters(
+      survivingClusters.map((cluster, i) => ({
+        cluster,
+        notable: outcomes[i].notable,
+        severity: outcomes[i].severity,
+      })),
+      profile.preferredSources
+    );
+    shape.clustersBoosted = boosted;
     // Capped BEFORE the writing event is yielded and before
     // expectedCalls.writeCard is set: the client renders "Writing N cards…"
     // straight off notableCount, and the cost summary compares calls made
@@ -278,6 +305,7 @@ async function* runDigestPipeline(
       // Null, not an empty array, when the lookup failed: the allowance must
       // not read a broken read as an empty digest.
       existingCards: existingCardsFetchFailed ? null : existingCards,
+      preferredSources: profile.preferredSources,
     });
     // AFTER the cap, matching what writeCard is actually asked to produce —
     // the same number the client is shown and the same one expectedCalls
@@ -295,8 +323,16 @@ async function* runDigestPipeline(
     // One verbose cluster failing to write shouldn't take down the rest of
     // the digest — log it and drop that card instead of rejecting the batch.
     expectedCalls.writeCard = notableClusters.length;
+    // Each card is saved with triage's own grade, not the boosted one: the
+    // boost only decides what survives the cap. A card's tile size and the
+    // severity the ranker reads stay a measure of importance alone, and the
+    // reader's picks reach the ranker separately as a preferred-source count.
     const written = await withUsageCollector(usage, () =>
-      Promise.allSettled(notableClusters.map((nc) => writeCard(nc.cluster, nc.severity)))
+      Promise.allSettled(
+        notableClusters.map((nc) =>
+          writeCard(nc.cluster, nc.triageSeverity ?? nc.severity, profile.preferredSources)
+        )
+      )
     );
 
     // One canonical timestamp for the whole run — every card gets stamped
@@ -357,9 +393,25 @@ async function* runDigestPipeline(
     // back to the right row.
     let rankResult: (number | null)[] | null = null;
     if (!existingCardsFetchFailed) {
+      // Each candidate carries how many of the reader's preferred outlets
+      // covered it, existing cards included, so the ranker can favour them
+      // between stories of similar importance. All zero with no preferences,
+      // which leaves the ranker's prompt exactly as it is without them.
+      const preferredCountOf = (sources: readonly { source: Source }[] | undefined) =>
+        countPreferredSources(sources ?? [], profile.preferredSources);
       const candidatePool = [
-        ...existingCards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
-        ...cards.map((c) => ({ topic: c.topic, severity: c.severity, text: c.shortSummary })),
+        ...existingCards.map((c) => ({
+          topic: c.topic,
+          severity: c.severity,
+          text: c.shortSummary,
+          preferredSourceCount: preferredCountOf(c.sources),
+        })),
+        ...cards.map((c) => ({
+          topic: c.topic,
+          severity: c.severity,
+          text: c.shortSummary,
+          preferredSourceCount: preferredCountOf(c.sources),
+        })),
       ];
       // rankFrontPage short-circuits without calling Claude on an empty pool.
       expectedCalls.rank = candidatePool.length > 0 ? 1 : 0;
@@ -505,10 +557,9 @@ export async function POST() {
   }
 
   const profile = await getUserProfile(supabase, user.id);
-  // Gate on both topics and preferred sources — a profile with topics but
-  // zero sources would otherwise pass this check and then silently
-  // produce an empty digest (ingestArticles filters strictly by source).
-  if (profile.topics.length === 0 || profile.preferredSources.length === 0) {
+  // Topics only. Preferred sources are optional: with none picked, every
+  // topic reads its default feeds.
+  if (profile.topics.length === 0) {
     // Defense-in-depth against a direct API hit that bypasses the
     // page-level redirect to /onboarding — shouldn't happen via the UI.
     return new Response("Onboarding incomplete", { status: 400 });
@@ -561,10 +612,11 @@ export async function POST() {
   }
 
   // After the claim, so a request refused with 409 above leaves no ledger
-  // row to undo. Sized from the topic count; the database computes the
+  // row to undo. Sized from the topics this run will actually read (a
+  // profile can hold more than a digest reads); the database computes the
   // amount and checks every limit.
   const reserved = await reserveSpend(supabase, "digest", {
-    topicCount: profile.topics.length,
+    topicCount: topicsToRead(profile.topics).read.length,
     ref: digestId,
     keepAlive: (task) => after(task),
   });

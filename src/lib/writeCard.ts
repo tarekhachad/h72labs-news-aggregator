@@ -5,10 +5,11 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import type { Card, Cluster } from "@/types";
+import type { Card, Cluster, Source } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
+import { orderPreferredFirst, type PreferredSources } from "@/lib/preferredSources";
 
 const client = new Anthropic();
 
@@ -54,7 +55,27 @@ function sourceTextFor(cluster: Cluster): string {
     .join("\n\n");
 }
 
-async function generateSummary(cluster: Cluster) {
+/**
+ * One sentence telling the writer whose reporting leads, or null when the
+ * cluster has no preferred outlet (the prompt is then exactly as without
+ * preferences). Names only the outlets actually present, in the order their
+ * articles are listed.
+ */
+export function preferredLeadNote(cluster: Cluster, preferred: PreferredSources): string | null {
+  if (!preferred || preferred.length === 0) return null;
+  const picked = new Set<Source>(preferred);
+  const present = [...new Set(cluster.articles.map((a) => a.source).filter((s) => picked.has(s)))];
+  if (present.length === 0) return null;
+  return `The reader's preferred sources for this story are listed first (${present.join(", ")}): lead with their reporting and use the other sources to fill gaps.`;
+}
+
+/** The user message sent to the writer for an already-ordered cluster. Exported for tests. */
+export function buildWriteCardContent(cluster: Cluster, preferred?: PreferredSources): string {
+  const note = preferredLeadNote(cluster, preferred);
+  return `Topic: ${cluster.topic}\n\n${note === null ? "" : `${note}\n\n`}${sourceTextFor(cluster)}`;
+}
+
+async function generateSummary(cluster: Cluster, preferred: PreferredSources) {
   const model = modelForCluster(cluster);
   // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
   // thinking + output combined — thinking was eating the budget and
@@ -79,7 +100,7 @@ async function generateSummary(cluster: Cluster) {
       messages: [
         {
           role: "user",
-          content: `Topic: ${cluster.topic}\n\n${sourceTextFor(cluster)}`,
+          content: buildWriteCardContent(cluster, preferred),
         },
       ],
       output_config: { format: zodOutputFormat(CardSummary) },
@@ -136,8 +157,19 @@ export class EmptyClusterError extends Error {
  * Do not describe this stage as "one Sonnet call per cluster": most clusters
  * are single-article and go to Haiku, so the stage routinely mixes both models.
  * Nor is card writing the pipeline's dominant cost — triage is.
+ *
+ * The reader's preferred outlets lead: their articles go first in the
+ * prompt, with a sentence asking the writer to lead with them, and first in
+ * `Card.sources`, which is the order the card shows and the order the full
+ * report later reads (generateExpandedReport works from the persisted list).
+ * Optional; with none, or none in this cluster, prompt and order are exactly
+ * the cluster's own.
  */
-export async function writeCard(cluster: Cluster, severity: number): Promise<Card> {
+export async function writeCard(
+  cluster: Cluster,
+  severity: number,
+  preferredSources?: PreferredSources
+): Promise<Card> {
   // Checked before the call, not after: a card needs at least one source, so
   // an empty cluster can only fail, and failing here means it is never paid
   // for. Clustering never produces one; this is defence, and costs one length
@@ -146,8 +178,13 @@ export async function writeCard(cluster: Cluster, severity: number): Promise<Car
     throw new EmptyClusterError(cluster.topic);
   }
 
+  const ordered: Cluster = {
+    ...cluster,
+    articles: orderPreferredFirst(cluster.articles, preferredSources),
+  };
+
   const { text: shortSummary, title, labels } = await generateWithRetryOnAmbiguousTruncation(
-    () => generateSummary(cluster),
+    () => generateSummary(ordered, preferredSources),
     "writeCard"
   );
 
@@ -167,7 +204,7 @@ export async function writeCard(cluster: Cluster, severity: number): Promise<Car
     shortSummary,
     labels,
     expandedReport: null,
-    sources: cluster.articles.map((a) => ({
+    sources: ordered.articles.map((a) => ({
       title: a.title,
       url: a.url,
       source: a.source,
