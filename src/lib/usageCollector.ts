@@ -5,6 +5,7 @@ import {
   formatUsageSummary,
   normalizeUsage,
   summarizeUsage,
+  type CallBound,
   type CallTokens,
   type RecordedCall,
   type SummaryOptions,
@@ -107,6 +108,7 @@ export function createUsageCollector(at: Date = new Date()): UsageCollector {
         stage: call.stage,
         model: call.model,
         tokens: call.tokens === null ? null : Object.freeze({ ...call.tokens }),
+        ...(call.bound === undefined ? {} : { bound: Object.freeze({ ...call.bound }) }),
       });
       recorded.push(stored);
       // One line per call, always on. Same precedent as triage.ts's
@@ -243,7 +245,8 @@ export function currentUsageCollector(): UsageCollector | undefined {
 export async function recordCall<R extends object>(
   stage: UsageStage,
   model: TrackedModel,
-  call: () => Promise<R>
+  call: () => Promise<R>,
+  bound?: CallBound
 ): Promise<R> {
   const collector = storage.getStore();
   if (collector === undefined) return call();
@@ -252,7 +255,7 @@ export async function recordCall<R extends object>(
   try {
     response = await call();
   } catch (error) {
-    collector.add({ stage, model, tokens: null });
+    collector.add({ stage, model, tokens: null, ...(bound === undefined ? {} : { bound }) });
     throw error;
   }
 
@@ -266,6 +269,29 @@ export async function recordCall<R extends object>(
   } catch {
     // Unreadable usage — counted as billed-but-unmeasured, same as a throw.
   }
-  collector.add({ stage, model, tokens });
+  collector.add({ stage, model, tokens, ...(tokens === null && bound !== undefined ? { bound } : {}) });
   return response;
+}
+
+/**
+ * The ceiling `recordCall` keeps for a request, from the exact params object
+ * the SDK is handed: its serialized UTF-8 size and its `max_tokens`. JSON
+ * quoting only makes the size larger, which keeps it an upper bound.
+ * `attempts` is the client's `maxRetries + 1`, read from the client itself so
+ * the ceiling can't drift from the retries the SDK actually makes.
+ * Undefined when the params can't be measured, which settles that run at its
+ * full reservation, as before.
+ */
+export function boundOf(params: { max_tokens: number }, attempts: number): CallBound | undefined {
+  try {
+    const requestBytes = Buffer.byteLength(JSON.stringify(params), "utf8");
+    const maxOutputTokens = params.max_tokens;
+    if (!Number.isFinite(requestBytes) || !Number.isFinite(maxOutputTokens) || maxOutputTokens < 0) {
+      return undefined;
+    }
+    if (!Number.isInteger(attempts) || attempts < 1) return undefined;
+    return { requestBytes, maxOutputTokens, attempts };
+  } catch {
+    return undefined;
+  }
 }

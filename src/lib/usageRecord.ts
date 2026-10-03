@@ -314,6 +314,26 @@ function hasUnderRecordedStage(
 }
 
 /**
+ * A figure a run provably didn't exceed, for settling a floor run below its
+ * whole reservation: the known total plus the ceiling of every call that
+ * reported no usage. Null when there is nothing to prove (the totals are
+ * complete) or when it can't be proven: an unpriced model, a stage with calls
+ * missing from the record entirely, or a usage-less call with no ceiling.
+ * Null always settles at the reservation, as before.
+ */
+export function settleCeilingFor(
+  summary: UsageSummary,
+  expectedCalls: UsageRunContext["expectedCalls"]
+): number | null {
+  if (summary.totalCallsWithoutUsage === 0) return null;
+  if (summary.unpricedModels.length > 0) return null;
+  if (hasUnderRecordedStage(summary, expectedCalls)) return null;
+  if (summary.unmeasuredBoundUsd === null) return null;
+  const ceiling = summary.totalBilledUsd + summary.unmeasuredBoundUsd;
+  return Number.isFinite(ceiling) ? ceiling : null;
+}
+
+/**
  * Assembles the durable record. Pure: `at` and `runId` are injected the same
  * way `usage.ts` injects its clock and its pricing table.
  *

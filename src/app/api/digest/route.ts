@@ -32,6 +32,7 @@ import type { UsageStage } from "@/lib/usage";
 import {
   buildUsageRunRecord,
   deriveRunShape,
+  settleCeilingFor,
   type RunShape,
   type UsageRunRecord,
 } from "@/lib/usageRecord";
@@ -491,9 +492,14 @@ async function* runDigestPipeline(
     // instrumentation must not be able to turn a completed digest into a
     // failed one. A null record keeps the full reservation.
     let record: UsageRunRecord | null = null;
+    let settleCeiling: number | null = null;
     try {
+      const summary = usage.summarize();
+      // From the same summary as the record, so the settle and the row can't
+      // disagree about which calls went unmeasured.
+      settleCeiling = settleCeilingFor(summary, expectedCalls);
       record = buildUsageRunRecord(
-        usage.summarize(),
+        summary,
         {
           userId,
           route: "digest",
@@ -520,7 +526,7 @@ async function* runDigestPipeline(
       supabase,
       reservation,
       claim,
-      settleAmount(reservation.reservedUsd, record)
+      settleAmount(reservation.reservedUsd, record, settleCeiling)
     );
 
     // DELIBERATELY AFTER THE RELEASE, and the order is a guarantee rather

@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
-import { recordCall } from "@/lib/usageCollector";
+import { boundOf, recordCall } from "@/lib/usageCollector";
 import { FAIL_CLOSED, type TriageOutcome } from "@/lib/triageOutcome";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
@@ -322,20 +322,19 @@ async function judgeBatch(
     )
     .join("\n\n");
 
-  const response = await recordCall("triage", "claude-haiku-4-5", () =>
-    client.messages.parse({
-      model: "claude-haiku-4-5",
-      max_tokens: withReasons ? MAX_TOKENS_WITH_REASONS : MAX_TOKENS,
-      system: withReasons ? SYSTEM_PROMPT + REASON_INSTRUCTION : SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Topic: ${topic}\n\nClusters:\n\n${list}\n\nFor each numbered cluster: does it belong in today's briefing, and how significant is it relative to this topic's own typical-day baseline?`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(verdictSchema(withReasons)) },
-    }),
-  );
+  const params = {
+    model: "claude-haiku-4-5",
+    max_tokens: withReasons ? MAX_TOKENS_WITH_REASONS : MAX_TOKENS,
+    system: withReasons ? SYSTEM_PROMPT + REASON_INSTRUCTION : SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `Topic: ${topic}\n\nClusters:\n\n${list}\n\nFor each numbered cluster: does it belong in today's briefing, and how significant is it relative to this topic's own typical-day baseline?`,
+      },
+    ],
+    output_config: { format: zodOutputFormat(verdictSchema(withReasons)) },
+  } satisfies Parameters<typeof client.messages.parse>[0];
+  const response = await recordCall("triage", "claude-haiku-4-5", () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
 
   if (!response.parsed_output) {
     throw new Error(

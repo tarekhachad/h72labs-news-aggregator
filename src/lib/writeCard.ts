@@ -7,7 +7,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card, Cluster, Source } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
-import { recordCall } from "@/lib/usageCollector";
+import { boundOf, recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
 import { orderPreferredFirst, type PreferredSources } from "@/lib/preferredSources";
 
@@ -91,21 +91,20 @@ async function generateSummary(cluster: Cluster, preferred: PreferredSources) {
   // records BOTH attempts — that retry is the single most expensive event
   // in the pipeline, and counting only the winning one would under-report
   // exactly where it hurts most.
-  const response = await recordCall("writeCard", model, () =>
-    client.messages.parse({
-      model,
-      max_tokens: 2048,
-      thinking,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: buildWriteCardContent(cluster, preferred),
-        },
-      ],
-      output_config: { format: zodOutputFormat(CardSummary) },
-    })
-  );
+  const params = {
+    model,
+    max_tokens: 2048,
+    thinking,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: buildWriteCardContent(cluster, preferred),
+      },
+    ],
+    output_config: { format: zodOutputFormat(CardSummary) },
+  } satisfies Parameters<typeof client.messages.parse>[0];
+  const response = await recordCall("writeCard", model, () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
 
   // Trimmed/filtered defensively here at the JS level, not via a zod
   // `.min(1)` constraint on the schema fed to zodOutputFormat — a schema

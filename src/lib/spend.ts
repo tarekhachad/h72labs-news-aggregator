@@ -156,17 +156,27 @@ async function settleLateGrant(
  * What a finished run settles to, or null to keep the full reservation.
  *
  * A floor record means some calls went unpriced, so its total is a lower
- * bound: the reservation stands unless the known figure already exceeds it.
- * No record at all (building it threw) keeps the reservation too.
+ * bound and never a figure to settle at. Given a proven ceiling
+ * (`settleCeilingFor`: the total plus every usage-less call's worst case), the
+ * run settles at that ceiling, never above the reservation.
+ * Without one, the reservation stands unless the known figure already
+ * exceeds it. No record at all (building it threw) keeps the reservation too.
  */
 export function settleAmount(
   reservedUsd: number,
-  record: { totalBilledUsd: number; isFloor: boolean } | null
+  record: { totalBilledUsd: number; isFloor: boolean } | null,
+  ceilingUsd: number | null = null
 ): number | null {
   if (record === null) return null;
   const total = record.totalBilledUsd;
   if (!Number.isFinite(total) || total < 0) return null;
-  return record.isFloor ? Math.max(total, reservedUsd) : total;
+  if (!record.isFloor) return total;
+  const atLeast = Math.max(total, reservedUsd);
+  const ceiling = ceilingUsd;
+  if (typeof ceiling === "number" && Number.isFinite(ceiling) && ceiling >= total) {
+    return Math.min(atLeast, ceiling);
+  }
+  return atLeast;
 }
 
 /**

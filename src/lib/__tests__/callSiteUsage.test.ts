@@ -17,7 +17,9 @@ import type { Card, Cluster, Topic } from "@/types";
 const mockParse = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => {
   function FakeAnthropic() {
-    return { messages: { parse: mockParse } };
+    // maxRetries mirrors the real SDK default, which each site reads to size
+    // its ceiling as maxRetries + 1 attempts.
+    return { maxRetries: 2, messages: { parse: mockParse } };
   }
   return { default: FakeAnthropic };
 });
@@ -222,7 +224,7 @@ describe("Claude call sites still report on their failure paths", () => {
     await withUsageCollector(collector, () => isSameStory("candidate", "existing"));
 
     expect(collector.calls()).toEqual([
-      { stage: "dedup", model: "claude-haiku-4-5", tokens: null },
+      { stage: "dedup", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 256, attempts: 3 } },
     ]);
     expect(collector.summarize().totalCallsWithoutUsage).toBe(1);
   });
@@ -237,7 +239,9 @@ describe("Claude call sites still report on their failure paths", () => {
     );
 
     expect(result).toBeNull();
-    expect(collector.calls()).toEqual([{ stage: "rank", model: "claude-haiku-4-5", tokens: null }]);
+    expect(collector.calls()).toEqual([
+      { stage: "rank", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
+    ]);
   });
 
   it("records every triage attempt that threw, including the split-retry ladder", async () => {
@@ -257,9 +261,9 @@ describe("Claude call sites still report on their failure paths", () => {
 
     // The initial attempt plus one retry at each of the two split depths.
     expect(collector.calls()).toEqual([
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
     ]);
   });
 

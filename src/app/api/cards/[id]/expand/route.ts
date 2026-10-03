@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { generateExpandedReport } from "@/lib/cards";
 import type { Card, Topic } from "@/types";
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
-import { buildUsageRunRecord, type UsageRunRecord } from "@/lib/usageRecord";
+import { buildUsageRunRecord, settleCeilingFor, type UsageRunRecord } from "@/lib/usageRecord";
 import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 import { reserveSpend, settleAmount, settleSpend, spendRefusalResponse } from "@/lib/spend";
 import { bestEffortLog } from "@/lib/bestEffortLog";
@@ -117,9 +117,12 @@ export async function POST(
     // the runs that cost money. If that latency ever matters, Next's
     // `after()` is the right tool and not a try/catch.
     let record: UsageRunRecord | null = null;
+    let settleCeiling: number | null = null;
     try {
+      const summary = usage.summarize();
+      settleCeiling = settleCeilingFor(summary, { expand: 1 });
       record = buildUsageRunRecord(
-        usage.summarize(),
+        summary,
         {
           userId: user.id,
           route: "expand",
@@ -151,7 +154,7 @@ export async function POST(
 
     // Settled before the record is written, the same order as the digest
     // route. Never throws, and bounded by its own timeout.
-    await settleSpend(reservation, settleAmount(reservation.reservedUsd, record));
+    await settleSpend(reservation, settleAmount(reservation.reservedUsd, record, settleCeiling));
     if (record !== null) {
       try {
         await emitUsageRun(defaultUsageSinks(supabase), record);

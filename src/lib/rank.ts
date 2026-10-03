@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Topic } from "@/types";
-import { recordCall } from "@/lib/usageCollector";
+import { boundOf, recordCall } from "@/lib/usageCollector";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const client = new Anthropic();
@@ -92,20 +92,19 @@ export async function rankFrontPage(
   try {
     const { system, list } = buildRankPrompt(candidates);
 
-    const response = await recordCall("rank", "claude-haiku-4-5", () =>
-      client.messages.parse({
-        model: "claude-haiku-4-5",
-        max_tokens: 1024,
-        system,
-        messages: [
-          {
-            role: "user",
-            content: `Candidate stories:\n\n${list}\n\nWhich belong on today's front page, and in what order?`,
-          },
-        ],
-        output_config: { format: zodOutputFormat(RankResult) },
-      })
-    );
+    const params = {
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: `Candidate stories:\n\n${list}\n\nWhich belong on today's front page, and in what order?`,
+        },
+      ],
+      output_config: { format: zodOutputFormat(RankResult) },
+    } satisfies Parameters<typeof client.messages.parse>[0];
+    const response = await recordCall("rank", "claude-haiku-4-5", () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
 
     if (!response.parsed_output) {
       // A missing parsed_output isn't the same thing as "the model

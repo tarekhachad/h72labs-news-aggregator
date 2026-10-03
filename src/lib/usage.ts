@@ -188,7 +188,33 @@ export interface RecordedCall {
   stage: UsageStage;
   model: TrackedModel;
   tokens: CallTokens | null;
+  /**
+   * The most this call could have cost, as request size and output limit.
+   * Read only when `tokens` is null: it is what lets a run whose usage went
+   * missing settle at a proven ceiling instead of its whole reservation.
+   */
+  bound?: CallBound;
 }
+
+/**
+ * An upper bound on one call's tokens. Every token covers at least one byte
+ * of the serialized request, so `requestBytes` bounds input from above; the
+ * output, thinking included, can't exceed `maxOutputTokens`. `attempts` is how
+ * many HTTP requests the call may have sent: the SDK retries a failed request
+ * inside a single call, and each attempt that reached the API may be billed.
+ */
+export interface CallBound {
+  requestBytes: number;
+  maxOutputTokens: number;
+  attempts: number;
+}
+
+/**
+ * Input tokens the API adds around a request that its serialized bytes don't
+ * contain (message framing, the structured-output instructions). Generous on
+ * purpose: a ceiling that undercounts would let a settle under-record.
+ */
+export const REQUEST_OVERHEAD_TOKENS = 2048;
 
 export interface CostBreakdown {
   /**
@@ -591,6 +617,12 @@ export interface PromoNotice {
 
 export interface UsageSummary {
   /**
+   * The summed worst-case cost of every call that reported no usage: 0 when
+   * none did, null when any of them carried no bound or couldn't be priced.
+   * Added to the known total, it is a figure the run provably didn't exceed.
+   */
+  unmeasuredBoundUsd: number | null;
+  /**
    * Models present in this run that could not be priced. Non-empty means the
    * dollar totals below are a FLOOR — some real spend is missing from them.
    */
@@ -686,6 +718,12 @@ export function summarizeUsage(
   const unpricedModels = [...new Set(stages.filter((g) => !g.priced).map((g) => g.model))];
   const clockUsable = utcDateString(at) !== null;
 
+  let unmeasuredBoundUsd: number | null = 0;
+  for (const call of calls) {
+    if (call.tokens !== null || unmeasuredBoundUsd === null) continue;
+    unmeasuredBoundUsd = addBoundCost(unmeasuredBoundUsd, call, at, table);
+  }
+
   const promos: PromoNotice[] = [];
   for (const model of new Set(stages.map((group) => group.model))) {
     const promo = Object.hasOwn(table, model) ? table[model]?.promo : undefined;
@@ -745,7 +783,45 @@ export function summarizeUsage(
     unpricedModels,
     clockUsable,
     promos,
+    unmeasuredBoundUsd,
   };
+}
+
+/**
+ * `sum` plus the most `call` could have cost across all its attempts, or null
+ * when that can't be proven: no bound recorded, a bound that isn't a finite
+ * non-negative count, or a model the table can't price. Priced at the dearer of billed and list,
+ * so a promotion dearer than list can't make the ceiling too low.
+ */
+function addBoundCost(
+  sum: number,
+  call: RecordedCall,
+  at: Date,
+  table: Record<TrackedModel, ModelPricing>
+): number | null {
+  const bound = call.bound;
+  if (bound === undefined) return null;
+  const { requestBytes, maxOutputTokens, attempts } = bound;
+  if (!Number.isFinite(requestBytes) || requestBytes < 0) return null;
+  if (!Number.isFinite(maxOutputTokens) || maxOutputTokens < 0) return null;
+  if (!Number.isInteger(attempts) || attempts < 1) return null;
+  try {
+    const cost = costFor(
+      call.model,
+      {
+        inputTokens: requestBytes + REQUEST_OVERHEAD_TOKENS,
+        outputTokens: maxOutputTokens,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      },
+      at,
+      table
+    );
+    const ceiling = Math.max(cost.billedUsd, cost.listUsd) * attempts;
+    return Number.isFinite(ceiling) ? sum + ceiling : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
