@@ -13,14 +13,14 @@ vi.mock("@anthropic-ai/sdk", () => {
 });
 
 const cluster: Cluster = {
-  topic: "European Football",
+  topic: "Football",
   articles: [
     {
       title: "A title",
       snippet: "A snippet",
       url: "https://example.com/a",
       source: "BBC",
-      topic: "European Football",
+      topic: "Football",
       publishedAt: "2026-09-28T12:00:00Z",
     },
   ],
@@ -53,7 +53,7 @@ describe("quotation style in prose prompts", () => {
     const { generateExpandedReport } = await import("@/lib/cards");
 
     const report = await generateExpandedReport({
-      topic: "European Football",
+      topic: "Football",
       shortSummary: "A summary.",
       sources: [{ title: "A title", url: "https://example.com/a", source: "BBC", snippet: "A snippet" }],
     });

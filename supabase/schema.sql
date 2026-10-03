@@ -876,22 +876,27 @@ create table public.spend_config (
   digest_base_usd numeric(12,6) not null check (digest_base_usd > 0 and digest_base_usd <> 'NaN'),
   digest_per_topic_usd numeric(12,6) not null check (digest_per_topic_usd >= 0 and digest_per_topic_usd <> 'NaN'),
   digest_max_usd numeric(12,6) not null check (digest_max_usd > 0 and digest_max_usd <> 'NaN'),
-  -- The number of topics a profile can hold (TOPICS in src/types.ts). A topic
-  -- count sent to reserve_spend is clamped to it, so a direct caller cannot
-  -- size a reservation past what a real profile could produce.
+  -- The number of topics a profile can hold (10). A topic count
+  -- sent to reserve_spend is clamped to it, so a direct caller cannot size a
+  -- reservation past what a real profile could produce.
   digest_max_topics integer not null check (digest_max_topics >= 1),
   -- Worst case: two Sonnet calls at max_tokens 4096 (the truncation retry).
   expand_usd numeric(12,6) not null check (expand_usd > 0 and expand_usd <> 'NaN')
 );
 
--- Sized from measured runs: a full 13-topic profile costs about $0.49 on a
--- cold first run in production (the worst case digest_max_usd must cover)
--- and $0.20 per top-up; an expand ~$0.0105.
+-- Sized from measured runs: a cold first run reading 61 feeds costs about
+-- $0.49 in production and a top-up $0.20; an expand ~$0.0105. Cost follows
+-- feeds read, not topics. The largest profile is 10 topics at up to 6 feeds
+-- each, about the same 60 feeds, so a 10-topic digest must reserve the full
+-- 0.70: 0.05 + 0.065 × 10. A settle can never record more than its
+-- reservation, so a smaller per-topic figure would under-count the worst run.
+-- Editing these seed values changes nothing in a live database; the
+-- spend_config block at the end of this file is what applies them there.
 insert into public.spend_config (
   id, generation_enabled, user_window_usd, global_window_usd,
   max_digest_runs_per_window, max_expands_per_window,
   digest_base_usd, digest_per_topic_usd, digest_max_usd, digest_max_topics, expand_usd
-) values (1, true, 2.00, 10.00, 4, 15, 0.05, 0.05, 0.70, 13, 0.12);
+) values (1, true, 2.00, 10.00, 4, 15, 0.05, 0.065, 0.70, 10, 0.12);
 
 create table public.spend_ledger (
   id uuid primary key default gen_random_uuid(),
@@ -1328,3 +1333,39 @@ alter default privileges for role postgres in schema public
 -- An event-trigger function can't be called through the API, but it has no
 -- reason to be executable by sessions either.
 revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+
+-- V2.4 migration: European Football becomes Football. MUST be run by hand, in
+-- the same release as the code that renames the topic.
+--
+-- Until it runs, getUserProfile drops every 'European Football' row as a name
+-- no longer in TOPICS, so a reader whose only topic was football would be sent
+-- back to onboarding, and their past football cards would carry a topic the app
+-- no longer knows.
+--
+-- user_topics' primary key is (user_id, topic). No user can already hold a
+-- 'Football' row beside a 'European Football' one: 'Football' is a new name,
+-- and saving preferences replaces a user's whole set (delete, then insert), so
+-- a set saved after the rename no longer contains the old name. If that ever
+-- stopped holding, the update would fail as a whole inside the transaction and
+-- change nothing.
+--
+-- Safe to re-run: once applied, no row matches 'European Football', and each
+-- update touches nothing.
+begin;
+update public.user_topics set topic = 'Football' where topic = 'European Football';
+update public.cards set topic = 'Football' where topic = 'European Football';
+update public.digests set requested_topic = 'Football' where requested_topic = 'European Football';
+commit;
+
+-- V2.4 migration: the spend reservation keeps covering the largest profile.
+-- MUST be run by hand; the seed values in the spend_config insert above have no
+-- effect on a live table, since that insert never re-runs.
+--
+-- A profile holds at most 10 topics, and a digest reads at most 6 feeds per
+-- topic, so the worst run reads about 60 feeds, the volume measured at $0.49.
+-- At 0.065 per topic a 10-topic digest reserves 0.05 + 0.065 × 10 = 0.70.
+-- Safe to re-run: it sets fixed values.
+update public.spend_config
+set digest_per_topic_usd = 0.065,
+    digest_max_topics = 10
+where id = 1;

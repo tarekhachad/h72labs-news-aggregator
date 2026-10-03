@@ -34,6 +34,24 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  // The football topic's slug changed, and old links (bookmarked pages, the
+  // history calendar's past days) still carry the old one. Permanent, so
+  // browsers and crawlers update the stored URL.
+  async redirects() {
+    return [
+      {
+        source: "/topic/european-football",
+        destination: "/topic/football",
+        permanent: true,
+      },
+      {
+        source: "/history/:date/topic/european-football",
+        destination: "/history/:date/topic/football",
+        permanent: true,
+      },
+    ];
+  },
+
   // The CSP deliberately has no script-src: Next's inline bootstrap scripts
   // need per-request nonces to pass one, which is a separate change. What it
   // does set stops framing (clickjacking), plugins, <base> hijacking and forms

@@ -20,13 +20,13 @@ A user's selected topics of interest (curated multi-select, at least 1 and no up
 | Field | What it holds |
 |---|---|
 | `user_id` | Which user |
-| `topic` | One of the curated topic options (e.g. "Geopolitics," "Finance," "Tech/AI," "Morocco," "Sports") |
+| `topic` | One of the curated topic options in `TOPICS` (e.g. "Geopolitics," "US Finance," "Tech/AI," "Morocco," "Football"); the full list and its feeds are in `docs/(C) SOURCE_CATALOG.md` |
 
 One row per user per topic — a user with 4 topics has 4 rows.
 
 ## `user_preferred_sources`
 
-A user's preferred news outlets (curated multi-select — e.g. NYT, WaPo, Reuters, BBC). Used as a **weighting signal** in synthesis, not a hard filter — the pipeline still pulls broadly across sources.
+A user's preferred news outlets (curated multi-select from `SOURCES` — e.g. NYT, Washington Post, BBC). **Today this is a hard filter:** ingestion fetches only the feeds of the outlets a user picked. It becomes a **weighting signal** with the optional-sources wave (V2.4 L9): picking no outlets reads every outlet for the user's topics, and picked outlets take a topic's feed slots first and are favoured in triage, ranking and writing, without shutting out the others.
 
 | Field | What it holds |
 |---|---|
