@@ -1,5 +1,6 @@
 /**
- * Fetches every RSS feed in `src/config/feeds.ts` and reports, per feed,
+ * Fetches every RSS feed in `src/config/feeds.ts` and `src/config/countries.ts`
+ * and reports, per feed,
  * whether it meets the bar a feed has to clear to ship: it parses as RSS or
  * Atom, it has items, its newest item is recent, every item has a title and
  * a link, its items carry real text, and the robots.txt of every host the
@@ -8,7 +9,7 @@
  *   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-feeds.mts
  *   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-feeds.mts --file candidates.json
  *
- * `--file` checks a JSON array of `{ topic, source, url }` instead of FEEDS,
+ * `--file` checks a JSON array of `{ topic, source, url }` instead of the catalog,
  * which is how a candidate feed is checked before it is added. Exits 1 if any
  * feed fails, so it can gate a change.
  *
@@ -27,6 +28,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import Parser from "rss-parser";
 import { FEEDS } from "../src/config/feeds.ts";
+import { COUNTRIES_TOPIC, COUNTRY_FEEDS } from "../src/config/countries.ts";
 
 // Mirrors ingest.ts. If those change, change these with them, or a pass here
 // stops meaning anything about what the digest sees.
@@ -63,6 +65,10 @@ const parser = new Parser({ timeout: TIMEOUT_MS, headers: { "User-Agent": USER_A
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
+}
+
+function textOf(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function median(values: number[]): number {
@@ -251,7 +257,7 @@ export async function checkFeed(feed: FeedToCheck): Promise<FeedResult> {
 
   const items = parsed.items ?? [];
   result.items = items.length;
-  result.feedTitle = (parsed.title ?? "").trim();
+  result.feedTitle = textOf(parsed.title);
 
   const times = items
     .map((item) => new Date(item.isoDate ?? item.pubDate ?? "").getTime())
@@ -260,13 +266,18 @@ export async function checkFeed(feed: FeedToCheck): Promise<FeedResult> {
     result.newestAgeHours = Math.round(((Date.now() - Math.max(...times)) / 3_600_000) * 10) / 10;
   }
 
-  result.medianSnippet = median(
-    items.map((item) => stripHtml(item.contentSnippet ?? item.content ?? "").length)
-  );
-  const untitled = items.filter((item) => !(item.title ?? "").trim()).length;
+  // A snippet that parsed as something other than text makes ingest's own
+  // stripHtml throw and lose the whole feed, so it fails the feed here too.
+  const snippetOf = (item: (typeof items)[number]): unknown => item.contentSnippet ?? item.content ?? "";
+  const unreadable = items.filter((item) => typeof snippetOf(item) !== "string").length;
+  result.medianSnippet = median(items.map((item) => stripHtml(textOf(snippetOf(item))).length));
+  // A title or link the parser hands back as something other than text (an
+  // element with attributes becomes an object) counts as missing: ingest calls
+  // trim() on both, so it would fail the whole feed on one such item.
+  const untitled = items.filter((item) => !textOf(item.title)).length;
   // Ingest removes duplicate articles by URL, so items without a link would
   // collapse into one.
-  const unlinked = items.filter((item) => !(item.link ?? "").trim()).length;
+  const unlinked = items.filter((item) => !textOf(item.link)).length;
 
   const problems: string[] = [];
   if (result.robots === "disallowed") problems.push("robots.txt disallows this path");
@@ -283,6 +294,7 @@ export async function checkFeed(feed: FeedToCheck): Promise<FeedResult> {
   }
   if (untitled > 0) problems.push(`${untitled} untitled items`);
   if (unlinked > 0) problems.push(`${unlinked} items without a link`);
+  if (unreadable > 0) problems.push(`${unreadable} items whose text is not text`);
 
   result.pass = problems.length === 0;
   result.reason = problems.join("; ");
@@ -311,9 +323,23 @@ async function loadFeeds(): Promise<FeedToCheck[]> {
     if (!path) throw new Error("--file needs a path");
     return JSON.parse(await readFile(path, "utf8")) as FeedToCheck[];
   }
-  return Object.entries(FEEDS).flatMap(([topic, bySource]) =>
-    Object.entries(bySource).map(([source, url]) => ({ topic, source, url: url as string }))
-  );
+  return catalogFeeds();
+}
+
+/**
+ * Every feed the app can read: each topic's, then each country's, labelled
+ * "Countries/<country>" so a country named like a topic (Morocco) stays
+ * distinguishable in the report.
+ */
+export function catalogFeeds(): FeedToCheck[] {
+  const flatten = (grid: Readonly<Record<string, Readonly<Record<string, string | undefined>>>>, label: (key: string) => string) =>
+    Object.entries(grid).flatMap(([key, bySource]) =>
+      Object.entries(bySource).map(([source, url]) => ({ topic: label(key), source, url: url as string }))
+    );
+  return [
+    ...flatten(FEEDS, (topic) => topic),
+    ...flatten(COUNTRY_FEEDS, (country) => `${COUNTRIES_TOPIC}/${country}`),
+  ];
 }
 
 function pad(value: string, width: number): string {
@@ -329,12 +355,12 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(results, null, 2));
   } else {
     console.log(
-      `${pad("", 4)} ${pad("topic", 26)} ${pad("source", 24)} ${pad("items", 5)} ${pad("newest", 7)} ${pad("snippet", 7)} reason`
+      `${pad("", 4)} ${pad("topic", 32)} ${pad("source", 24)} ${pad("items", 5)} ${pad("newest", 7)} ${pad("snippet", 7)} reason`
     );
     for (const r of results) {
       const age = r.newestAgeHours === null ? "-" : `${r.newestAgeHours}h`;
       console.log(
-        `${pad(r.pass ? "PASS" : "FAIL", 4)} ${pad(r.topic, 26)} ${pad(r.source, 24)} ${pad(String(r.items), 5)} ${pad(age, 7)} ${pad(String(r.medianSnippet), 7)} ${r.reason}`
+        `${pad(r.pass ? "PASS" : "FAIL", 4)} ${pad(r.topic, 32)} ${pad(r.source, 24)} ${pad(String(r.items), 5)} ${pad(age, 7)} ${pad(String(r.medianSnippet), 7)} ${r.reason}`
       );
     }
   }

@@ -256,9 +256,37 @@ describe("the feed bar", () => {
     expect((await lib.checkFeed(FEED)).reason).toContain("2 items without a link");
   });
 
+  it("fails a title or link that parsed as something other than text, without throwing", async () => {
+    const items: Record<string, unknown>[] = feedItems(3);
+    items[0].title = { _: "Story", $: { type: "html" } };
+    items[1].link = { $: { href: "https://example.com/1" } };
+    state.parse = async () => ({ items });
+    const result = await lib.checkFeed(FEED);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("1 untitled items");
+    expect(result.reason).toContain("1 items without a link");
+  });
+
   it("reports an invalid URL without fetching anything", async () => {
     const result = await lib.checkFeed({ ...FEED, url: "not a url" });
     expect(result.reason).toBe("not a valid URL");
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("the catalog it checks", () => {
+  it("covers every topic feed and every country feed, labelling each country's", async () => {
+    const { FEEDS } = await import("@/config/feeds");
+    const { COUNTRY_FEEDS } = await import("@/config/countries");
+    const feeds = lib.catalogFeeds();
+    const count = (grid: Record<string, Record<string, unknown>>) =>
+      Object.values(grid).reduce((n, bySource) => n + Object.keys(bySource).length, 0);
+
+    expect(feeds).toHaveLength(count(FEEDS) + count(COUNTRY_FEEDS));
+    for (const [country, bySource] of Object.entries(COUNTRY_FEEDS)) {
+      for (const [source, url] of Object.entries(bySource)) {
+        expect(feeds).toContainEqual({ topic: `Countries/${country}`, source, url });
+      }
+    }
   });
 });

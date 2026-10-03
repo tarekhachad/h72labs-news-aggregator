@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FEEDS } from "@/config/feeds";
 import { SOURCES, TOPICS } from "@/types";
-import { COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES, COUNTRIES_TOPIC, COUNTRY_FEEDS, countryToSlug, slugToCountry } from "@/config/countries";
 
 // The catalog's shape rules. Whether each feed is live is a network question,
 // answered by scripts/verify-feeds.mts; these hold the rules that need no
@@ -19,8 +19,10 @@ describe("topic and source catalog", () => {
     expect(thin).toEqual([]);
   });
 
-  it("uses every shipped source in at least one feed", () => {
-    const used = new Set(Object.values(FEEDS).flatMap((bySource) => Object.keys(bySource)));
+  it("uses every shipped source in at least one topic or country feed", () => {
+    const used = new Set(
+      [...Object.values(FEEDS), ...Object.values(COUNTRY_FEEDS)].flatMap((bySource) => Object.keys(bySource))
+    );
     const unused = SOURCES.filter((source) => !used.has(source));
     expect(unused).toEqual([]);
   });
@@ -72,5 +74,64 @@ describe("topic and source catalog", () => {
   it("offers Football in place of European Football", () => {
     expect(TOPICS).toContain("Football");
     expect(TOPICS as readonly string[]).not.toContain("European Football");
+  });
+});
+
+describe("country catalog", () => {
+  it("gives every offered country at least 3 feeds", () => {
+    const thin = COUNTRIES.filter(
+      (country) => Object.keys(COUNTRY_FEEDS[country] ?? {}).length < MIN_FEEDS_PER_TOPIC
+    );
+    expect(thin).toEqual([]);
+  });
+
+  it("offers at least one country, so the Countries topic is never empty", () => {
+    expect(COUNTRIES.length).toBeGreaterThan(0);
+  });
+
+  it("has a feed list for exactly the offered countries", () => {
+    expect(Object.keys(COUNTRY_FEEDS).sort()).toEqual([...COUNTRIES].sort());
+  });
+
+  it("lists each country once", () => {
+    expect(new Set(COUNTRIES).size).toBe(COUNTRIES.length);
+  });
+
+  it("files country feeds only under shipped sources", () => {
+    const known = new Set<string>(SOURCES);
+    const stray = Object.entries(COUNTRY_FEEDS).flatMap(([country, bySource]) =>
+      Object.keys(bySource)
+        .filter((source) => !known.has(source))
+        .map((source) => `${country} / ${source}`)
+    );
+    expect(stray).toEqual([]);
+  });
+
+  it("points every country feed at an absolute http(s) URL", () => {
+    const bad = Object.entries(COUNTRY_FEEDS).flatMap(([country, bySource]) =>
+      Object.entries(bySource)
+        .filter(([, url]) => {
+          try {
+            return !["http:", "https:"].includes(new URL(url as string).protocol);
+          } catch {
+            return true;
+          }
+        })
+        .map(([source]) => `${country} / ${source}`)
+    );
+    expect(bad).toEqual([]);
+  });
+
+  // The Countries page filters by slug, so two countries sharing one would
+  // make one of them unreachable.
+  it("gives every country its own slug, which leads back to it", () => {
+    const slugs = COUNTRIES.map(countryToSlug);
+    expect(new Set(slugs).size).toBe(COUNTRIES.length);
+    expect(slugs.filter((slug) => slug === "")).toEqual([]);
+    for (const country of COUNTRIES) expect(slugToCountry(countryToSlug(country))).toBe(country);
+  });
+
+  it("is not filed under the Countries topic's own FEEDS entry", () => {
+    expect(FEEDS[COUNTRIES_TOPIC]).toEqual({});
   });
 });

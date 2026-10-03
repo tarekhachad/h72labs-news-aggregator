@@ -79,8 +79,11 @@ export async function clusterArticles(articles: Article[]): Promise<Cluster[]> {
     }
   });
 
-  return clusters.map((c) => ({
-    topic: c.articles[0].topic,
-    articles: c.articles,
-  }));
+  // Topic and country both come from the cluster's first article, so a
+  // cluster led by a Uganda article stays Countries · Uganda even when an
+  // Africa article joined it.
+  return clusters.map((c) => {
+    const { topic, subtopic } = c.articles[0];
+    return { topic, ...(subtopic ? { subtopic } : {}), articles: c.articles };
+  });
 }

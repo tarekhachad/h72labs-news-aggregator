@@ -130,3 +130,29 @@ describe("clusterArticles (post-extraction sanity check)", () => {
     expect(clusters[0].topic).toBe("US Finance");
   });
 });
+
+describe("clusterArticles: a country's clusters keep their country", () => {
+  it("takes the subtopic from the same first article as the topic", async () => {
+    const { clusterArticles } = await import("@/lib/cluster");
+    const uganda = makeArticle({ title: "BASE_MARKER", topic: "Countries", subtopic: "Uganda" });
+    const africa = makeArticle({ title: "ABOVE_THRESHOLD_MARKER", topic: "Africa" });
+
+    const clusters = await clusterArticles([uganda, africa]);
+
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].articles).toHaveLength(2);
+    expect(clusters[0].topic).toBe("Countries");
+    expect(clusters[0].subtopic).toBe("Uganda");
+  });
+
+  it("gives a cluster led by a topic article no subtopic, even when a country article joined it", async () => {
+    const { clusterArticles } = await import("@/lib/cluster");
+    const africa = makeArticle({ title: "BASE_MARKER", topic: "Africa" });
+    const uganda = makeArticle({ title: "ABOVE_THRESHOLD_MARKER", topic: "Countries", subtopic: "Uganda" });
+
+    const [cluster] = await clusterArticles([africa, uganda]);
+
+    expect(cluster.topic).toBe("Africa");
+    expect(cluster).not.toHaveProperty("subtopic");
+  });
+});
