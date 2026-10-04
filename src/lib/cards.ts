@@ -8,6 +8,12 @@ import { z } from "zod";
 import type { Card } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { boundOf, recordCall } from "@/lib/usageCollector";
+import {
+  extractForStory,
+  FULL_TEXT_INSTRUCTION,
+  splitByFullText,
+  type ExtractResult,
+} from "@/lib/extract";
 
 const client = new Anthropic();
 
@@ -19,13 +25,47 @@ const SYSTEM_PROMPT = `You write the full expanded report for a news card the re
 
 ${QUOTATION_STYLE}`;
 
-function sourceTextFor(card: Pick<Card, "sources">): string {
-  return card.sources
+/**
+ * How long the report waits for the sources' pages. A reader is watching a
+ * spinner, and the report call itself takes far longer, so this stays well
+ * under the card writer's budget; a page that loads at all usually does in
+ * under a second.
+ */
+const EXTRACT_BUDGET_MS = 8_000;
+
+type CardSource = Card["sources"][number];
+
+function sourceTextFor(sources: readonly CardSource[]): string {
+  return sources
     .map((s) => `Source: ${s.source}\nTitle: ${s.title}\n${s.snippet}`)
     .join("\n\n");
 }
 
-async function generateReport(card: Pick<Card, "topic" | "shortSummary" | "sources">) {
+/**
+ * The same split as the card writer: full-text sources first as the material,
+ * the rest as headline-and-snippet context. With no full text it is exactly
+ * the snippet-only source list.
+ */
+function sourceMaterialFor(
+  sources: readonly CardSource[],
+  extracted: readonly (ExtractResult | undefined)[]
+): string {
+  const { fullText, headlineOnly } = splitByFullText(sources, extracted);
+  if (fullText.length === 0) return sourceTextFor(sources);
+  const material = fullText
+    .map(({ item, text }) => `Source: ${item.source}\nTitle: ${item.title}\nText: ${text}`)
+    .join("\n\n");
+  const context =
+    headlineOnly.length === 0
+      ? ""
+      : `\n\nOther coverage (headline and feed summary only):\n\n${sourceTextFor(headlineOnly)}`;
+  return `${FULL_TEXT_INSTRUCTION}\n\nFull-text articles:\n\n${material}${context}`;
+}
+
+async function generateReport(
+  card: Pick<Card, "topic" | "shortSummary" | "sources">,
+  extracted: readonly (ExtractResult | undefined)[]
+) {
   // Inside generateReport, not around generateExpandedReport, so the
   // ambiguous-truncation retry records both attempts — see writeCard.ts.
   const params = {
@@ -39,7 +79,7 @@ async function generateReport(card: Pick<Card, "topic" | "shortSummary" | "sourc
     messages: [
       {
         role: "user",
-        content: `Topic: ${card.topic}\n\nShort summary already shown to the reader:\n${card.shortSummary}\n\nSource material:\n${sourceTextFor(card)}`,
+        content: `Topic: ${card.topic}\n\nShort summary already shown to the reader:\n${card.shortSummary}\n\nSource material:\n${sourceMaterialFor(card.sources, extracted)}`,
       },
     ],
     output_config: { format: zodOutputFormat(ExpandedReport) },
@@ -59,12 +99,21 @@ async function generateReport(card: Pick<Card, "topic" | "shortSummary" | "sourc
  * source data already persisted on the card row (including snippet), not a
  * live cluster, since this can run long after the original digest was
  * generated.
+ *
+ * The pages are fetched again rather than kept from the card's own run, since
+ * extracted text is never stored. A page that fails now (blocked since, or
+ * gone) falls back to the persisted snippet.
  */
 export async function generateExpandedReport(
   card: Pick<Card, "topic" | "shortSummary" | "sources">
 ): Promise<string> {
+  const deadline = Date.now() + EXTRACT_BUDGET_MS;
+  const extracted = await extractForStory(
+    card.sources.map((s) => s.url),
+    { deadline, label: "expand" }
+  );
   const result = await generateWithRetryOnAmbiguousTruncation(
-    () => generateReport(card),
+    () => generateReport(card, extracted),
     "generateExpandedReport"
   );
   return result.text;

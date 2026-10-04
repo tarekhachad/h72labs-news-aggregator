@@ -1,4 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Every page "blocked": the writer gets exactly the snippet-only prompt, and
+// nothing in this file can reach the live web.
+vi.mock("@/lib/extract", async (importOriginal) => {
+  const blocked = async (urls: readonly string[]) =>
+    urls.map((url) => ({ url, ok: false as const, reason: "robots" as const }));
+  return {
+    ...(await importOriginal<typeof import("@/lib/extract")>()),
+    extractArticles: blocked,
+    extractForStory: blocked,
+  };
+});
 import { SOURCES, TOPICS, type Cluster, type Source, type Topic } from "@/types";
 
 const { mockParse } = vi.hoisted(() => ({ mockParse: vi.fn() }));

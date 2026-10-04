@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
+// Every page "blocked": the writer gets exactly the snippet-only prompt, and
+// nothing in this file can reach the live web.
+vi.mock("@/lib/extract", async (importOriginal) => {
+  const blocked = async (urls: readonly string[]) =>
+    urls.map((url) => ({ url, ok: false as const, reason: "robots" as const }));
+  return {
+    ...(await importOriginal<typeof import("@/lib/extract")>()),
+    extractArticles: blocked,
+    extractForStory: blocked,
+  };
+});
+
 // QA (review-loop round 2, v2.4-fair-settle). The attempt count is read from
 // the client, not hardcoded: give the real SDK client a different maxRetries
 // and the bound must follow the number of HTTP requests actually sent.

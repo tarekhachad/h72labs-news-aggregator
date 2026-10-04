@@ -5,11 +5,17 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import type { Card, Cluster, Source } from "@/types";
+import type { Article, Card, Cluster, Source } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { boundOf, recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
 import { orderPreferredFirst, type PreferredSources } from "@/lib/preferredSources";
+import {
+  extractForStory,
+  FULL_TEXT_INSTRUCTION,
+  splitByFullText,
+  type ExtractResult,
+} from "@/lib/extract";
 
 const client = new Anthropic();
 
@@ -46,8 +52,15 @@ ${QUOTATION_STYLE}`;
 // text to recognize which story it's looking at.
 const SOURCE_CHARS_PER_ARTICLE = 1200;
 
-function sourceTextFor(cluster: Cluster): string {
-  return cluster.articles
+/**
+ * How long a card waits for its articles' pages, measured from the start of
+ * its writeCard call. The digest starts every card at once, so this is also
+ * about the most extraction adds to a whole run.
+ */
+const EXTRACT_BUDGET_MS = 15_000;
+
+function sourceTextFor(articles: readonly Article[]): string {
+  return articles
     .map(
       (a) =>
         `Source: ${a.source}\nTitle: ${a.title}\n${a.snippet.slice(0, SOURCE_CHARS_PER_ARTICLE)}`
@@ -73,14 +86,42 @@ export function preferredLeadNote(cluster: Cluster, preferred: PreferredSources)
  * The user message sent to the writer for an already-ordered cluster. A
  * Countries cluster names its country ("Countries: Uganda"), so the writer
  * knows which country's story it is telling. Exported for tests.
+ *
+ * `extracted[i]` is the extraction result for `cluster.articles[i]`. With no
+ * full text at all the message is exactly the snippet-only one. With some,
+ * the full-text articles come first and are the material (preferred outlets
+ * leading among them, and the lead note naming only those), then every other
+ * source as headline-and-snippet context.
  */
-export function buildWriteCardContent(cluster: Cluster, preferred?: PreferredSources): string {
-  const note = preferredLeadNote(cluster, preferred);
+export function buildWriteCardContent(
+  cluster: Cluster,
+  preferred?: PreferredSources,
+  extracted: readonly (ExtractResult | undefined)[] = []
+): string {
   const topic = cluster.subtopic ? `${cluster.topic}: ${cluster.subtopic}` : cluster.topic;
-  return `Topic: ${topic}\n\n${note === null ? "" : `${note}\n\n`}${sourceTextFor(cluster)}`;
+  const { fullText, headlineOnly } = splitByFullText(cluster.articles, extracted);
+
+  if (fullText.length === 0) {
+    const note = preferredLeadNote(cluster, preferred);
+    return `Topic: ${topic}\n\n${note === null ? "" : `${note}\n\n`}${sourceTextFor(cluster.articles)}`;
+  }
+
+  const note = preferredLeadNote({ ...cluster, articles: fullText.map((f) => f.item) }, preferred);
+  const material = fullText
+    .map(({ item, text }) => `Source: ${item.source}\nTitle: ${item.title}\nText: ${text}`)
+    .join("\n\n");
+  const context =
+    headlineOnly.length === 0
+      ? ""
+      : `\n\nOther coverage (headline and feed summary only):\n\n${sourceTextFor(headlineOnly)}`;
+  return `Topic: ${topic}\n\n${FULL_TEXT_INSTRUCTION}\n\n${note === null ? "" : `${note}\n\n`}Full-text articles:\n\n${material}${context}`;
 }
 
-async function generateSummary(cluster: Cluster, preferred: PreferredSources) {
+async function generateSummary(
+  cluster: Cluster,
+  preferred: PreferredSources,
+  extracted: readonly (ExtractResult | undefined)[]
+) {
   const model = modelForCluster(cluster);
   // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
   // thinking + output combined — thinking was eating the budget and
@@ -104,7 +145,7 @@ async function generateSummary(cluster: Cluster, preferred: PreferredSources) {
     messages: [
       {
         role: "user",
-        content: buildWriteCardContent(cluster, preferred),
+        content: buildWriteCardContent(cluster, preferred, extracted),
       },
     ],
     output_config: { format: zodOutputFormat(CardSummary) },
@@ -168,6 +209,11 @@ export class EmptyClusterError extends Error {
  * report later reads (generateExpandedReport works from the persisted list).
  * Optional; with none, or none in this cluster, prompt and order are exactly
  * the cluster's own.
+ *
+ * Before writing, it fetches its articles' pages, top of the list first
+ * (extractForStory in extract.ts) and writes from whatever full text arrived within
+ * EXTRACT_BUDGET_MS. That text only reaches the prompt: `Card.sources` keeps
+ * every source, in the same order, with its RSS snippet.
  */
 export async function writeCard(
   cluster: Cluster,
@@ -182,13 +228,21 @@ export async function writeCard(
     throw new EmptyClusterError(cluster.topic);
   }
 
+  const deadline = Date.now() + EXTRACT_BUDGET_MS;
   const ordered: Cluster = {
     ...cluster,
     articles: orderPreferredFirst(cluster.articles, preferredSources),
   };
 
+  // Fetched once, outside the retry: a second writing attempt reuses the
+  // same text. Never rejects; a page that fails is simply not full text.
+  const extracted = await extractForStory(
+    ordered.articles.map((a) => a.url),
+    { deadline, label: "writeCard" }
+  );
+
   const { text: shortSummary, title, labels } = await generateWithRetryOnAmbiguousTruncation(
-    () => generateSummary(ordered, preferredSources),
+    () => generateSummary(ordered, preferredSources, extracted),
     "writeCard"
   );
 
