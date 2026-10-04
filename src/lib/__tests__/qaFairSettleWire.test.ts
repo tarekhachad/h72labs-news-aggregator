@@ -130,8 +130,8 @@ describe("the recorded bound covers the bytes the SDK actually sends", () => {
       const c = await runCapturing(() => mods.triage.triageClusters([cluster(1)]));
       expect(sent.length).toBe(c.calls().length);
       c.calls().forEach((call, i) => {
-        expect(JSON.parse(sent[i].body).max_tokens).toBe(2048);
-        expect(call.bound!.maxOutputTokens).toBe(2048);
+        expect(JSON.parse(sent[i].body).max_tokens).toBe(3072);
+        expect(call.bound!.maxOutputTokens).toBe(3072);
         expect(call.bound!.requestBytes).toBe(sent[i].bytes);
       });
     } finally {

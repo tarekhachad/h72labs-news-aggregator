@@ -665,6 +665,7 @@ create table public.usage_runs (
   rank_applied boolean,                -- null = ranking never attempted
   clusters_boosted integer,            -- clusters lifted by a preferred outlet; null = unmeasured
   topics_dropped integer,              -- topics over the 10-topic read limit; null = unmeasured
+  clusters_merged integer,             -- clusters absorbed as duplicates of another; null = unmeasured
 
   total_calls integer not null,
   total_calls_without_usage integer not null,
@@ -1430,3 +1431,20 @@ drop policy if exists "delete own subtopics" on public.user_subtopics;
 create policy "delete own subtopics"
   on public.user_subtopics for delete
   using (auth.uid() = user_id);
+
+-- V2.6 migration: the duplicate check's per-run count. MUST be run by hand,
+-- BEFORE the code that writes it is deployed.
+--
+-- Each digest now merges notable clusters that report the same real-world
+-- event before writing cards, and records how many clusters it absorbed this
+-- way. The Supabase sink's insert names every column of the run record, and
+-- PostgREST rejects an insert naming a column the table lacks, so new code
+-- without this column loses every usage_runs row (the JSONL sink is
+-- unaffected).
+--
+-- Safe to run before the new code deploys, and that is the order to use: it
+-- only adds a nullable column. The old code never sends `clusters_merged`, so
+-- its rows simply leave it null ("unmeasured").
+--
+-- Safe to re-run: `if not exists`.
+alter table public.usage_runs add column if not exists clusters_merged integer;

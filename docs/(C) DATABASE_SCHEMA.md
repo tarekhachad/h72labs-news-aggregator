@@ -120,6 +120,20 @@ Links a user to a card they've saved — no content is duplicated here, since th
 | `card_id` | Which card they bookmarked |
 | `created_at` | When they bookmarked it (used to sort the Saved view) |
 
+## `usage_runs`
+
+One row per Claude-spending run (a digest or a full report), written by the app after the run settles: what it cost, stage by stage, and what the pipeline did. Insert-only, each user sees their own rows. The full column list lives in `supabase/schema.sql`; the run-shape counts below are the ones a digest fills in as it goes. Every count is **null when the run never got far enough to measure it**, which is different from 0.
+
+| Field | What it holds |
+|---|---|
+| `article_count`, `cluster_count`, `clusters_after_dedup` | Articles read, clusters formed, and clusters left after the cross-run duplicate check against today's earlier cards |
+| `triage_failed_closed` | Clusters triage could not judge and dropped, as distinct from ones it judged not notable |
+| `clusters_merged` | Notable clusters the duplicate check absorbed into another cluster reporting the same real-world event, before any card was written (V2.6) |
+| `clusters_boosted` | Notable clusters lifted one severity step because a preferred outlet covered them |
+| `notable_count`, `cards_dropped_by_cap` | What the card writer was asked for after the per-topic cap, and how many the cap dropped |
+| `cards_written`, `cards_failed`, `card_failures` | Cards produced, cards that failed, and why each failed |
+| `topics_dropped` | Topics and countries past the 10-unit read limit, skipped this run |
+
 ---
 
 ## How the pieces connect

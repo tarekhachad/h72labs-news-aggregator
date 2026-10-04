@@ -663,8 +663,9 @@ describe("triage reason gating", () => {
     const withReasons = mockParse.mock.calls[1][0].max_tokens;
 
     expect(withReasons).toBeGreaterThan(withoutReasons);
-    // Enough for 20 verdicts carrying a ~12-word reason each.
-    expect(withReasons).toBeGreaterThanOrEqual(2048);
+    // Enough for 20 notable verdicts carrying an event sentence and a
+    // ~12-word reason each.
+    expect(withReasons).toBeGreaterThanOrEqual(3072);
   });
 
   it("asks for a capped reason when TRIAGE_REASONS=1", async () => {
@@ -697,12 +698,12 @@ describe("F.4.5 round 2: split-retry ladder edge cases", () => {
   it("a truncated response with TRIAGE_REASONS=1 still recovers through the split-retry ladder", async () => {
     // Simulates the exact risk this round was asked to check: a full
     // 20-verdict batch with reasons on truncating against the raised
-    // 2048-token ceiling. The whole-batch attempt truncates (parsed_output
+    // reasons-on ceiling. The whole-batch attempt truncates (parsed_output
     // null, stop_reason max_tokens); the halves succeed.
     process.env.TRIAGE_REASONS = "1";
     let first = true;
     mockParse.mockImplementation(async ({ messages, max_tokens }) => {
-      expect(max_tokens).toBe(2048);
+      expect(max_tokens).toBe(3072);
       const content = messages[0].content as string;
       const size = (content.match(/^\d+\. /gm) ?? []).length;
       if (first && size === 20) {

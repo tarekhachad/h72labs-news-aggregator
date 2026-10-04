@@ -78,4 +78,13 @@ describe("usage_runs row vs supabase/schema.sql", () => {
     const missing = Object.keys(row).filter((k) => !cols.has(k));
     expect(missing).toEqual([]);
   });
+
+  it("adds clusters_merged with a re-runnable alter, so the live table gains it before the code that sends it", () => {
+    expect(schema).toMatch(/alter table public\.usage_runs add column if not exists clusters_merged integer;/);
+    expect(Object.keys(toUsageRunRow(minimalRecord()))).toContain("clusters_merged");
+  });
+
+  it("writes clusters_merged as null when the run never measured it", () => {
+    expect(toUsageRunRow(minimalRecord()).clusters_merged).toBeNull();
+  });
 });

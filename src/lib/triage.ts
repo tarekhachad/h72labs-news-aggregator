@@ -15,6 +15,16 @@ const client = new Anthropic();
 export type { TriageOutcome } from "@/lib/triageOutcome";
 
 /**
+ * A verdict as triageClusters returns it: the outcome, plus the event sentence
+ * when the cluster was judged notable and the model gave a non-empty one.
+ * Absent everywhere else, including every fail-closed cluster, which is still
+ * the shared FAIL_CLOSED singleton.
+ */
+export interface TriageVerdict extends TriageOutcome {
+  event?: string;
+}
+
+/**
  * Clusters per batch. F.3's cost analysis found triage was 65% of a
  * digest's spend with 91% of its input pure repetition — ~770 tokens of
  * fixed prompt and schema re-sent against ~80 tokens of actual content,
@@ -24,29 +34,30 @@ export type { TriageOutcome } from "@/lib/triageOutcome";
  *
  * 20 rather than more: the cost curve is nearly flat past this point
  * (20→40 saves a further ~$0.013) while doubling how much a single failed
- * batch has to re-do. Output binds the ceiling too — 20 verdicts at ~24
- * tokens plus wrapper is ~490 against MAX_TOKENS below, roughly 2x
- * headroom.
+ * batch has to re-do. Output binds the ceiling too: see MAX_TOKENS below.
  */
 const MAX_CLUSTERS_PER_BATCH = 20;
 
 /**
- * Output ceiling, sized per mode because reasons roughly double a verdict.
+ * Output ceiling, sized per mode because reasons roughly double a verdict,
+ * and for the worst batch: every cluster notable, so every verdict carries an
+ * event sentence.
  *
- * Without reasons: 20 verdicts of ~24 tokens plus wrapper is ~490, so 1024
- * is a little over 2x headroom. With reasons, a verdict carries an extra
- * ~12-word field — call it ~40 tokens all-in — so a full batch lands near
- * 900, which against 1024 is ~1.1x. That is not enough: the 12-word cap is
- * a prompt instruction, not a schema constraint (deliberately — see
- * verdictSchema), and models overrun soft caps. Truncation still fails
- * safe through the split-retry ladder, but it would burn paid retries
- * during exactly the calibration run reasons exist for.
+ * Without reasons: a rejected verdict is ~24 tokens; a notable one adds an
+ * event sentence of up to ~25 words, ~40 tokens with its key, so 20 notable
+ * verdicts plus wrapper land near 1,300. 2048 is ~1.6x headroom on that worst
+ * batch and ~3x on a typical one, where a few clusters pass. With reasons,
+ * each verdict carries a further ~12-word field (~16 tokens), so the worst
+ * batch lands near 1,600 and 3072 is ~1.9x. Both caps on extra fields are
+ * prompt instructions, not schema constraints (deliberately — see
+ * verdictSchema), and models overrun soft caps. Truncation still fails safe
+ * through the split-retry ladder, but it would burn paid retries.
  *
  * Raising the ceiling costs nothing when it isn't reached: output tokens
  * are billed as generated, not as budgeted.
  */
-const MAX_TOKENS = 1024;
-const MAX_TOKENS_WITH_REASONS = 2048;
+const MAX_TOKENS = 2048;
+const MAX_TOKENS_WITH_REASONS = 3072;
 
 /**
  * How many times a failing batch may be halved before its residue is
@@ -88,6 +99,13 @@ You are given several numbered clusters at once. Return exactly one verdict per 
 
 Seeing many clusters together makes it tempting to rank them against each other and pass the best of whatever you happen to have been shown. Don't. Most clusters in a batch are routine and should be rejected — a typical batch contains only a few genuinely notable items, and some batches contain none at all, which is a fine and expected answer. How many you pass must not depend on how many you were handed. The same applies to severity: grade each cluster against that topic's typical day, never against the other clusters in front of you — the strongest item in a quiet batch is not thereby a 4, and a genuinely major development is still a 4 in a batch full of them. And the tiebreaker above holds inside a batch exactly as it does for a single cluster: when genuinely torn, reject.`;
 
+// Kept apart from SYSTEM_PROMPT so the notability and severity instructions
+// read exactly as they did without it. The sentence feeds the duplicate check
+// (mergeDuplicates.ts), which compares stories across topics and languages, so
+// it has to be English whatever the articles' language, and must name the
+// event specifically enough to tell two similar events apart.
+const EVENT_INSTRUCTION = `\n\nFor each cluster you judge notable, also give "event": one plain English sentence of at most 25 words saying what happened — who did what, where, and when if the articles say. Write it in English even when the articles are in another language. Name the specific people, places, teams, scores or numbers that set this event apart from similar ones. Leave "event" out for clusters you reject.`;
+
 const REASON_INSTRUCTION = `\n\nFor each verdict also give a reason of at most 12 words.`;
 
 function verdictSchema(withReasons: boolean) {
@@ -101,11 +119,15 @@ function verdictSchema(withReasons: boolean) {
         // paid-for verdicts over a diagnostic field. The cap is instructed
         // in the prompt instead, where overrunning it costs a few tokens.
         reason: z.string(),
+        event: z.string().optional(),
       })
     : z.object({
         index: z.number().int(),
         notable: z.boolean(),
         severity: z.number().int().min(1).max(5),
+        // Optional, so a rejected cluster spends no tokens on it, and
+        // unbounded for the same reason as `reason` above.
+        event: z.string().optional(),
       });
 
   return z.object({ verdicts: z.array(verdict) });
@@ -312,6 +334,17 @@ function loggedHeadline(cluster: Cluster): string {
   }
 }
 
+/**
+ * The event sentence as the duplicate check should see it: trimmed, or absent
+ * when the model gave none. An absent sentence only means the cluster skips
+ * the merge step, so this never decides whether a cluster is kept.
+ */
+function usableEvent(event: string | undefined): string | undefined {
+  if (typeof event !== "string") return undefined;
+  const trimmed = event.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 function clusterContext(cluster: Cluster): string {
   return cluster.articles
     .map((a) => `- ${a.title}\n  ${a.snippet.slice(0, 200)}`)
@@ -336,7 +369,7 @@ async function judgeBatch(
   clusters: Cluster[],
   indices: number[],
   unit: string,
-): Promise<Map<number, TriageOutcome>> {
+): Promise<Map<number, TriageVerdict>> {
   const withReasons = reasonsEnabled();
   const list = indices
     .map(
@@ -348,7 +381,7 @@ async function judgeBatch(
   const params = {
     model: "claude-haiku-4-5",
     max_tokens: withReasons ? MAX_TOKENS_WITH_REASONS : MAX_TOKENS,
-    system: withReasons ? SYSTEM_PROMPT + REASON_INSTRUCTION : SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT + EVENT_INSTRUCTION + (withReasons ? REASON_INSTRUCTION : ""),
     messages: [
       {
         role: "user",
@@ -369,15 +402,17 @@ async function judgeBatch(
   // out-of-range dropped, duplicates first-wins, missing slots simply left
   // absent. A model that returns 19 verdicts for 20 clusters must not
   // silently shift the 20th cluster's verdict onto the 19th.
-  const outcomes = new Map<number, TriageOutcome>();
+  const outcomes = new Map<number, TriageVerdict>();
   const seen = new Set<number>();
   for (const verdict of response.parsed_output.verdicts) {
     if (verdict.index < 0 || verdict.index >= indices.length) continue;
     if (seen.has(verdict.index)) continue;
     seen.add(verdict.index);
+    const event = verdict.notable ? usableEvent(verdict.event) : undefined;
     outcomes.set(indices[verdict.index], {
       notable: verdict.notable,
       severity: verdict.severity,
+      ...(event === undefined ? {} : { event }),
     });
 
     // The verdict is recorded above; everything from here only reports on
@@ -416,8 +451,8 @@ async function judgeWithSplitRetry(
   indices: number[],
   unit: string,
   depth: number,
-): Promise<Map<number, TriageOutcome>> {
-  let outcomes = new Map<number, TriageOutcome>();
+): Promise<Map<number, TriageVerdict>> {
+  let outcomes = new Map<number, TriageVerdict>();
 
   try {
     outcomes = await judgeBatch(clusters, indices, unit);
@@ -467,7 +502,7 @@ async function judgeWithSplitRetry(
  */
 export async function triageClusters(
   clusters: Cluster[],
-): Promise<TriageOutcome[]> {
+): Promise<TriageVerdict[]> {
   if (clusters.length === 0) return [];
 
   const batches = planTriageBatches(clusters);
@@ -477,7 +512,7 @@ export async function triageClusters(
     ),
   );
 
-  const merged = new Map<number, TriageOutcome>();
+  const merged = new Map<number, TriageVerdict>();
   for (const map of results) {
     for (const [index, outcome] of map) merged.set(index, outcome);
   }

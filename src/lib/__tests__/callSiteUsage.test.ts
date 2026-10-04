@@ -261,9 +261,9 @@ describe("Claude call sites still report on their failure paths", () => {
 
     // The initial attempt plus one retry at each of the two split depths.
     expect(collector.calls()).toEqual([
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
+      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
     ]);
   });
 

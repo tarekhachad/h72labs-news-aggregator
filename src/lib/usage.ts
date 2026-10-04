@@ -29,7 +29,7 @@ export const TRACKED_MODELS = ["claude-haiku-4-5", "claude-sonnet-5"] as const;
 export type TrackedModel = (typeof TRACKED_MODELS)[number];
 
 /** The pipeline step a billed call belongs to. */
-export type UsageStage = "triage" | "dedup" | "writeCard" | "rank" | "expand";
+export type UsageStage = "triage" | "dedup" | "merge" | "writeCard" | "rank" | "expand";
 
 /** Per-MTok rates, plus the multipliers cached tokens bill at. */
 export interface Rate {

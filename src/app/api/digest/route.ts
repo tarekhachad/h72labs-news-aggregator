@@ -8,6 +8,7 @@ import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
 import { writeCard } from "@/lib/writeCard";
+import { mergeDuplicateClusters, type MergeCandidate } from "@/lib/mergeDuplicates";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 import { modelForCluster } from "@/lib/cardModel";
 import { classifyCardFailure, type CardFailure } from "@/lib/cardFailure";
@@ -152,6 +153,7 @@ async function* runDigestPipeline(
     rankApplied: boolean | null;
     clustersBoosted: number | null;
     topicsDropped: number | null;
+    clustersMerged: number | null;
   } = {
     runShape: deriveRunShape(sinceIso, null),
     // The profile's size in reading units, the same count its 3-to-10 limit
@@ -171,6 +173,7 @@ async function* runDigestPipeline(
     clustersBoosted: null,
     // Known before anything runs: it depends only on the profile.
     topicsDropped: readingUnits(profile.topics, profile.countries).dropped,
+    clustersMerged: null,
   };
 
   // The whole body is wrapped so the generation claim (see
@@ -298,10 +301,11 @@ async function* runDigestPipeline(
     // can win a place it would otherwise lose. Never applied to a reject or a
     // fail-closed cluster.
     const { items: triaged, boosted } = boostPreferredClusters(
-      survivingClusters.map((cluster, i) => ({
+      survivingClusters.map((cluster, i): MergeCandidate => ({
         cluster,
         notable: outcomes[i].notable,
         severity: outcomes[i].severity,
+        event: outcomes[i].event,
       })),
       profile.preferredSources
     );
@@ -311,17 +315,31 @@ async function* runDigestPipeline(
     // straight off notableCount, and the cost summary compares calls made
     // against that same number — capping after either would make one of
     // them lie.
-    const { kept: notableClusters, cuts } = applyCardCap(triaged.filter((t) => t.notable), {
+    const { kept: capped, cuts } = applyCardCap(triaged.filter((t) => t.notable), {
       runShape: shape.runShape,
       // Null, not an empty array, when the lookup failed: the allowance must
       // not read a broken read as an empty digest.
       existingCards: existingCardsFetchFailed ? null : existingCards,
       preferredSources: profile.preferredSources,
     });
-    // AFTER the cap, matching what writeCard is actually asked to produce —
-    // the same number the client is shown and the same one expectedCalls
-    // compares against. Recording the pre-cap figure here would make the row
-    // disagree with both.
+    // Stories the cap kept that report the same real-world event become one
+    // card citing every outlet, before anything is written. After the cap, not
+    // before it: the cap then decides exactly what it would without the check,
+    // so a merge can never cost a story its place or push another story out; it
+    // only removes a repeat. Across units too: the same strike can surface
+    // under two topics. Never rejects; a failure merges nothing.
+    const merge = await withUsageCollector(usage, () => mergeDuplicateClusters(capped, units.read));
+    // Set from the same plan that decided whether to call, after the fact
+    // because whether any pair is worth asking about is only known once the
+    // sentences are embedded.
+    expectedCalls.merge = merge.haikuCalls;
+    shape.clustersMerged = merge.merged;
+    memoryMark("after merge", { merged: merge.merged });
+    const notableClusters = merge.items;
+    // AFTER the cap and the merge, matching what writeCard is actually asked
+    // to produce — the same number the client is shown and the same one
+    // expectedCalls compares against. Recording the pre-cap figure here would
+    // make the row disagree with both.
     shape.notableCount = notableClusters.length;
     shape.cardsDroppedByCap = cuts.reduce((sum, cut) => sum + cut.dropped, 0);
     for (const cut of cuts) {

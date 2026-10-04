@@ -225,6 +225,13 @@ export interface UsageRunContext {
    */
   topicsDropped?: number | null;
   /**
+   * Judged-notable clusters the duplicate check absorbed into another cluster
+   * reporting the same event (see mergeDuplicateClusters), counted before the
+   * boost and the card cap. Optional and written as null when absent, for the
+   * same reason as `clustersBoosted`.
+   */
+  clustersMerged?: number | null;
+  /**
    * The same map `usage.report()` was given. Not stored on the record — it
    * is an input to `isFloor`, and keeping the derived verdict rather than the
    * raw expectation is what lets a consumer act on one boolean instead of
@@ -364,6 +371,7 @@ export function buildUsageRunRecord(
     ...rest,
     clustersBoosted: rest.clustersBoosted ?? null,
     topicsDropped: rest.topicsDropped ?? null,
+    clustersMerged: rest.clustersMerged ?? null,
     schemaVersion: 1,
     runId,
     // getTime() on an Invalid Date is NaN, and toISOString() would throw a
@@ -440,6 +448,7 @@ export function toJsonlLine(record: UsageRunRecord): string {
     rankApplied: record.rankApplied,
     clustersBoosted: record.clustersBoosted ?? null,
     topicsDropped: record.topicsDropped ?? null,
+    clustersMerged: record.clustersMerged ?? null,
     totalCalls: record.totalCalls,
     totalCallsWithoutUsage: record.totalCallsWithoutUsage,
     totalTokens: record.totalTokens,
@@ -508,6 +517,7 @@ export const COLUMN_OF = {
   rankApplied: "rank_applied",
   clustersBoosted: "clusters_boosted",
   topicsDropped: "topics_dropped",
+  clustersMerged: "clusters_merged",
   totalCalls: "total_calls",
   totalCallsWithoutUsage: "total_calls_without_usage",
   totalTokens: "total_tokens",
@@ -581,6 +591,7 @@ export function toUsageRunRow(record: UsageRunRecord): UsageRunRow {
     [COLUMN_OF.rankApplied]: record.rankApplied,
     [COLUMN_OF.clustersBoosted]: record.clustersBoosted ?? null,
     [COLUMN_OF.topicsDropped]: record.topicsDropped ?? null,
+    [COLUMN_OF.clustersMerged]: record.clustersMerged ?? null,
     [COLUMN_OF.totalCalls]: record.totalCalls,
     [COLUMN_OF.totalCallsWithoutUsage]: record.totalCallsWithoutUsage,
     [COLUMN_OF.totalTokens]: record.totalTokens,
