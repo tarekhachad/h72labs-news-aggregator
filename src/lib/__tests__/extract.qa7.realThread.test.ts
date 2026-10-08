@@ -1,12 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // QA round 7: the REAL parser thread and the heavy-host rule, against rounds
 // 5 and 6's attack shapes served by one outlet, redirects into it, subdomain
-// evasion, and how close a legitimate page comes to the 1.5 s limit on a
-// cold thread. Synthetic HTML, fake fetch, mocked DNS, no network.
+// evasion, and how close a legitimate page comes to the PARSE_TIMEOUT_MS
+// limit on a cold thread. Synthetic HTML, fake fetch, mocked DNS, no network.
+// Minutes of real parsing: runs only with EXTRACT_STRESS=1 (CI sets it).
 const { mockLookup } = vi.hoisted(() => ({ mockLookup: vi.fn() }));
 vi.mock("node:dns/promises", () => ({ lookup: mockLookup, default: { lookup: mockLookup } }));
-import { extractArticles, extractForStory, MAX_HTML_BYTES, resetExtractStateForTests, type ExtractResult } from "@/lib/extract";
+import { extractArticles, extractForStory, MAX_HTML_BYTES, PARSE_TIMEOUT_MS, resetExtractStateForTests, type ExtractResult } from "@/lib/extract";
+import { describeStress as describe, SLOW_CPU_SLACK_MS, SLOW_PAGE } from "./helpers/parseTiming";
 
 const wrap = (b: string) => `<!doctype html><html><head><title>t</title></head><body>${b}</body></html>`;
 const chain = (d: number, inner: string) => "<div>".repeat(d) + inner + "</div>".repeat(d);
@@ -73,7 +75,7 @@ beforeEach(() => {
       pageRequests.push(href);
       const name = u.pathname.slice(1).replace(/-\d+$/, "");
       const body =
-        name === "bigReal" ? BIG_REAL : name === "nearLimit" ? NEAR_LIMIT : name === "atLimit" ? AT_LIMIT : name === "slow" ? SHAPES.chains317x63 : name === "heavy" ? SHAPES.ltltComment : (SHAPES[name] ?? GOOD);
+        name === "bigReal" ? BIG_REAL : name === "nearLimit" ? NEAR_LIMIT : name === "atLimit" ? AT_LIMIT : name === "slow" ? SLOW_PAGE : name === "heavy" ? SHAPES.ltltComment : (SHAPES[name] ?? GOOD);
       return new Response(body, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
     })
   );
@@ -157,17 +159,20 @@ describe("one hostile outlet across ten stories (round 6's finding), variants", 
   }, 30_000);
 
   it("the same through the full report's 8 s budget: one story of five hostile pages from one outlet returns in time", async () => {
-    const urls = ["ltltComment", "chains317x63", "nbsp3mb", "cdata3mb", "good"].map((n) => `https://bad.example/${n}`);
+    // "slow", not chains317x63: on a fast CPU that page can finish just inside
+    // PARSE_TIMEOUT_MS, which marks nothing, and the next page would then
+    // cost a second limit.
+    const urls = ["ltltComment", "slow", "nbsp3mb", "cdata3mb", "good"].map((n) => `https://bad.example/${n}`);
     const { value, ms, gap } = await watchLoop(() => extractForStory(urls, { deadline: Date.now() + 8_000 }));
     process.stdout.write(`[qa7] expand, one outlet: ${value.map(outcome).join(",")} in ${ms} ms, gap ${gap} ms\n`);
     expect(ms).toBeLessThan(8_500);
     expect(gap).toBeLessThan(500);
     // After the first stop, the outlet's other pages cost nothing.
-    expect(ms).toBeLessThan(3_000);
+    expect(ms).toBeLessThan(PARSE_TIMEOUT_MS + SLOW_CPU_SLACK_MS);
   }, 20_000);
 });
 
-describe("how close a legitimate page comes to the 1.5 s limit (a miss marks the outlet heavy for 10 min)", () => {
+describe(`how close a legitimate page comes to the PARSE_TIMEOUT_MS (${PARSE_TIMEOUT_MS} ms) limit (a miss marks the outlet heavy for 10 min)`, () => {
   it.each(["bigReal", "nearLimit", "atLimit"])("%s on a cold thread, then warm", async (name) => {
     const body = name === "bigReal" ? BIG_REAL : name === "nearLimit" ? NEAR_LIMIT : AT_LIMIT;
     const tags = (body.match(/<[a-zA-Z]/g) ?? []).length;

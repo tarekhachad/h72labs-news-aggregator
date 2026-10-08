@@ -49,13 +49,16 @@ const response = (verdicts: V[]) => ({
   usage: { input_tokens: 100, output_tokens: 20 },
 });
 
+// These tests read reject lines, which print one by one only on request.
 beforeEach(() => {
   mockParse.mockReset();
   delete process.env.TRIAGE_REASONS;
+  process.env.TRIAGE_LOG_REJECTS = "1";
 });
 
 afterEach(() => {
   delete process.env.TRIAGE_REASONS;
+  delete process.env.TRIAGE_LOG_REJECTS;
   vi.restoreAllMocks();
 });
 
@@ -102,7 +105,9 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     expect(mockParse).toHaveBeenCalledTimes(1);
     expect(collector.calls().filter((c) => c.stage === "triage")).toHaveLength(1);
     expect(poisoned.reads()).toBe(1);
-    const lines = log.mock.calls.map(([l]) => l as string).filter((l) => l.startsWith("[triage]"));
+    const lines = log.mock.calls
+      .map(([l]) => l as string)
+      .filter((l) => l.startsWith("[triage]") && !l.includes(" — judged "));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("[triage] Morocco — reject");
     expect(lines[0]).toContain("routine local item");

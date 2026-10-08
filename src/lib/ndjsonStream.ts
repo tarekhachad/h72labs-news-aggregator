@@ -7,6 +7,7 @@
  */
 
 import { bestEffortLog } from "@/lib/bestEffortLog";
+import { WholeRunFailure } from "@/lib/runFailure";
 
 export const DIGEST_FAILED_MESSAGE = "Digest failed";
 
@@ -74,12 +75,12 @@ export function toNdjsonStream<E extends { stage: string }>(
           return;
         }
         // The full error stays in the server log. The client gets a fixed
-        // string, so no future throw can carry internal detail to the browser.
+        // string, so no future throw can carry internal detail to the browser:
+        // a WholeRunFailure's reader message is a constant, never its detail.
         bestEffortLog("error", "[digest] pipeline failed:", err);
+        const message = err instanceof WholeRunFailure ? err.readerMessage : DIGEST_FAILED_MESSAGE;
         try {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ stage: "error", message: DIGEST_FAILED_MESSAGE }) + "\n")
-          );
+          controller.enqueue(encoder.encode(JSON.stringify({ stage: "error", message }) + "\n"));
         } catch {
           // Client already disconnected/canceled the stream — nothing left to tell it.
         }

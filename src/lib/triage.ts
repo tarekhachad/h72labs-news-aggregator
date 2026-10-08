@@ -79,6 +79,17 @@ function reasonsEnabled(): boolean {
   return process.env.TRIAGE_REASONS === "1";
 }
 
+/**
+ * A line per rejected cluster is the full calibration table, but a digest
+ * rejects ~200 clusters, and Vercel's log for one request stops after a few
+ * hundred lines, which cut off every later stage's lines. So rejects are
+ * counted in each batch's summary line, and printed one by one only on
+ * request (TRIAGE_LOG_REJECTS=1) or with reasons on, a calibration run.
+ */
+function rejectLinesEnabled(): boolean {
+  return reasonsEnabled() || process.env.TRIAGE_LOG_REJECTS === "1";
+}
+
 const SYSTEM_PROMPT = `You triage news clusters for someone's personalized daily news brief. They've chosen specific topics to follow, and each cluster you review belongs to one of them (given below). The brief is short and curated — a handful of genuinely worthwhile items per topic, not a comprehensive scan of everything published that day.
 
 Judge notability relative to the topic itself, not against world-historical importance: would someone who actively chose to follow this specific topic consider this a real, meaningful development worth knowing about today? Calibrate to that topic's own scale — a major tournament result or a significant transfer is genuinely notable within a sports topic even though it would never belong in a geopolitical briefing; a landmark court ruling or a major diplomatic development is notable within a politics topic. Judge each cluster against its own topic's standard, not one universal bar. Concretely: imagine a typical day's worth of coverage for this exact topic — would this cluster be one of the more significant items in that typical day, or would it blend into the background as routine? Each cluster is judged independently, so anchor against that typical-day baseline rather than against other clusters you happen to see in the same batch.
@@ -295,8 +306,9 @@ function loggedReason(verdict: object): string {
  * Worth its own function because it's what makes a reasons-off capture
  * auditable at all: topic + verdict + severity says a story was judged but
  * never which one, so calibration can't be checked without paying for
- * per-verdict reasons. With this, a run at TRIAGE_REASONS=0 still yields a
- * full topic/title/verdict/severity table for every cluster.
+ * per-verdict reasons. With this, a run at TRIAGE_REASONS=0 and
+ * TRIAGE_LOG_REJECTS=1 still yields a full topic/title/verdict/severity
+ * table for every cluster.
  *
  * Never throws. judgeBatch builds its verdict line inside a guard, so a throw
  * here could no longer re-send a batch of already-billed verdicts, but it
@@ -404,6 +416,7 @@ async function judgeBatch(
   // silently shift the 20th cluster's verdict onto the 19th.
   const outcomes = new Map<number, TriageVerdict>();
   const seen = new Set<number>();
+  const printRejects = rejectLinesEnabled();
   for (const verdict of response.parsed_output.verdicts) {
     if (verdict.index < 0 || verdict.index >= indices.length) continue;
     if (seen.has(verdict.index)) continue;
@@ -427,14 +440,27 @@ async function judgeBatch(
     // then can throw now. loggedHeadline and loggedReason are total on their
     // own as well (see their docstrings).
     try {
-      const cluster = clusters[indices[verdict.index]];
-      bestEffortLog(
-        "log",
-        `[triage] ${unit} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`,
-      );
+      if (verdict.notable || printRejects) {
+        const cluster = clusters[indices[verdict.index]];
+        bestEffortLog(
+          "log",
+          `[triage] ${unit} — ${verdict.notable ? `PASS (severity ${verdict.severity})` : "reject"}${loggedHeadline(cluster)}${loggedReason(verdict)}`,
+        );
+      }
     } catch {
       // A lost log line must not cost a paid verdict.
     }
+  }
+
+  try {
+    let passed = 0;
+    for (const v of outcomes.values()) if (v.notable) passed++;
+    bestEffortLog(
+      "log",
+      `[triage] ${unit} — judged ${outcomes.size} of ${indices.length}: ${passed} pass, ${outcomes.size - passed} reject`,
+    );
+  } catch {
+    // Same as above: reporting only.
   }
 
   return outcomes;

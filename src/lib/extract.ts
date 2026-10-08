@@ -620,8 +620,14 @@ function openTagCount(html: string, stopAt: number): number {
  */
 let parser: ParserThread | null = null;
 
-/** The longest one page may hold the parser thread. Never past the caller's deadline either. */
-const PARSE_TIMEOUT_MS = 1_500;
+/**
+ * The longest one page may hold the parser thread. Never past the caller's
+ * deadline either. Real news pages parse in about 20 ms; the heaviest real
+ * shape (~16,000 tags) took up to 0.9 s on a laptop and past 1.5 s on CI's
+ * slower CPU, which Vercel's single vCPU is assumed to match. Hitting this
+ * marks the page's host heavy, so the margin protects real outlets.
+ */
+export const PARSE_TIMEOUT_MS = 3_000;
 
 /**
  * The parser thread's heap. Both generations are set on purpose: with only

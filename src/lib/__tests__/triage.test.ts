@@ -882,6 +882,15 @@ describe("F.4.5 round 2: split-retry ladder edge cases", () => {
 // per-verdict reasons. These pin the title's presence, its shape, and (most
 // importantly) that it can never throw on the un-guarded path where it runs.
 describe("triage log line", () => {
+  // The per-verdict format, rejects included; the batch summary line is
+  // tested on its own in triage.logVolume.test.ts.
+  beforeEach(() => {
+    process.env.TRIAGE_LOG_REJECTS = "1";
+  });
+  afterEach(() => {
+    delete process.env.TRIAGE_LOG_REJECTS;
+  });
+
   function captureLines(fn: () => Promise<unknown>) {
     const lines: string[] = [];
     const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
@@ -889,7 +898,7 @@ describe("triage log line", () => {
     });
     return fn().then((result) => {
       spy.mockRestore();
-      return { lines: lines.filter((l) => l.startsWith("[triage]")), result };
+      return { lines: lines.filter((l) => l.startsWith("[triage]") && !l.includes(" — judged ")), result };
     });
   }
 

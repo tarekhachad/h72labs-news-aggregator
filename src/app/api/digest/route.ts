@@ -13,6 +13,7 @@ import { bestEffortLog } from "@/lib/bestEffortLog";
 import { modelForCluster } from "@/lib/cardModel";
 import { classifyCardFailure, type CardFailure } from "@/lib/cardFailure";
 import { isFailClosed } from "@/lib/triageOutcome";
+import { WholeRunFailure, everyCardFailed, everyTriageFailed } from "@/lib/runFailure";
 import { rankFrontPage } from "@/lib/rank";
 import type { RankUpdate } from "@/lib/rankUpdates";
 import {
@@ -295,6 +296,13 @@ async function* runDigestPipeline(
     );
     memoryMark("after triage", { clusters: survivingClusters.length });
     shape.triageFailedClosed = outcomes.filter(isFailClosed).length;
+    // Thrown before anything is saved, so the since-cursor stays where it was
+    // and the next run reads these articles again.
+    if (everyTriageFailed(survivingClusters.length, shape.triageFailedClosed)) {
+      throw new WholeRunFailure(
+        `every triage call failed (${shape.triageFailedClosed}/${survivingClusters.length} clusters unjudged)`
+      );
+    }
     // The reader's picked outlets lift a judged-notable story one severity
     // step, here in code rather than in triage's prompt, so triage's verdicts
     // stay a judgement of the story alone. Before the cap, so a boosted story
@@ -389,6 +397,9 @@ async function* runDigestPipeline(
     shape.cardsWritten = cards.length;
     shape.cardsFailed = cardFailures.length;
     shape.cardFailures = cardFailures;
+    if (everyCardFailed(notableClusters.length, cardFailures)) {
+      throw new WholeRunFailure(`every card failed to write (0/${notableClusters.length})`);
+    }
 
     // Secondary key on id: matches getDigestForDate's tiebreaker (see
     // digests.ts) so ties between cards sharing a publishedAt resolve the

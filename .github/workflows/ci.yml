@@ -35,4 +35,9 @@ jobs:
 
       # The suite mocks Supabase, Anthropic and the embedder, so this job holds
       # no secrets. A test that needs a real key belongs outside this suite.
+      # EXTRACT_STRESS adds the real parser-thread stress tests, which take
+      # minutes and are skipped in a local `npm test`; here they run on Linux,
+      # the slower CPU the extraction time limits have to hold on.
       - run: npm test
+        env:
+          EXTRACT_STRESS: "1"

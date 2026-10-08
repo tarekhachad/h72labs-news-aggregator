@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // QA round 6: the REAL parser thread against round 5's attack shapes and new
 // ones, through extractArticles and extractForStory, with a main-thread
@@ -11,9 +11,13 @@ import {
   extractForStory,
   MAX_CONCURRENT_PAGES,
   MAX_HTML_BYTES,
+  PARSE_TIMEOUT_MS,
   resetExtractStateForTests,
   type ExtractResult,
 } from "@/lib/extract";
+import { describeStress as describe, SLOW_CPU_SLACK_MS, SLOW_PAGE } from "./helpers/parseTiming";
+
+// Minutes of real parsing: runs only with EXTRACT_STRESS=1 (CI sets it).
 
 const wrap = (b: string) => `<!doctype html><html><head><title>t</title></head><body>${b}</body></html>`;
 const chain = (d: number, inner: string) => "<div>".repeat(d) + inner + "</div>".repeat(d);
@@ -44,6 +48,8 @@ const SHAPES: Record<string, string> = {
   hugeAttrValue: wrap(`<div data-x="${"a".repeat(MAX_HTML_BYTES - 400)}">hi</div>`),
   textareaTagText: wrap("<textarea>" + fill("<a>") + "</textarea>"),
   ltSpaceA: wrap("<p>" + fill("< a") + "</p>"),
+  // Only the thread's time limit stops it, on any CPU.
+  slow: SLOW_PAGE,
 };
 
 function stubFetch() {
@@ -103,8 +109,11 @@ afterEach(() => {
 });
 
 // Shapes that a real page could also look like are allowed to extract; the
-// rest must be refused. Either way: back inside 2.5 s, loop never held.
-const MAY_EXTRACT = new Set(["amp199kFlat", "hugeAttrValue", "textareaTagText"]);
+// rest must be refused. Either way: back inside the time limit plus slack,
+// loop never held. entities3mb is one <p> of ampersands: on a fast CPU
+// Readability finishes it inside PARSE_TIMEOUT_MS and returns that text, cut
+// to the cap like any page's, so it may extract the way amp199kFlat does.
+const MAY_EXTRACT = new Set(["amp199kFlat", "hugeAttrValue", "textareaTagText", "entities3mb"]);
 
 describe("attack shapes through extractArticles (8 s budget, as the full report)", () => {
   it.each(Object.keys(SHAPES))("%s", async (name) => {
@@ -114,17 +123,19 @@ describe("attack shapes through extractArticles (8 s budget, as the full report)
     const got = outcome(value[0]);
     process.stdout.write(`[qa6] extractArticles ${name}: ${got} in ${ms} ms, longest loop gap ${gap} ms\n`);
     if (!MAY_EXTRACT.has(name)) expect(got).not.toBe("ok");
-    expect(ms).toBeLessThan(2_500);
+    expect(ms).toBeLessThan(PARSE_TIMEOUT_MS + SLOW_CPU_SLACK_MS);
     expect(gap).toBeLessThan(500);
   }, 20_000);
 });
 
 describe("attack shapes through extractForStory (15 s budget, as a digest card)", () => {
   it("a story of five hostile pages: the good fallbacks are never reached, but it returns in time and the loop stays free", async () => {
-    const urls = ["ltltComment", "entities3mb", "cdata3mb", "chains317x63", "nbsp3mb"].map((n, i) => `https://h${i}.example/${n}`);
+    const urls = ["ltltComment", "slow", "cdata3mb", "chains317x63", "nbsp3mb"].map((n, i) => `https://h${i}.example/${n}`);
     const { value, ms, gap } = await watchLoop(() => extractForStory(urls, { deadline: Date.now() + 15_000 }));
     process.stdout.write(`[qa6] story of 5 hostile: ${value.map(outcome).join(",")} in ${ms} ms, gap ${gap} ms\n`);
     expect(value.every((r) => r && !r.ok)).toBe(true);
+    // The caller's deadline holds even though five pages could hold the
+    // thread 5 x PARSE_TIMEOUT_MS.
     expect(ms).toBeLessThan(15_500);
     expect(gap).toBeLessThan(500);
   }, 30_000);
@@ -174,13 +185,34 @@ describe("process safety at the heap cap", () => {
     for (let round = 0; round < 2; round++) {
       const r = await extractArticles(heavy.map((h, i) => `https://m${round}-${i}.example/${h}`), { deadline: Date.now() + 15_000 });
       process.stdout.write(`[qa6] heavy round ${round}: ${r.map(outcome).join(",")}\n`);
+      // Ended by the heap cap or, on a slower CPU, by the time limit first:
+      // either way a refusal.
       for (const o of r.map(outcome)) expect(["too_large", "timeout"]).toContain(o);
     }
     const oom = logs.filter((l) => l.includes("reached its memory cap")).length;
     process.stdout.write(`[qa6] memory-cap endings logged: ${oom}\n`);
-    // The real cap was reached at least once (not every page timed out first).
-    expect(oom).toBeGreaterThan(0);
     expect(process.pid).toBeGreaterThan(0);
+    const [good] = await extractArticles(["https://after.example/good"], { deadline: Date.now() + 8_000 });
+    expect(outcome(good)).toBe("ok");
+  }, 60_000);
+
+  // The test above can't require a heap-cap ending: which limit a heavy page
+  // reaches first depends on the CPU. Here the thread's time limit is held
+  // off by faking setTimeout (the thread itself runs on the real clock), so
+  // the page always runs to the real cap, however slow the machine.
+  it("a heap flood with the time limit held off always reaches the real cap: too_large, logged, and only the thread ends", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let r: ExtractResult[];
+    try {
+      r = await extractArticles(["https://oom.example/ltltComment"], { deadline: Date.now() + 8_000 });
+    } finally {
+      vi.useRealTimers();
+    }
+    process.stdout.write(`[qa6] heap flood, no time limit: ${outcome(r[0])}\n`);
+    expect(outcome(r[0])).toBe("too_large");
+    expect(logs.filter((l) => l.includes("reached its memory cap"))).toHaveLength(1);
+    expect(process.pid).toBeGreaterThan(0);
+    resetExtractStateForTests();
     const [good] = await extractArticles(["https://after.example/good"], { deadline: Date.now() + 8_000 });
     expect(outcome(good)).toBe("ok");
   }, 60_000);
@@ -204,11 +236,11 @@ describe("nothing outlives a run", () => {
     // Let any timer from an earlier test (a queued page's deadline) run out first.
     await new Promise((r) => setTimeout(r, 1_000));
     const before = refTimers();
-    await extractArticles(["https://a.example/chains317x63", "https://b.example/ltltComment", "https://c.example/good"], {
+    await extractArticles(["https://a.example/slow", "https://b.example/ltltComment", "https://c.example/good"], {
       deadline: Date.now() + 8_000,
     });
     // A page stuck in the queue at its deadline.
-    await extractArticles(["https://d.example/chains317x63", "https://e.example/good"], { deadline: Date.now() + 700 });
+    await extractArticles(["https://d.example/slow", "https://e.example/good"], { deadline: Date.now() + 700 });
     // Give terminate() and late events a moment.
     await new Promise((r) => setTimeout(r, 600));
     expect(refTimers()).toBe(before);
@@ -225,11 +257,11 @@ describe("nothing outlives a run", () => {
   }, 30_000);
 
   it("pages queued behind a stuck one keep their order and their own deadlines", async () => {
-    // Page 1 holds the thread 1.5 s. Pages 2-4 wait; with a 1.2 s deadline
-    // they must be timeout at 1.2 s, not at 1.5 s.
+    // Page 1 holds the thread for PARSE_TIMEOUT_MS. Pages 2-4 wait; with a
+    // 1.2 s deadline they must be timeout at 1.2 s, not at the time limit.
     const started = performance.now();
     const r = await extractArticles(
-      ["https://a.example/chains317x63", "https://b.example/good", "https://c.example/good", "https://d.example/good"],
+      ["https://a.example/slow", "https://b.example/good", "https://c.example/good", "https://d.example/good"],
       { deadline: Date.now() + 1_200 }
     );
     const ms = performance.now() - started;
@@ -237,7 +269,7 @@ describe("nothing outlives a run", () => {
     expect(ms).toBeLessThan(1_450);
     // And with room, they extract in order on a fresh thread.
     const r2 = await extractArticles(
-      ["https://a.example/chains317x63", "https://b.example/good", "https://c.example/good", "https://d.example/good"],
+      ["https://a.example/slow", "https://b.example/good", "https://c.example/good", "https://d.example/good"],
       { deadline: Date.now() + 8_000 }
     );
     expect(r2.map(outcome)).toEqual(["timeout", "ok", "ok", "ok"]);
@@ -253,7 +285,7 @@ describe("headroom for real pages", () => {
       `<script>${"var a='<div>';".repeat(5_000)}</script>`
   );
 
-  it("a 13,600-tag page parses well inside the 1.5 s limit", async () => {
+  it("a 13,600-tag page parses well inside the PARSE_TIMEOUT_MS limit", async () => {
     SHAPES.bigReal = big;
     try {
       await extractArticles(["https://warm.example/good"], { deadline: Date.now() + 8_000 });
@@ -274,10 +306,10 @@ describe("headroom for real pages", () => {
 describe("page slots after the thread is stopped", () => {
   it("after pages stopped at the time limit, the heap cap and the deadline, all 8 slots are free again (exactly 8 page fetches run at once)", async () => {
     await extractArticles(
-      ["https://a.example/chains317x63", "https://b.example/ltltComment", "https://c.example/entities3mb", "https://d.example/good"],
+      ["https://a.example/slow", "https://b.example/ltltComment", "https://c.example/entities3mb", "https://d.example/good"],
       { deadline: Date.now() + 8_000 }
     );
-    await extractArticles(["https://e.example/chains317x63", "https://f.example/good", "https://g.example/good"], { deadline: Date.now() + 800 });
+    await extractArticles(["https://e.example/slow", "https://f.example/good", "https://g.example/good"], { deadline: Date.now() + 800 });
     await new Promise((r) => setTimeout(r, 300));
 
     // Now hold every page fetch open and count how many start together.

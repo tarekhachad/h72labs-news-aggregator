@@ -67,7 +67,7 @@ vi.mock("node:worker_threads", () => ({ Worker: FakeWorker, default: { Worker: F
 const { mockLookup } = vi.hoisted(() => ({ mockLookup: vi.fn() }));
 vi.mock("node:dns/promises", () => ({ lookup: mockLookup, default: { lookup: mockLookup } }));
 
-import { extractArticles, MAX_TEXT_CHARS, resetExtractStateForTests } from "@/lib/extract";
+import { extractArticles, MAX_TEXT_CHARS, PARSE_TIMEOUT_MS, resetExtractStateForTests } from "@/lib/extract";
 
 const PAGE = `<!doctype html><html><head><title>t</title></head><body><p>${"Words about the vote. ".repeat(30)}</p></body></html>`;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -193,11 +193,11 @@ describe("a thread that ends mid-page costs only that page", () => {
 });
 
 describe("the time limit", () => {
-  it("a page that doesn't answer in 1.5 s is timeout, the thread is ended, and nothing is left running", async () => {
+  it(`a page that doesn't answer in PARSE_TIMEOUT_MS (${PARSE_TIMEOUT_MS} ms) is timeout, the thread is ended, and nothing is left running`, async () => {
     vi.useFakeTimers();
     scripts.push({ onPage: () => "silent" });
     const pending = extractArticles([page(1)], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_499);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS - 1);
     expect(workers[0].terminated).toBe(0);
     await vi.advanceTimersByTimeAsync(2);
     expect(reasons(await pending)).toEqual(["timeout"]);
@@ -225,7 +225,7 @@ describe("the time limit", () => {
     vi.useFakeTimers();
     scripts.push({ onPage: () => "silent" });
     const pending = extractArticles([page(1), page(2), page(3)], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     const r = await pending;
     expect(reasons(r)).toEqual(["timeout", "ok", "ok"]);
     expect(workers).toHaveLength(2);
@@ -306,7 +306,7 @@ describe("a host whose page stops the thread has its other pages skipped", () =>
     vi.useFakeTimers();
     scripts.push({ onPage: () => "silent" });
     const first = extractArticles(["https://slow.example/1"], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     expect(reasons(await first)).toEqual(["timeout"]);
     const next = extractArticles(["https://slow.example/2", "https://fine.example/1"], { deadline: Date.now() + 8_000 });
     await vi.advanceTimersByTimeAsync(0);
@@ -342,7 +342,7 @@ describe("a host whose page stops the thread has its other pages skipped", () =>
     vi.useFakeTimers();
     scripts.push({ onPage: () => "silent" });
     const first = extractArticles(["https://slow.example/1"], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     await first;
     vi.setSystemTime(Date.now() + 10 * 60 * 1000 + 1);
     const later = extractArticles(["https://slow.example/2"], { deadline: Date.now() + 8_000 });

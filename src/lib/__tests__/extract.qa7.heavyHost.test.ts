@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // HTML as a marker). Fake fetch, mocked DNS, no network.
 //
 // Page path conventions (on any host):
-//   /slow*    the thread never answers (the 1.5 s limit stops it)
+//   /slow*    the thread never answers (its own limit, PARSE_TIMEOUT_MS, stops it)
 //   /oom*     the thread ends with ERR_WORKER_OUT_OF_MEMORY
 //   /crash*   the thread ends with an ordinary error
 //   /exit*    the thread exits
@@ -64,7 +64,7 @@ vi.mock("node:worker_threads", () => ({ Worker: FakeWorker, default: { Worker: F
 const { mockLookup } = vi.hoisted(() => ({ mockLookup: vi.fn() }));
 vi.mock("node:dns/promises", () => ({ lookup: mockLookup, default: { lookup: mockLookup } }));
 
-import { extractArticles, extractForStory, MAX_CONCURRENT_PAGES, resetExtractStateForTests, type ExtractResult } from "@/lib/extract";
+import { extractArticles, extractForStory, MAX_CONCURRENT_PAGES, PARSE_TIMEOUT_MS, resetExtractStateForTests, type ExtractResult } from "@/lib/extract";
 
 const pageFor = (u: string) =>
   `<!doctype html><html><head><title>t</title></head><body><!--U:${u}--><p>${"Words about the vote. ".repeat(30)}</p></body></html>`;
@@ -118,7 +118,7 @@ const requestsTo = (host: string) =>
 /** Runs a page that the thread's own limit stops, so its host(s) become heavy. */
 async function makeHeavy(url: string) {
   const p = extractArticles([url], { deadline: Date.now() + 8_000 });
-  await vi.advanceTimersByTimeAsync(1_501);
+  await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
   expect(outcomes(await p)).toEqual(["timeout"]);
 }
 
@@ -205,15 +205,15 @@ describe("triggers", () => {
 });
 
 describe("non-triggers: the host's next page is still fetched and extracted", () => {
-  it("the caller's deadline (1,499 ms left at hand-over) is not heavy; exactly 1,500 ms left is", async () => {
+  it(`the caller's deadline (PARSE_TIMEOUT_MS - 1 = ${PARSE_TIMEOUT_MS - 1} ms left at hand-over) is not heavy; exactly PARSE_TIMEOUT_MS left is`, async () => {
     vi.useFakeTimers();
-    const a = extractArticles(["https://a.example/slow"], { deadline: Date.now() + 1_499 });
-    await vi.advanceTimersByTimeAsync(1_500);
+    const a = extractArticles(["https://a.example/slow"], { deadline: Date.now() + PARSE_TIMEOUT_MS - 1 });
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS);
     expect(outcomes(await a)).toEqual(["timeout"]);
     expect(await one("https://a.example/next")).toBe("ok");
 
-    const b = extractArticles(["https://b.example/slow"], { deadline: Date.now() + 1_500 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    const b = extractArticles(["https://b.example/slow"], { deadline: Date.now() + PARSE_TIMEOUT_MS });
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     expect(outcomes(await b)).toEqual(["timeout"]);
     expect(await one("https://b.example/next")).toBe("too_large");
   });
@@ -241,16 +241,16 @@ describe("expiry and the 500-host cap", () => {
     vi.useFakeTimers();
     const t0 = Date.now();
     await makeHeavy("https://bad.example/slow1");
-    // Marked at t0 + 1,500 (when the time limit fired).
-    vi.setSystemTime(t0 + 1_500 + 10 * 60 * 1000 - 5);
+    // Marked at t0 + PARSE_TIMEOUT_MS (when the time limit fired).
+    vi.setSystemTime(t0 + PARSE_TIMEOUT_MS + 10 * 60 * 1000 - 5);
     expect(await one("https://bad.example/2")).toBe("too_large");
-    vi.setSystemTime(t0 + 1_500 + 10 * 60 * 1000 + 5);
+    vi.setSystemTime(t0 + PARSE_TIMEOUT_MS + 10 * 60 * 1000 + 5);
     expect(await one("https://bad.example/3")).toBe("ok");
   });
 
   it("the 501st heavy host evicts the oldest, and only the oldest", async () => {
     vi.useFakeTimers();
-    // The memory cap marks without fake time passing (501 time limits would be 12.5 min, past expiry).
+    // The memory cap marks without fake time passing (501 time limits of PARSE_TIMEOUT_MS would be 25 min, past expiry).
     const t0 = Date.now();
     for (let i = 0; i <= 500; i++) expect(await one(`https://h${i}.example/oom`)).toBe("too_large");
     expect(Date.now()).toBe(t0);
@@ -272,7 +272,7 @@ describe("pages already queued when their host turns heavy", () => {
       "https://g3.example/a",
     ];
     const p = extractArticles(urls, { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     expect(outcomes(await p)).toEqual(["timeout", "ok", "too_large", "ok", "too_large", "ok"]);
     expect(workers).toHaveLength(2);
     expect(workers[0].posted).toEqual(["https://bad.example/slow1"]);
@@ -297,7 +297,8 @@ describe("pages already queued when their host turns heavy", () => {
     const short = extractArticles(["https://s.example/a"], { deadline: Date.now() + 1_200 });
     await vi.advanceTimersByTimeAsync(1_201);
     expect(outcomes(await short)).toEqual(["timeout"]);
-    await vi.advanceTimersByTimeAsync(300);
+    // To just past the slow page's own limit, counted from the start.
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1 - 1_201);
     expect(outcomes(await long)).toEqual(["timeout", "too_large"]);
   });
 });
@@ -309,7 +310,7 @@ describe("requests to a heavy host during its ten minutes (what the rule does NO
     holders.forEach((h) => held.add(h));
     // slow1 + 7 held = 8 slots; bad.example/2 waits for a slot.
     const p = extractArticles(["https://bad.example/slow1", ...holders, "https://bad.example/2"], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     release();
     await vi.advanceTimersByTimeAsync(0);
     const r = await p;
@@ -335,7 +336,7 @@ describe("requests to a heavy host during its ten minutes (what the rule does NO
     vi.useFakeTimers();
     const stories = Array.from({ length: 10 }, (_, i) => [`https://bad.example/${i === 0 ? "slow" : "p"}-${i}`, `https://g${i}.example/a`, `https://k${i}.example/a`, `https://m${i}.example/a`, `https://n${i}.example/a`]);
     const all = Promise.all(stories.map((u) => extractForStory(u, { deadline: Date.now() + 15_000 })));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 500);
     const r = await all;
     const badPages = requestsTo("bad.example").filter((h) => !h.endsWith("/robots.txt")).length;
     const badOutcomes = r.map((s) => outcome(s[0]));
@@ -355,7 +356,7 @@ describe("cost of one legitimately slow page", () => {
       `https://m${i}.example/a`,
     ]);
     const all = Promise.all(stories.map((u) => extractForStory(u, { deadline: Date.now() + 15_000 })));
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 500);
     const r = await all;
     const big = r.map((s) => outcome(s[0]));
     process.stdout.write(`[qa7] big.example pages: ${big.join(",")}\n`);

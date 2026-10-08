@@ -54,7 +54,7 @@ vi.mock("node:worker_threads", () => ({ Worker: FakeWorker, default: { Worker: F
 const { mockLookup } = vi.hoisted(() => ({ mockLookup: vi.fn() }));
 vi.mock("node:dns/promises", () => ({ lookup: mockLookup, default: { lookup: mockLookup } }));
 
-import { extractArticles, extractForStory, resetExtractStateForTests } from "@/lib/extract";
+import { extractArticles, extractForStory, PARSE_TIMEOUT_MS, resetExtractStateForTests } from "@/lib/extract";
 
 const body = (n: number) => `<!doctype html><html><body><p>page-${n} ${"words ".repeat(80)}</p></body></html>`;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -99,7 +99,7 @@ describe("a stopped thread can never answer for a later page", () => {
     vi.useFakeTimers();
     scripts.push({ onPage: () => "silent" }, { onPage: () => "silent" });
     const first = extractArticles([page(1)], { deadline: Date.now() + 8_000 });
-    await vi.advanceTimersByTimeAsync(1_501);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 1);
     expect(reasons(await first)).toEqual(["timeout"]);
 
     const second = extractArticles([page(2)], { deadline: Date.now() + 8_000 });
@@ -230,7 +230,7 @@ describe("resetExtractStateForTests", () => {
     expect(workers[0].terminated).toBe(1);
     await vi.advanceTimersByTimeAsync(0);
     const settledImmediately = settledAt !== null;
-    await vi.advanceTimersByTimeAsync(1_600);
+    await vi.advanceTimersByTimeAsync(PARSE_TIMEOUT_MS + 100);
     process.stdout.write(`[qa6] reset with a page mid-parse: page settled ${settledImmediately ? "at once" : `after ${settledAt} ms (its own time limit)`}; timers left ${vi.getTimerCount()}; workers ${workers.length}\n`);
     expect(settledAt).not.toBeNull();
     expect(workers).toHaveLength(1);
