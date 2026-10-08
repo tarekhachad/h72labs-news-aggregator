@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { TOPICS, type Topic } from "@/types";
+import type { Topic } from "@/types";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { TopicGrid } from "@/components/onboarding/TopicGrid";
+import { unitsOf } from "@/components/onboarding/picks";
+import { COUNTRIES } from "@/config/countries";
 import { countryCode, type CountryCode } from "@/config/countryCodes";
-import { MAX_READING_UNITS, MIN_READING_UNITS, countReadingUnits } from "@/lib/readingUnits";
+import { MAX_READING_UNITS, MIN_READING_UNITS } from "@/lib/readingUnits";
 // One named import per flag, so the bundle carries these 99 and not the
 // package's other ~160.
 import {
@@ -17,12 +18,9 @@ import {
   type FlagComponent,
 } from "country-flag-icons/react/3x2";
 
-const TOPICS_ID = "preferences-topics";
-const COUNTER_ID = `${TOPICS_ID}-count`;
-
-// Countries isn't offered as a topic: the server saves it exactly when a
-// country is picked (ProfileInput in src/lib/profile.ts).
-const PICKABLE_TOPICS = TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC);
+export const TOPICS_ID = "preferences-topics";
+/** The shared counter's id: the topic grid shows it, and the countries picker is described by it. */
+export const COUNTER_ID = `${TOPICS_ID}-count`;
 
 // Typed over every code, so a country added to COUNTRY_CODES without its
 // flag here fails the typecheck.
@@ -52,62 +50,106 @@ function countryFlag(country: string) {
   );
 }
 
-// Counts as the server will save it, with the Countries topic added when
-// there are countries, so countReadingUnits stays the one counting rule.
-function unitsOf(topics: readonly Topic[], countries: readonly string[]): number {
-  return countReadingUnits(countries.length > 0 ? [...topics, COUNTRIES_TOPIC] : topics, countries);
+/** The noun the counters and notices use: countries count once any is picked. */
+function unitNoun(countries: readonly string[]): string {
+  return countries.length > 0 ? "topics and countries" : "topics";
 }
 
 /**
- * The topics picker and, always below it, the optional countries picker.
- * Both share one counter and one limit, in reading units: each topic and each
- * country counts as one. They submit as repeated `topics` / `countries` form
- * fields; picking a country is what turns the Countries page on.
+ * The topic grid, counting the picked countries against the shared limit.
+ * `onboarding` adds the starter sets and pins the counter while the grid
+ * scrolls; /profile has neither (its masthead holds the top of the screen).
+ */
+export function TopicsPicker({
+  topics,
+  countries,
+  onTopicsChange,
+  onboarding = false,
+}: {
+  topics: readonly Topic[];
+  countries: readonly string[];
+  onTopicsChange: (next: Topic[]) => void;
+  onboarding?: boolean;
+}) {
+  return (
+    <TopicGrid
+      id={TOPICS_ID}
+      name="topics"
+      value={topics}
+      onChange={onTopicsChange}
+      countOf={(picked) => unitsOf(picked, countries)}
+      min={MIN_READING_UNITS}
+      max={MAX_READING_UNITS}
+      noun={unitNoun(countries)}
+      countryCount={countries.length}
+      starterSets={onboarding}
+      stickyCounter={onboarding}
+    />
+  );
+}
+
+/**
+ * The optional countries picker. Its picks count against the topics' limit.
+ * With `sharedCounter` it is described by the topic grid's counter instead of
+ * showing its own; without it (a step of its own, the grid out of view), it
+ * shows the same shared count itself.
+ */
+export function CountriesPicker({
+  topics,
+  countries,
+  onCountriesChange,
+  sharedCounter,
+}: {
+  topics: readonly Topic[];
+  countries: readonly string[];
+  onCountriesChange: (next: string[]) => void;
+  sharedCounter: boolean;
+}) {
+  return (
+    <MultiSelect
+      id="preferences-countries"
+      name="countries"
+      label="Countries (optional)"
+      hint={`Each country counts as one of your ${MAX_READING_UNITS}.`}
+      items={COUNTRIES}
+      defaultValue={countries}
+      max={MAX_READING_UNITS}
+      noun={unitNoun(countries)}
+      placeholder="Search countries"
+      countOf={(picked) => unitsOf(topics, picked)}
+      onValueChange={onCountriesChange}
+      counterId={sharedCounter ? COUNTER_ID : undefined}
+      itemIcon={countryFlag}
+    />
+  );
+}
+
+/**
+ * The topic grid and, always below it, the optional countries picker, as the
+ * single-page preferences form shows them. Both share one counter and one
+ * limit, in reading units: each topic and each country counts as one. They
+ * submit as repeated `topics` / `countries` form fields; picking a country is
+ * what turns the Countries page on. The picks are the parent's state.
  */
 export function TopicPickers({
-  defaultTopics = [],
-  defaultCountries = [],
+  topics,
+  countries,
+  onTopicsChange,
+  onCountriesChange,
 }: {
-  defaultTopics?: Topic[];
-  defaultCountries?: string[];
+  topics: readonly Topic[];
+  countries: readonly string[];
+  onTopicsChange: (next: Topic[]) => void;
+  onCountriesChange: (next: string[]) => void;
 }) {
-  // A saved profile with countries also has the Countries topic, which has no
-  // chip to show in: its countries stand for it.
-  const savedTopics = defaultTopics.filter((topic) => topic !== COUNTRIES_TOPIC);
-  const [topics, setTopics] = useState<Topic[]>(savedTopics);
-  const [countries, setCountries] = useState<string[]>(() => [...new Set(defaultCountries)]);
-
   return (
     <div className="flex flex-col gap-6">
-      <MultiSelect
-        id={TOPICS_ID}
-        name="topics"
-        label="Topics"
-        hint={`Pick ${MIN_READING_UNITS} to ${MAX_READING_UNITS}. Type to search, or scroll the list.`}
-        items={PICKABLE_TOPICS}
-        defaultValue={savedTopics}
-        min={MIN_READING_UNITS}
-        max={MAX_READING_UNITS}
-        noun={countries.length > 0 ? "topics and countries" : "topics"}
-        placeholder="Search topics"
-        countOf={(picked) => unitsOf(picked, countries)}
-        onValueChange={setTopics}
-      />
-
-      <MultiSelect
-        id="preferences-countries"
-        name="countries"
-        label="Countries (optional)"
-        hint={`Each country counts as one of your ${MAX_READING_UNITS}.`}
-        items={COUNTRIES}
-        defaultValue={countries}
-        max={MAX_READING_UNITS}
-        noun="countries"
-        placeholder="Search countries"
-        countOf={(picked) => unitsOf(topics, picked)}
-        onValueChange={setCountries}
-        counterId={COUNTER_ID}
-        itemIcon={countryFlag}
+      <TopicsPicker topics={topics} countries={countries} onTopicsChange={onTopicsChange} />
+      <CountriesPicker
+        topics={topics}
+        countries={countries}
+        onCountriesChange={onCountriesChange}
+        sharedCounter
       />
     </div>
   );

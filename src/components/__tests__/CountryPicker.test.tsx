@@ -16,6 +16,7 @@ vi.mock("@/config/countries", async (importActual) => ({
 const { COUNTRIES, COUNTRIES_TOPIC } = await import("@/config/countries");
 const { MAX_READING_UNITS } = await import("@/lib/readingUnits");
 const { PreferencesForm } = await import("@/components/PreferencesForm");
+const { AT_LIMIT, chip, chipNames, clickChip } = await import("./topicGridKit");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -50,7 +51,6 @@ async function renderForm(defaults: { topics?: Topic[]; countries?: string[] } =
   });
 }
 
-const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
 const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement | null;
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
@@ -120,9 +120,8 @@ const plainTopics = TOPICS.filter((t) => t !== COUNTRIES_TOPIC);
 describe("the countries picker", () => {
   it("offers no Countries topic, and shows the countries picker from the start, empty", async () => {
     await renderForm({ topics: plainTopics.slice(0, 3) });
-    await open(topicsInput());
-    expect(optionLabels()).not.toContain(COUNTRIES_TOPIC);
-    expect(optionLabels()).toEqual(plainTopics);
+    expect(chipNames()).not.toContain(COUNTRIES_TOPIC);
+    expect([...chipNames()].sort()).toEqual([...plainTopics].sort());
     expect(countriesInput()).not.toBeNull();
     expect(fieldValues("countries")).toEqual([]);
   });
@@ -133,9 +132,10 @@ describe("the countries picker", () => {
 
     const input = countriesInput()!;
     expect(document.querySelector('label[for="preferences-countries"]')!.textContent).toBe("Countries (optional)");
-    // Right below: the next picker in document order after the topics one.
-    const comboboxes = [...container.querySelectorAll('[role="combobox"]')];
-    expect(comboboxes.indexOf(input)).toBe(comboboxes.indexOf(topicsInput()) + 1);
+    // Right below: the first dropdown after the topic grid's last chip.
+    const lastChip = chipNames().length > 0 ? chip(plainTopics.at(-1)!)! : null;
+    expect(lastChip!.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelectorAll('[role="combobox"]')[0]).toBe(input);
 
     // One counter: the countries picker has none of its own and is described by the shared one.
     expect(document.getElementById("preferences-countries-count")).toBeNull();
@@ -179,7 +179,7 @@ describe("the countries picker", () => {
     expect(counter()).toBe(`${MAX_READING_UNITS - 1} of ${MAX_READING_UNITS}`);
 
     await pickWithClick(countriesInput()!, COUNTRIES[2]);
-    expect(counter()).toBe(`${MAX_READING_UNITS} of ${MAX_READING_UNITS}`);
+    expect(counter()).toBe(AT_LIMIT);
 
     // Countries picker: an unpicked country is disabled; Enter on it picks nothing.
     const input = countriesInput()!;
@@ -192,24 +192,24 @@ describe("the countries picker", () => {
     expect(fieldValues("countries")).toEqual(COUNTRIES.slice(0, 3));
     await key(input, "Escape");
 
-    // Topics picker: an unpicked topic is disabled too.
-    await open(topicsInput());
-    expect(option(plainTopics[MAX_READING_UNITS])!.getAttribute("aria-disabled")).toBe("true");
-    await act(async () => option(plainTopics[MAX_READING_UNITS])!.click());
-    await flush();
+    // Topic grid: an unpicked chip is disabled too, and described by the counter's reason.
+    expect(chip(plainTopics[MAX_READING_UNITS])!.getAttribute("aria-disabled")).toBe("true");
+    expect(chip(plainTopics[MAX_READING_UNITS])!.getAttribute("aria-describedby")).toContain("preferences-topics-count");
+    await clickChip(plainTopics[MAX_READING_UNITS]);
     expect(fieldValues("topics")).toEqual(topics);
   });
 
   it("frees a slot in the topics picker when a country is removed", async () => {
     const topics = plainTopics.slice(0, MAX_READING_UNITS - 2);
     await renderForm({ topics: [...topics, COUNTRIES_TOPIC], countries: COUNTRIES.slice(0, 2) });
-    expect(counter()).toBe(`${MAX_READING_UNITS} of ${MAX_READING_UNITS}`);
+    expect(counter()).toBe(AT_LIMIT);
 
     await removeChip(COUNTRIES[0]);
     expect(counter()).toBe(`${MAX_READING_UNITS - 1} of ${MAX_READING_UNITS}`);
-    await pickWithClick(topicsInput(), plainTopics[MAX_READING_UNITS]);
+    expect(chip(plainTopics[MAX_READING_UNITS])!.getAttribute("aria-disabled")).toBeNull();
+    await clickChip(plainTopics[MAX_READING_UNITS]);
     expect(fieldValues("topics")).toEqual([...topics, plainTopics[MAX_READING_UNITS]]);
-    expect(counter()).toBe(`${MAX_READING_UNITS} of ${MAX_READING_UNITS}`);
+    expect(counter()).toBe(AT_LIMIT);
   });
 
   it("removing every country leaves the picker up, empty, and submits none", async () => {
@@ -225,11 +225,9 @@ describe("the countries picker", () => {
     expect(formData.getAll("topics")).toEqual(plainTopics.slice(0, 3));
   });
 
-  it("Backspace in the topics picker removes the last topic and leaves the countries alone", async () => {
+  it("unpicking a topic chip removes that topic and leaves the countries alone", async () => {
     await renderForm({ topics: [...plainTopics.slice(0, 3), COUNTRIES_TOPIC], countries: [COUNTRIES[0]] });
-    const input = topicsInput();
-    await act(async () => input.focus());
-    await key(input, "Backspace");
+    await clickChip(plainTopics[2]);
     expect(fieldValues("topics")).toEqual(plainTopics.slice(0, 2));
     expect(fieldValues("countries")).toEqual([COUNTRIES[0]]);
     expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);

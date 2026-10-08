@@ -89,8 +89,11 @@ describe("crafted links", () => {
   it.each([[{ error: CRAFTED }], [{ error: "too_few" }], [{ prefsError: "save_failed" }]])(
     "/onboarding rendered with searchParams %j shows no message",
     async (params) => {
-      const Page = OnboardingPage as unknown as (p: unknown) => ReactElement;
-      await act(async () => root.render(Page({ searchParams: Promise.resolve(params) })));
+      // Only a reader with no topics sees onboarding; one with topics is sent to /profile.
+      mocks.getUserProfile.mockResolvedValue({ topics: [], preferredSources: [], countries: [], timeZone: "UTC" });
+      const Page = OnboardingPage as unknown as (p: unknown) => Promise<ReactElement>;
+      const tree = await Page({ searchParams: Promise.resolve(params) });
+      await act(async () => root.render(tree));
       expectNoErrorText();
       expect(container.querySelector("form")).not.toBeNull();
     }

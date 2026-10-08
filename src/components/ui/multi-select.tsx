@@ -185,11 +185,14 @@ export function MultiSelect<T extends string>({
   )
 }
 
-function counterText(count: number, min: number | undefined, max: number | undefined): string {
+/** The counter's words: how many more to pick below `min`, "n of max" from there, and why nothing more can be added at `max`. */
+export function counterText(count: number, min: number | undefined, max: number | undefined): string {
   if (min !== undefined && count < min) {
     if (count === 0) return `Pick at least ${min}`
     const more = min - count
     return more === 1 ? "Pick at least one more" : `Pick at least ${more} more`
   }
-  return max === undefined ? `${count} selected` : `${count} of ${max}`
+  if (max === undefined) return `${count} selected`
+  if (count === max) return `${count} of ${max} · limit reached, remove one to add another`
+  return `${count} of ${max}`
 }

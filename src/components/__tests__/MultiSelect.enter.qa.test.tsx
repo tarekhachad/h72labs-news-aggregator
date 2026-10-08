@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
 import { MAX_TOPICS } from "@/lib/profile";
-import { PreferencesForm } from "@/components/PreferencesForm";
+import { MultiSelectForm } from "./multiSelectHarness";
 
 // Enter, autoHighlight and the submit guard in the preferences pickers.
 // jsdom performs no implicit form submission, so "would a browser submit?"
@@ -27,16 +27,11 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
+// The topics are a grid now; MultiSelect's rules still hold for the countries
+// and sources pickers, so they are pinned on the component in a plain form.
 async function renderForm(defaults: { topics?: Topic[]; sources?: Source[] } = {}) {
   await act(async () => {
-    root.render(
-      <PreferencesForm
-        action={async () => {}}
-        defaultTopics={defaults.topics}
-        defaultSources={defaults.sources}
-        submitLabel="Save"
-      />
-    );
+    root.render(<MultiSelectForm topics={defaults.topics} sources={defaults.sources} />);
   });
 }
 

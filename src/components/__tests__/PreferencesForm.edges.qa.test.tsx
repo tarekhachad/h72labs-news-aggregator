@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
 import { MAX_TOPICS, ProfileInput } from "@/lib/profile";
-import { PreferencesForm } from "@/components/PreferencesForm";
+import { MultiSelectForm } from "./multiSelectHarness";
 
 // QA edge cases for the preferences pickers: the limit guard under filtering
 // and over-limit saved selections, focus after chip removal in the positions
@@ -29,16 +29,16 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
+// The topics are a grid now; these dropdown edge cases still hold for the
+// countries and sources pickers, so they run on MultiSelect in a plain form
+// under the ids the topics dropdown had.
 async function renderForm(defaults: { topics?: Topic[]; sources?: Source[] } = {}) {
   await act(async () => {
     root.render(
-      <PreferencesForm
-        action={async (_previous, formData) => {
-          submitted.push(formData);
-        }}
-        defaultTopics={defaults.topics}
-        defaultSources={defaults.sources}
-        submitLabel="Save"
+      <MultiSelectForm
+        topics={defaults.topics}
+        sources={defaults.sources}
+        onSubmit={(event) => submitted.push(new FormData(event.currentTarget))}
       />
     );
   });
@@ -106,7 +106,7 @@ describe("limit guard", () => {
     await key(input, "Enter");
     await flush();
     expect(fieldValues("topics")).toEqual(TOPICS.slice(0, MAX_TOPICS));
-    expect(counter(input)).toBe(`${MAX_TOPICS} of ${MAX_TOPICS}`);
+    expect(counter(input)).toBe(`${MAX_TOPICS} of ${MAX_TOPICS} · limit reached, remove one to add another`);
 
     // Same open list, new filter: the 11th is shown, disabled, and unpickable.
     await type(input, eleventh);
@@ -155,7 +155,7 @@ describe("limit guard", () => {
     await act(async () => picked.click());
     await flush();
     expect(fieldValues("topics")).toEqual(saved.filter((t) => t !== saved[4]));
-    expect(counter(input)).toBe(`${MAX_TOPICS} of ${MAX_TOPICS}`);
+    expect(counter(input)).toBe(`${MAX_TOPICS} of ${MAX_TOPICS} · limit reached, remove one to add another`);
     // At exactly the limit now: notice gone, unpicked still disabled.
     expect(
       [...container.querySelectorAll('p[role="status"]')].find((p) => p.textContent?.includes("limit is now"))

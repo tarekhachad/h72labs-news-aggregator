@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Sidebar } from "@/components/newspaper/Sidebar";
 import { usePageTransitionActions } from "@/components/newspaper/PageTransitionContext";
+import { PRODUCT_NAME } from "@/config/brand";
 
 /**
  * Back arrow's target, derived from the route — always "one level up" the
@@ -26,7 +27,7 @@ function getBackTarget(pathname: string): string | null {
 }
 
 /**
- * "Your Daily Brief" nameplate, per docs/(C) UI_DESIGN.md's core metaphor.
+ * The product's nameplate (PRODUCT_NAME), per docs/(C) UI_DESIGN.md's core metaphor.
  * The title links back to the front page from any topic page, triggering
  * the page-flip transition (B8) — always a single flip to "/" regardless
  * of how many topics deep the user is (per B5's design: the masthead is a
@@ -92,7 +93,7 @@ export function Masthead() {
         onClick={handleTitleClick}
         className="justify-self-center font-heading text-3xl font-bold tracking-tight md:text-4xl"
       >
-        Your Daily Brief
+        {PRODUCT_NAME}
       </Link>
     </header>
   );

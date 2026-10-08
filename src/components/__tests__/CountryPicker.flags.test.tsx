@@ -40,7 +40,6 @@ async function renderForm(countries: string[] = []) {
 
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement;
-const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
 
 async function key(target: Element, k: string) {
   await act(async () => {
@@ -94,13 +93,13 @@ describe("country flags", () => {
     expect(container.querySelector('[aria-label="Remove Morocco"]')).not.toBeNull();
   });
 
-  it("draws no flag in the topics or sources pickers", async () => {
+  it("draws no flag in the topic grid or the sources picker", async () => {
     await renderForm();
-    await open(topicsInput());
-    expect(document.querySelector('[role="listbox"] svg[data-slot="country-flag"]')).toBeNull();
-    const topicChips = chips().filter((c) => (plain.slice(0, 3) as string[]).includes(c.textContent ?? ""));
-    expect(topicChips).toHaveLength(3);
+    const topicChips = [...container.querySelectorAll<HTMLElement>('[data-slot="topic-chip"]')];
+    expect(topicChips.filter((c) => c.getAttribute("aria-pressed") === "true")).toHaveLength(3);
     for (const chip of topicChips) expect(chip.querySelector('[data-slot="country-flag"]')).toBeNull();
+    await open(document.getElementById("preferences-sources") as HTMLInputElement);
+    expect(document.querySelector('[role="listbox"] svg[data-slot="country-flag"]')).toBeNull();
   });
 
   it("still finds Morocco when searching 'Mor', with its flag", async () => {

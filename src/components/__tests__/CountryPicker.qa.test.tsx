@@ -11,6 +11,7 @@ vi.mock("@/config/countries", async (importActual) => ({
 
 const { COUNTRIES_TOPIC } = await import("@/config/countries");
 const { PreferencesForm } = await import("@/components/PreferencesForm");
+const { AT_LIMIT, chips, searchTopics, topicSearch } = await import("./topicGridKit");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,7 +46,6 @@ async function renderForm(defaults: { topics?: Topic[]; countries?: string[] } =
   });
 }
 
-const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
 const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement | null;
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
@@ -116,9 +116,11 @@ describe("QA: countries picker keyboard rules", () => {
     expect(submitted).toHaveLength(0);
   });
 
-  it("a search for Countries in the topics picker matches nothing, and Enter neither picks nor submits", async () => {
+  it("a search for Countries in the topic grid matches nothing, and Enter neither picks nor submits", async () => {
     await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
-    expect(await searchAndEnter(topicsInput(), "Countries")).toBe(true);
+    await searchTopics("Countries");
+    expect(chips()).toHaveLength(0);
+    expect(await key(topicSearch(), "Enter")).toBe(true);
     expect(fieldValues("topics")).toEqual(topicsList.slice(0, 3));
     expect(fieldValues("countries")).toEqual(["Kenya"]);
     expect(submitted).toHaveLength(0);
@@ -129,7 +131,7 @@ describe("QA: countries picker keyboard rules", () => {
       topics: [...topicsList.slice(0, 7), COUNTRIES_TOPIC],
       countries: ["Kenya", "Morocco", "Uganda"],
     });
-    expect(counter()).toBe("10 of 10");
+    expect(counter()).toBe(AT_LIMIT);
     const input = countriesInput()!;
     await open(input);
     await act(async () => optionEl("Ghana")!.click());
@@ -143,7 +145,7 @@ describe("QA: countries picker keyboard rules", () => {
 
   it("at the limit from topics alone, no country can be added by click or Enter", async () => {
     await renderForm({ topics: topicsList.slice(0, 10) });
-    expect(counter()).toBe("10 of 10");
+    expect(counter()).toBe(AT_LIMIT);
     const input = countriesInput()!;
     await open(input);
     expect(optionEl("Kenya")!.getAttribute("aria-disabled")).toBe("true");
@@ -166,12 +168,12 @@ describe("QA: countries picker keyboard rules", () => {
     expect(counter()).toBe("4 of 10");
   });
 
-  it("Escape in the topics picker keeps every topic and country, open or closed", async () => {
+  it("Escape in the topic search keeps every topic and country, with or without search text", async () => {
     await renderForm({ topics: [...topicsList.slice(0, 3), COUNTRIES_TOPIC], countries: ["Kenya"] });
-    const input = topicsInput();
+    const input = topicSearch();
     await act(async () => input.focus());
     await key(input, "Escape");
-    await open(input);
+    await searchTopics(topicsList[0]);
     await key(input, "Escape");
     await key(input, "Escape");
     expect(fieldValues("topics")).toEqual(topicsList.slice(0, 3));
@@ -207,7 +209,7 @@ describe("QA: cross-picker state", () => {
     expect(countriesInput()!.getAttribute("aria-describedby")).toContain("preferences-topics-count");
     for (const country of ["Kenya", "Morocco", "Uganda"]) await removeChip(country);
     expect(notices()).toHaveLength(0);
-    expect(counter()).toBe("10 of 10");
+    expect(counter()).toBe(AT_LIMIT);
   });
 
   it("over-limit: no new pick in the countries picker, removals still work", async () => {

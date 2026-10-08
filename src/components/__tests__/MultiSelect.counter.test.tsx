@@ -9,7 +9,8 @@ import { PreferencesForm } from "@/components/PreferencesForm";
 import { MultiSelect } from "@/components/ui/multi-select";
 
 // Below the minimum the shared counter says how many more reading units are
-// needed; from the minimum up it reads "n of 10". Countries count as units.
+// needed; from the minimum up it reads "n of 10", and at 10 it says why
+// nothing more can be added. Countries count as units.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -50,7 +51,7 @@ const expected: Record<number, string> = {
   1: "Pick at least 2 more",
   2: "Pick at least one more",
   3: `3 of ${MAX_READING_UNITS}`,
-  10: `10 of ${MAX_READING_UNITS}`,
+  10: `10 of ${MAX_READING_UNITS} · limit reached, remove one to add another`,
 };
 
 describe("the topics counter", () => {

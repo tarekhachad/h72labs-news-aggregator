@@ -7,6 +7,8 @@ import { DigestGenerationProvider } from "@/components/newspaper/DigestGeneratio
 import { FrontPage } from "@/components/newspaper/FrontPage";
 import { TopicPage } from "@/components/newspaper/TopicPage";
 import { PreferencesForm } from "@/components/PreferencesForm";
+import { OnboardingView } from "@/components/onboarding/OnboardingView";
+import type { PreferencesState } from "@/lib/profileErrors";
 import { TOPICS, type Topic } from "@/types";
 import { FIXTURE_CARDS, FIXTURE_TOPICS } from "./fixtureCards";
 import { ScriptedDigestStream } from "./ScriptedDigestStream";
@@ -26,23 +28,37 @@ const FIXTURE_SUPABASE_URL = "http://127.0.0.1:9";
  * view=loader-complete (a day with cards) answer the button with a scripted
  * stream instead of a run. `hold=<stage>` stops it at that stage, `step=<ms>`
  * sets its pace, and `topics=all` gives every topic, so the topic bar wraps.
+ *
+ * view=onboarding is the stepped onboarding form as a new reader sees it,
+ * without the page's sign-in check; its save does nothing, or with
+ * `refuse=1` comes back refused, as a failed save would.
  */
 export default async function DevFixturesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; hold?: string; step?: string; topics?: string }>;
+  searchParams: Promise<{ view?: string; hold?: string; step?: string; topics?: string; refuse?: string }>;
 }) {
   if (process.env.NODE_ENV !== "development") notFound();
   // Only under `npm run dev:fixtures`: with the real keys loaded, the page's
   // Generate button would start a real, paid run for a signed-in reader.
   if (process.env.SUPABASE_URL !== FIXTURE_SUPABASE_URL) notFound();
-  const { view = "front", hold, step, topics } = await searchParams;
+  const { view = "front", hold, step, topics, refuse } = await searchParams;
   const userTopics = topics === "all" ? [...TOPICS] : FIXTURE_TOPICS;
   const stepMs = step && Number.isFinite(Number(step)) ? Math.max(100, Number(step)) : undefined;
   const today = new Date().toISOString().slice(0, 10);
 
   async function noSave() {
     "use server";
+  }
+
+  async function refusedSave(): Promise<PreferencesState> {
+    "use server";
+    return { error: "save_failed" };
+  }
+
+  // Outside the newspaper shell, as /onboarding is.
+  if (view === "onboarding") {
+    return <OnboardingView action={refuse === "1" ? refusedSave : noSave} />;
   }
 
   let content: React.ReactNode;

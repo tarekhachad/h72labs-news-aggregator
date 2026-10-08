@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
 import { MAX_TOPICS } from "@/lib/profile";
-import { PreferencesForm } from "@/components/PreferencesForm";
+import { MultiSelectForm } from "./multiSelectHarness";
 
 // The Escape guard and the "Enter only adds" guard in MultiSelect's
 // handleValueChange. Every legitimate removal path must still work, and no
@@ -27,15 +27,10 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
+// The topics are a grid now; MultiSelect's rules still hold for the countries
+// and sources pickers, so they are pinned on the component in a plain form.
 function form(defaults: { topics?: Topic[]; sources?: Source[] } = {}) {
-  return (
-    <PreferencesForm
-      action={async () => {}}
-      defaultTopics={defaults.topics}
-      defaultSources={defaults.sources}
-      submitLabel="Save"
-    />
-  );
+  return <MultiSelectForm topics={defaults.topics} sources={defaults.sources} />;
 }
 
 async function renderForm(defaults: { topics?: Topic[]; sources?: Source[] } = {}) {

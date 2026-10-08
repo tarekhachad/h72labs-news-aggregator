@@ -17,6 +17,7 @@ vi.mock("@/config/countries", async (importActual) => ({
 const { COUNTRIES_TOPIC } = await import("@/config/countries");
 const { PreferencesForm } = await import("@/components/PreferencesForm");
 const { ProfileInput, getUserProfile, saveUserProfile } = await import("@/lib/profile");
+const { AT_LIMIT, chip, chipNames, chips, clickChip, searchTopics, topicSearch } = await import("./topicGridKit");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -54,7 +55,6 @@ async function renderForm(
   });
 }
 
-const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
 const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement;
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 
@@ -111,16 +111,9 @@ async function submit() {
 
 // --- L8 keyboard rules, on both pickers ------------------------------------
 
+// The topics are a grid now, with its own keyboard rules below; the
+// countries dropdown keeps L8's.
 const pickers = [
-  {
-    name: "topics",
-    input: topicsInput,
-    // Topics saved with one picked; the search matches it first.
-    defaults: { topics: [plain[0], plain[1], plain[2]], countries: ["Kenya"] },
-    picked: () => plain[0],
-    unpickedQuery: () => plain[5],
-    unpicked: () => plain[5],
-  },
   {
     name: "countries",
     input: countriesInput,
@@ -184,6 +177,52 @@ describe.each(pickers)("L8 keyboard rules on the $name picker", (p) => {
   });
 });
 
+describe("keyboard rules on the topic grid's search", () => {
+  const defaults = { topics: [plain[0], plain[1], plain[2], COUNTRIES_TOPIC], countries: ["Kenya"] };
+
+  it("Enter with a matching search is default-prevented, picks nothing and never submits", async () => {
+    await renderForm(defaults);
+    const before = { topics: fieldValues("topics"), countries: fieldValues("countries") };
+    await searchTopics(plain[5]);
+    expect(chipNames()).toContain(plain[5]);
+    expect(await key(topicSearch(), "Enter")).toBe(true);
+    expect({ topics: fieldValues("topics"), countries: fieldValues("countries") }).toEqual(before);
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("Enter with no match, or an empty box, is default-prevented and changes nothing", async () => {
+    await renderForm(defaults);
+    const before = { topics: fieldValues("topics"), countries: fieldValues("countries") };
+    await searchTopics("zzzz-no-such-thing");
+    expect(chipNames()).toEqual([]);
+    expect(await key(topicSearch(), "Enter")).toBe(true);
+    await searchTopics("");
+    expect(await key(topicSearch(), "Enter")).toBe(true);
+    expect({ topics: fieldValues("topics"), countries: fieldValues("countries") }).toEqual(before);
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("a search hides chips but every pick, shown or not, still submits", async () => {
+    await renderForm(defaults);
+    await searchTopics(plain[5]);
+    expect(chipNames()).not.toContain(plain[0]);
+    const fd = await submit();
+    expect(fd.getAll("topics")).toEqual([plain[0], plain[1], plain[2]]);
+    expect(fd.getAll("countries")).toEqual(["Kenya"]);
+  });
+
+  it("Escape never clears picks, with or without search text", async () => {
+    await renderForm(defaults);
+    const before = { topics: fieldValues("topics"), countries: fieldValues("countries") };
+    await act(async () => topicSearch().focus());
+    await key(topicSearch(), "Escape");
+    await searchTopics("a");
+    await key(topicSearch(), "Escape");
+    await key(topicSearch(), "Escape");
+    expect({ topics: fieldValues("topics"), countries: fieldValues("countries") }).toEqual(before);
+  });
+});
+
 // --- Counter and shared limit ----------------------------------------------
 
 describe("shared counter and limit", () => {
@@ -192,14 +231,14 @@ describe("shared counter and limit", () => {
     expect(counter()).toBe("9 of 10");
     await pickWithClick(countriesInput(), "Morocco");
     expect(fieldValues("countries")).toEqual(["Morocco"]);
-    expect(counter()).toBe("10 of 10");
-    // Now at the limit: both pickers' unpicked options are disabled.
+    expect(counter()).toBe(AT_LIMIT);
+    // Now at the limit: unpicked countries and unpicked topic chips are disabled.
     await open(countriesInput());
     expect(optionEl("Kenya")!.getAttribute("aria-disabled")).toBe("true");
     await key(countriesInput(), "Escape");
-    await open(topicsInput());
-    expect(optionEl(plain[9])!.getAttribute("aria-disabled")).toBe("true");
-    await key(topicsInput(), "Escape");
+    expect(chip(plain[9])!.getAttribute("aria-disabled")).toBe("true");
+    await clickChip(plain[9]);
+    expect(fieldValues("topics")).toEqual(plain.slice(0, 9));
 
     const fd = await submit();
     expect(fd.getAll("topics")).toEqual(plain.slice(0, 9));
@@ -227,15 +266,14 @@ describe("shared counter and limit", () => {
     expect(parsed).toEqual({ topics: [COUNTRIES_TOPIC], preferredSources: [], countries: ["Kenya", "Ghana", "Mali"] });
   });
 
-  it("10 countries alone fill the limit, and the topics picker is then disabled", async () => {
+  it("10 countries alone fill the limit, and every topic chip is then disabled", async () => {
     const ten = ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Chad", "Mali", "Togo"];
     await renderForm({ countries: ten, topics: [COUNTRIES_TOPIC] });
-    expect(counter()).toBe("10 of 10");
+    expect(counter()).toBe(AT_LIMIT);
     await open(countriesInput());
     expect(optionEl("Niger")!.getAttribute("aria-disabled")).toBe("true");
     await key(countriesInput(), "Escape");
-    await open(topicsInput());
-    expect(optionEl(plain[0])!.getAttribute("aria-disabled")).toBe("true");
+    expect(chips().every((c) => c.getAttribute("aria-disabled") === "true")).toBe(true);
   });
 
   it("the counter noun switches to 'topics and countries' only while a country is picked", async () => {
@@ -359,7 +397,7 @@ describe("round trip through the real form", () => {
     });
     const before = db.rows();
     const { error } = await roundTrip(db);
-    expect(counter()).toBe("10 of 10");
+    expect(counter()).toBe(AT_LIMIT);
     expect(error).toBeNull();
     expect(db.rows()).toEqual(before);
   });

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS } from "@/types";
 import { COUNTRIES_TOPIC } from "@/config/countries";
 import { PreferencesForm } from "@/components/PreferencesForm";
+import { clickChip } from "./topicGridKit";
 import {
   PROFILE_ERROR_MESSAGES,
   type PreferencesState,
@@ -58,7 +59,7 @@ async function renderForm(action: Action, savedMessage?: string) {
     root.render(
       <PreferencesForm
         action={action}
-        defaultTopics={plainTopics.slice(0, 2)}
+        defaultTopics={plainTopics.slice(0, 3)}
         defaultSources={[SOURCES[0]]}
         submitLabel="Save"
         savedMessage={savedMessage}
@@ -115,12 +116,12 @@ describe("PreferencesForm after a refused save", () => {
       return { error: "too_many" };
     });
 
-    await pickWithClick("preferences-topics", plainTopics[5]);
+    await clickChip(plainTopics[5]);
     await pickWithClick("preferences-countries", "Morocco");
     await pickWithClick("preferences-sources", SOURCES[3]);
     const before = picks();
     expect(before).toEqual({
-      topics: [...plainTopics.slice(0, 2), plainTopics[5]],
+      topics: [...plainTopics.slice(0, 3), plainTopics[5]],
       countries: ["Morocco"],
       preferredSources: [SOURCES[0], SOURCES[3]],
     });
@@ -135,7 +136,7 @@ describe("PreferencesForm after a refused save", () => {
     expect(resets).toBe(1);
     expect(picks()).toEqual(before);
     expect(alertText()).toBe(PROFILE_ERROR_MESSAGES.too_many);
-    expect(document.getElementById("preferences-topics-count")!.textContent).toBe("4 of 10");
+    expect(document.getElementById("preferences-topics-count")!.textContent).toBe("5 of 10");
   });
 
   it("sends the same picks again on the next submit", async () => {
@@ -147,8 +148,8 @@ describe("PreferencesForm after a refused save", () => {
     await submit();
     await submit();
     expect(received.map((f) => f.getAll("topics"))).toEqual([
-      plainTopics.slice(0, 2),
-      plainTopics.slice(0, 2),
+      plainTopics.slice(0, 3),
+      plainTopics.slice(0, 3),
     ]);
     expect(received.map((f) => f.getAll("preferredSources"))).toEqual([[SOURCES[0]], [SOURCES[0]]]);
   });

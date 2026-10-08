@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Topic } from "@/types";
 import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
 import { PreferencesForm } from "@/components/PreferencesForm";
+import { AT_LIMIT, clickChip, isPicked, topicSearch } from "./topicGridKit";
 import { PROFILE_ERROR_MESSAGES, type PreferencesState } from "@/lib/profileErrors";
 
 // The useActionState form with the keyboard rules, the counter and the
@@ -49,7 +50,6 @@ async function renderForm(action: Action, topicCount = 2, countries: string[] = 
 }
 
 const flush = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-const topicsInput = () => document.getElementById("preferences-topics") as HTMLInputElement;
 const countriesInput = () => document.getElementById("preferences-countries") as HTMLInputElement;
 const counter = () => document.getElementById("preferences-topics-count")!.textContent;
 const alertText = () => container.querySelector('[role="alert"]')?.textContent ?? null;
@@ -92,16 +92,14 @@ async function submit() {
   await flush();
 }
 
-describe("refusal with keyboard picks (both pickers)", () => {
-  it("keeps topics and countries picked by keyboard after a refusal, and the counter with them", async () => {
+describe("refusal with picks made on the page (grid and keyboard)", () => {
+  it("keeps a topic picked in the grid and a country picked by keyboard after a refusal, and the counter with them", async () => {
     const action = vi.fn<Action>(async () => ({ error: "too_many" }));
     await renderForm(action, 1);
     expect(counter()).toBe("Pick at least 2 more");
 
-    await focus(topicsInput());
-    await type(topicsInput(), plain[4].slice(0, 4));
-    const topicTarget = options()[0].textContent!;
-    expect(await key(topicsInput(), "Enter")).toBe(true);
+    const topicTarget = plain[4];
+    await clickChip(topicTarget);
     expect(counter()).toBe("Pick at least one more");
 
     await focus(countriesInput());
@@ -122,9 +120,10 @@ describe("refusal with keyboard picks (both pickers)", () => {
     expect(counter()).toBe("3 of 10");
     expect(alertText()).toBe(PROFILE_ERROR_MESSAGES.too_many);
 
-    // And the visible chips match the hidden inputs.
+    // And what shows picked matches the hidden inputs.
+    expect(isPicked(plain[0]) && isPicked(topicTarget)).toBe(true);
     const chipText = [...container.querySelectorAll('[data-slot="combobox-chip"]')].map((c) => c.textContent);
-    expect(chipText).toEqual([plain[0], topicTarget, "Morocco", SOURCES[0]]);
+    expect(chipText).toEqual(["Morocco", SOURCES[0]]);
   });
 
   it("a second, different refusal replaces the first message; a later empty return clears it", async () => {
@@ -160,9 +159,9 @@ describe("refusal with keyboard picks (both pickers)", () => {
 
 describe("L8 keyboard rules inside the action form", () => {
   it.each([
-    ["topics", () => topicsInput(), () => plain[5].slice(0, 5)],
+    ["topic search", () => topicSearch(), () => plain[5].slice(0, 5)],
     ["countries", () => countriesInput(), () => "Mor"],
-  ])("%s: Enter while searching picks and never submits", async (_n, input, query) => {
+  ])("%s: Enter while searching never submits", async (_n, input, query) => {
     const action = vi.fn<Action>(async () => ({ error: "too_few" }));
     await renderForm(action, 2);
     await focus(input());
@@ -174,7 +173,7 @@ describe("L8 keyboard rules inside the action form", () => {
   });
 
   it.each([
-    ["topics", () => topicsInput()],
+    ["topic search", () => topicSearch()],
     ["countries", () => countriesInput()],
   ])("%s: Enter on a search with no match is prevented and picks nothing", async (_n, input) => {
     const action = vi.fn<Action>(async () => ({ error: "too_few" }));
@@ -188,7 +187,7 @@ describe("L8 keyboard rules inside the action form", () => {
   });
 
   it.each([
-    ["topics", () => topicsInput()],
+    ["topic search", () => topicSearch()],
     ["countries", () => countriesInput()],
   ])("%s: Escape (open list, then closed list, twice) never clears picks", async (_n, input) => {
     await renderForm(async () => undefined, 3, ["Morocco", "Kenya"]);
@@ -212,12 +211,11 @@ describe("L8 keyboard rules inside the action form", () => {
     expect(counter()).toBe("3 of 10");
   });
 
-  it("topics: Enter on an already-picked highlighted topic never removes it", async () => {
+  it("topic search: Enter on a search for a picked topic never removes it", async () => {
     await renderForm(async () => undefined, 3);
-    await focus(topicsInput());
-    await type(topicsInput(), plain[0]);
-    expect(options()[0].textContent).toBe(plain[0]);
-    await key(topicsInput(), "Enter");
+    await focus(topicSearch());
+    await type(topicSearch(), plain[0]);
+    expect(await key(topicSearch(), "Enter")).toBe(true);
     expect(fieldValues("topics")).toEqual(plain.slice(0, 3));
   });
 });
@@ -229,8 +227,8 @@ describe("counter wording, with and without countries", () => {
     [0, 2, "Pick at least one more"],
     [0, 3, "3 of 10"],
     [1, 1, "Pick at least one more"],
-    [0, 10, "10 of 10"],
-    [9, 1, "10 of 10"],
+    [0, 10, AT_LIMIT],
+    [9, 1, AT_LIMIT],
     [3, 0, "3 of 10"],
   ])("%i topics + %i countries → %s", async (t, c, text) => {
     await renderForm(async () => undefined, t, COUNTRIES.slice(0, c) as string[]);

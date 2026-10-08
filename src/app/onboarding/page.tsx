@@ -1,19 +1,34 @@
-import { PreferencesForm } from "@/components/PreferencesForm";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getUserProfile } from "@/lib/profile";
+import { TimeZoneSync } from "@/components/TimeZoneSync";
+import { OnboardingView } from "@/components/onboarding/OnboardingView";
 import { saveProfile } from "./actions";
 
-export default function OnboardingPage() {
-  return (
-    <div className="min-h-screen">
-      <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-16">
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold">Set up your briefing</h1>
-          <p className="mt-2 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-            Pick the topics your daily digest is built from, and any sources you prefer.
-          </p>
-        </div>
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-        <PreferencesForm action={saveProfile} submitLabel="Save and continue" />
-      </main>
-    </div>
+  // The proxy already sends a signed-out visit to /login; this is
+  // defense-in-depth, as on the newspaper pages.
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { topics, timeZone } = await getUserProfile(supabase, user.id);
+
+  // A reader who already has topics edits them on /profile. Showing them a
+  // blank form here would let a stray visit save over their profile.
+  if (topics.length > 0) {
+    redirect("/profile");
+  }
+
+  return (
+    <>
+      <TimeZoneSync storedTimeZone={timeZone} />
+      <OnboardingView action={saveProfile} />
+    </>
   );
 }

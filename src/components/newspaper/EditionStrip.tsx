@@ -57,10 +57,9 @@ export function editionSummary(cards: Card[], timeZone: string): string {
 
 /**
  * The completing day's slim strip, pinned under the topic bar by its parent.
- * Idle, it shows the edition's size and age beside "Complete today's news";
- * the button's hit area is stretched over the whole strip, so hovering or
- * clicking anywhere on it is hovering or clicking the button. Running, the
- * wire ticker covers it.
+ * Idle, it shows the edition's size and age beside "Complete today's news".
+ * Only the button reacts to hover and starts a run; the rest of the strip is
+ * plain text. Running, the wire ticker covers it.
  *
  * The button stays mounted (disabled) while a run is in flight, so a
  * screen reader can still find it.
@@ -85,9 +84,7 @@ export function EditionStrip({
   return (
     <div
       data-testid="edition-strip"
-      className={`group relative flex h-11 items-center justify-between gap-3 overflow-hidden border-b bg-[var(--color-background)] px-6 motion-safe:transition-colors motion-safe:duration-150 md:px-10 ${
-        loading ? "" : "hover:bg-[var(--color-muted)]"
-      }`}
+      className="relative flex h-11 items-center justify-between gap-3 overflow-hidden border-b bg-[var(--color-background)] px-6 md:px-10"
       style={{ borderColor: "var(--color-border)" }}
     >
       <span className="min-w-0 truncate text-[13px]" style={{ color: "var(--color-muted-foreground)" }}>
@@ -97,7 +94,7 @@ export function EditionStrip({
         type="button"
         onClick={onStart}
         disabled={loading}
-        className="shrink-0 cursor-pointer rounded-full border border-[var(--color-foreground)] bg-[var(--color-card)] px-3.5 py-1 font-heading text-[15px] font-semibold whitespace-nowrap text-[var(--color-foreground)] outline-none after:absolute after:inset-0 after:content-[''] group-hover:bg-[var(--color-foreground)] group-hover:text-[var(--color-background)] focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-55 motion-safe:transition-colors"
+        className="shrink-0 cursor-pointer rounded-full border border-[var(--color-foreground)] bg-[var(--color-card)] px-3.5 py-1 font-heading text-[15px] font-semibold whitespace-nowrap text-[var(--color-foreground)] outline-none enabled:hover:bg-[var(--color-foreground)] enabled:hover:text-[var(--color-background)] focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-55 motion-safe:transition-colors"
       >
         Complete today&apos;s news
       </button>
