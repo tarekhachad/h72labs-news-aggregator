@@ -595,7 +595,12 @@ export interface Card {
    * text to work from, without re-fetching source URLs.
    */
   expandedReport: string | null;
-  sources: Pick<Article, "title" | "url" | "source" | "snippet">[];
+  /**
+   * `sig` is the server's signature over `url` (see sourceLinks.ts). The full
+   * report fetches only links whose signature verifies, since a signed-in user
+   * can store any `sources` through persist_generated_cards.
+   */
+  sources: (Pick<Article, "title" | "url" | "source" | "snippet"> & { sig?: string })[];
   /** Most recent publishedAt across the cluster's source articles. */
   publishedAt: string;
   /**

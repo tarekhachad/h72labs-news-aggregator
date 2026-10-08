@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Card } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
 import { boundOf, recordCall } from "@/lib/usageCollector";
+import { sourceLinkSecret, verifySourceLink } from "@/lib/sourceLinks";
 import {
   extractForStory,
   FULL_TEXT_INSTRUCTION,
@@ -93,6 +94,32 @@ async function generateReport(
 }
 
 /**
+ * Fetches only the sources whose link carries a valid server signature, and
+ * returns results aligned to `sources` (undefined where nothing was fetched,
+ * which the report treats as headline-only). The card's `sources` come from
+ * the database, where a signed-in user can store any link, so an unsigned or
+ * forged link is never requested.
+ */
+async function extractSignedSources(
+  sources: Card["sources"],
+  deadline: number
+): Promise<(ExtractResult | undefined)[]> {
+  const secret = sourceLinkSecret();
+  const fetchable =
+    secret === null ? [] : sources.flatMap((s, i) => (verifySourceLink(s.url, s.sig, secret) ? [i] : []));
+  const results: (ExtractResult | undefined)[] = sources.map(() => undefined);
+  if (fetchable.length === 0) return results;
+  const fetched = await extractForStory(
+    fetchable.map((i) => sources[i].url),
+    { deadline, label: "expand" }
+  );
+  fetched.forEach((r, k) => {
+    results[fetchable[k]] = r;
+  });
+  return results;
+}
+
+/**
  * One Sonnet call, made lazily the first time a user expands a card (see
  * `POST /api/cards/[id]/expand`) — never pre-generated for every card, so
  * cost is only paid for reports someone actually reads. Reuses the same
@@ -108,10 +135,7 @@ export async function generateExpandedReport(
   card: Pick<Card, "topic" | "shortSummary" | "sources">
 ): Promise<string> {
   const deadline = Date.now() + EXTRACT_BUDGET_MS;
-  const extracted = await extractForStory(
-    card.sources.map((s) => s.url),
-    { deadline, label: "expand" }
-  );
+  const extracted = await extractSignedSources(card.sources, deadline);
   const result = await generateWithRetryOnAmbiguousTruncation(
     () => generateReport(card, extracted),
     "generateExpandedReport"

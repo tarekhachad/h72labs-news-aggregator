@@ -10,6 +10,7 @@ import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/c
 import { boundOf, recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
 import { orderPreferredFirst, type PreferredSources } from "@/lib/preferredSources";
+import { signSourceLink, sourceLinkSecret } from "@/lib/sourceLinks";
 import {
   extractForStory,
   FULL_TEXT_INSTRUCTION,
@@ -182,6 +183,22 @@ async function generateSummary(
 }
 
 /**
+ * The card's source list as persisted. Each link carries the server's
+ * signature, so the full report can tell it from one a user stored by hand;
+ * with no secret configured, links are stored unsigned and never fetched.
+ */
+function signedSources(articles: Cluster["articles"]): Card["sources"] {
+  const secret = sourceLinkSecret();
+  return articles.map((a) => ({
+    title: a.title,
+    url: a.url,
+    source: a.source,
+    snippet: a.snippet,
+    ...(secret === null ? {} : { sig: signSourceLink(a.url, secret) }),
+  }));
+}
+
+/**
  * Thrown by writeCard for a cluster with no articles, before any call is
  * made. The route records it as a card failure like any other rejection;
  * the name is what identifies it there.
@@ -262,12 +279,7 @@ export async function writeCard(
     shortSummary,
     labels,
     expandedReport: null,
-    sources: ordered.articles.map((a) => ({
-      title: a.title,
-      url: a.url,
-      source: a.source,
-      snippet: a.snippet,
-    })),
+    sources: signedSources(ordered.articles),
     publishedAt,
     // Placeholder — the digest route overwrites this on every card with the
     // one canonical timestamp for the whole run before persisting/returning

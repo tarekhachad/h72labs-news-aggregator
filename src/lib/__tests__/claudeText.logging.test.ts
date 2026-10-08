@@ -43,6 +43,8 @@ function makeCluster(): Cluster {
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  // Signing is configured, so the only warning is the one under test.
+  vi.stubEnv("SOURCE_LINK_SECRET", "test-source-link-secret-0123456789abcdef0123");
   mockParse.mockReset();
   // usageCollector logs one line per call; its own guard is not under test.
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -52,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

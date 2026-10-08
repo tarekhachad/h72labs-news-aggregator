@@ -39,6 +39,8 @@ const cluster: Cluster = {
 };
 
 beforeEach(() => {
+  // The full report fetches only links the writer signed.
+  vi.stubEnv("SOURCE_LINK_SECRET", "test-source-link-secret-0123456789abcdef0123");
   resetExtractStateForTests();
   vi.spyOn(console, "log").mockImplementation(() => {});
   mockParse.mockReset();
@@ -63,6 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -81,11 +84,10 @@ describe("writeCard and the full report with the real extractor", () => {
   });
 
   it("the full report re-fetches and writes from the same page", async () => {
-    const report = await generateExpandedReport({
-      topic: TOPIC,
-      shortSummary: "Summary.",
-      sources: cluster.articles.map(({ title, url, source, snippet }) => ({ title, url, source, snippet })),
-    });
+    // The sources exactly as the writer persists them, signatures included.
+    const card = await writeCard(cluster, 3);
+    mockParse.mockClear();
+    const report = await generateExpandedReport({ topic: TOPIC, shortSummary: "Summary.", sources: card.sources });
     const content = mockParse.mock.calls[0][0].messages[0].content as string;
     expect(content).toContain("The city council voted on Tuesday");
     expect(report).toBe("A full report.");
