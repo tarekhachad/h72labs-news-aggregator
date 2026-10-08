@@ -1017,6 +1017,14 @@ export const MAX_PAGES_PER_STORY = 5;
 export const MAX_FULL_TEXTS_PER_STORY = 3;
 
 /**
+ * Least time left before a story starts another round of pages. A round
+ * that ends at the deadline does so on a timer, and a timer can fire a
+ * millisecond or so before `Date.now()` reaches the time it was set for, so
+ * "any time left" would start fallback pages only to abandon them at once.
+ */
+export const MIN_ROUND_TIME_MS = 20;
+
+/**
  * Told to the writer whenever it gets full text. The last sentence keeps the
  * stored card and report from reproducing an article's own wording.
  */
@@ -1041,7 +1049,7 @@ export async function extractForStory(
   const results: (ExtractResult | undefined)[] = [];
   let next = 0;
   let ok = 0;
-  while (ok < MAX_FULL_TEXTS_PER_STORY && next < limit && Date.now() < deadline) {
+  while (ok < MAX_FULL_TEXTS_PER_STORY && next < limit && deadline - Date.now() >= MIN_ROUND_TIME_MS) {
     const batch = urls.slice(next, Math.min(limit, next + MAX_FULL_TEXTS_PER_STORY - ok));
     const answers = await extractBatch(batch, deadline);
     answers.forEach((r, i) => {

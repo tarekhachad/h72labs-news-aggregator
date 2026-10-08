@@ -12,6 +12,7 @@ import {
   extractForStory,
   MAX_CONCURRENT_PAGES,
   MAX_PAGES_PER_STORY,
+  MIN_ROUND_TIME_MS,
   resetExtractStateForTests,
   robotsAllows,
   type ExtractResult,
@@ -466,6 +467,22 @@ describe("extractForStory in the shared queue", () => {
     for (const r of results) expect(r.map(outcome)).toEqual(["timeout", "timeout", "timeout"]);
     await sleep(50);
     await expectAllSlotsFree();
+  });
+
+  it("starts no round of pages with less than MIN_ROUND_TIME_MS left, so a deadline timer firing early can't start fallbacks", async () => {
+    const asked: string[] = [];
+    const urls = Array.from({ length: 5 }, (_, i) => `https://margin-${i}.example/p`);
+    const routes: Record<string, Handler> = {};
+    for (const u of urls) {
+      routes[u] = ({ url }) => {
+        asked.push(url);
+        return new Response(ARTICLE, { headers: { "content-type": "text/html" } });
+      };
+    }
+    serve(routes);
+    const result = await extractForStory(urls, { deadline: soon(MIN_ROUND_TIME_MS - 5) });
+    expect(result.every((r) => r === undefined)).toBe(true);
+    expect(asked).toEqual([]);
   });
 
   it("slow robots.txt on fallback hosts doesn't hold the caller past its deadline", async () => {
