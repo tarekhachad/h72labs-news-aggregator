@@ -14,6 +14,20 @@ export type Stage = (typeof STAGE_ORDER)[number];
 export type StageEvent = { stage: Stage } & Record<string, unknown>;
 type WireEvent = { stage: Stage | "error" } & Record<string, unknown>;
 
+/** Stable empty value, so an idle provider doesn't hand out a new array each render. */
+const NO_TITLES: string[] = [];
+
+/**
+ * The `clustering` event's sample titles, keeping only strings: the stream is
+ * parsed JSON, and a server mid-rollout (or anything else) may send no field
+ * or an odd one, which must read as "no titles" rather than break the loader.
+ */
+function titlesFrom(value: unknown): string[] {
+  if (!Array.isArray(value)) return NO_TITLES;
+  const titles = value.filter((t): t is string => typeof t === "string" && t.trim() !== "");
+  return titles.length > 0 ? titles : NO_TITLES;
+}
+
 /** Slack on top of duration + stagger before a batch is force-retired. */
 const ENTRANCE_RETIRE_MARGIN_MS = 400;
 
@@ -22,6 +36,18 @@ interface DigestGenerationContextValue {
   seededDate: string | null;
   loading: boolean;
   stageEvent: StageEvent | null;
+  /**
+   * Titles the current run gathered, sent once on its `clustering` event and
+   * kept for the rest of the run so the loaders can keep showing them after
+   * later events replace `stageEvent`. Empty until then, and between runs.
+   * Fetched text: render it only as plain text.
+   */
+  wireTitles: string[];
+  /**
+   * The date of the last run that reached `done` this session, so a page
+   * can tell a reader has used a run even when it produced no cards.
+   */
+  finishedRunDate: string | null;
   error: string | null;
   /**
    * Cards awaiting their one-time entrance animation, mapped to the delay
@@ -66,6 +92,8 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
   const [seededDate, setSeededDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [stageEvent, setStageEvent] = useState<StageEvent | null>(null);
+  const [wireTitles, setWireTitles] = useState<string[]>(NO_TITLES);
+  const [finishedRunDate, setFinishedRunDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingEntrances, setPendingEntrances] = useState<Map<string, number>>(new Map());
 
@@ -119,6 +147,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
     // so none of it can leak forward and render as if it were today's.
     setLoading(false);
     setStageEvent(null);
+    setWireTitles(NO_TITLES);
     setError(null);
     setPendingEntrances(new Map());
   }, []);
@@ -135,6 +164,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
     setLoading(true);
     setError(null);
     setStageEvent({ stage: "ingesting" });
+    setWireTitles(NO_TITLES);
 
     (async () => {
       let reachedTerminalEvent = false;
@@ -190,6 +220,7 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
         if (seededDateRef.current === runDate) {
           setLoading(false);
           setStageEvent(null);
+          setWireTitles(NO_TITLES);
         }
       }
 
@@ -287,8 +318,10 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
           // the seeded date, and recomputing here could land on the next
           // day if the run straddled local midnight.
           setSeededDate(runDate);
+          setFinishedRunDate(runDate);
         } else if (seededDateRef.current === runDate) {
           setStageEvent(event as StageEvent);
+          if (event.stage === "clustering") setWireTitles(titlesFrom(event.sampleTitles));
         }
       }
     })();
@@ -301,6 +334,8 @@ export function DigestGenerationProvider({ children }: { children: React.ReactNo
         seededDate,
         loading,
         stageEvent,
+        wireTitles,
+        finishedRunDate,
         error,
         pendingEntrances,
         markEntrancePlayed,

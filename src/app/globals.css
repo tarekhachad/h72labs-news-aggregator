@@ -87,6 +87,10 @@
      Update this if Masthead's padding, icon size, or title font size ever
      changes. */
   --masthead-height: 73px;
+
+  /* The edition loaders' body rules: lighter than ink so the typed line
+     stays the focus, darker than --color-border so they read as print. */
+  --edition-rule: #bdbab3;
 }
 
 @theme inline {
@@ -183,5 +187,36 @@ h6 {
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Edition loaders (TypesettingLoader, WireTicker). Both components drop
+   these classes under reduced motion; the media query is a second guard. */
+@keyframes edition-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.edition-caret-blink {
+  animation: edition-caret-blink 0.9s steps(1) infinite;
+}
+/* The tape holds two identical copies, so one pass is half its width. */
+@keyframes edition-tape {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.edition-tape {
+  animation-name: edition-tape;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edition-caret-blink,
+  .edition-tape {
+    animation: none;
   }
 }

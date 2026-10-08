@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
-import { getTodayDigest } from "@/lib/digests";
+import { getLatestGeneratedAtForUser, getTodayDigest } from "@/lib/digests";
 import { FrontPage } from "@/components/newspaper/FrontPage";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
 
@@ -25,12 +25,18 @@ export default async function Home() {
     redirect("/onboarding");
   }
 
-  const digest = await getTodayDigest(supabase, user.id, timeZone);
+  const [digest, firstEdition] = await Promise.all([
+    getTodayDigest(supabase, user.id, timeZone),
+    // The latest generation stamp is non-null exactly when a run has ever
+    // completed for this reader. Any failure only costs the first-edition
+    // notice, so it reads as "has had one" rather than failing the page.
+    (async () => (await getLatestGeneratedAtForUser(supabase, user.id)) === null)().catch(() => false),
+  ]);
 
   return (
     <>
       <TimeZoneSync storedTimeZone={timeZone} />
-      <FrontPage initialDigest={digest} userTopics={topics} timeZone={timeZone} />
+      <FrontPage initialDigest={digest} userTopics={topics} timeZone={timeZone} firstEdition={firstEdition} />
     </>
   );
 }

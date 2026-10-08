@@ -21,6 +21,7 @@ export function TopicNav({
   basePath = "",
   activeTopic,
   digestExistsToday = true,
+  pinned = true,
 }: {
   topics: Topic[];
   /** "/history/2026-08-01" when this band is on a past date's page, so its links stay scoped to that date instead of jumping to today. */
@@ -29,6 +30,8 @@ export function TopicNav({
   activeTopic?: Topic;
   /** False only on the live front page / topic routes before today's first digest exists — greys out sibling topic links, since those pages would otherwise render empty. Defaults true so every history caller (which never passes this prop) stays ungated — a digest always exists there by construction. */
   digestExistsToday?: boolean;
+  /** False when a parent band is already sticky: two nested sticky offsets fight once the band reaches the end of its container. */
+  pinned?: boolean;
 }) {
   const { navigate } = usePageTransitionActions();
 
@@ -56,9 +59,9 @@ export function TopicNav({
       // two would otherwise fight for the same pixels. Needs its own
       // explicit opaque background for the same reason Masthead does —
       // page content scrolling underneath would otherwise show through.
-      className="sticky z-10 flex flex-wrap justify-center gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10"
+      className={`${pinned ? "sticky z-10" : ""} flex flex-wrap justify-center gap-x-6 gap-y-2 border-b px-6 py-3 md:px-10`}
       style={{
-        top: "var(--masthead-height)",
+        top: pinned ? "var(--masthead-height)" : undefined,
         borderColor: "var(--color-border)",
         background: "var(--color-background)",
       }}

@@ -43,6 +43,7 @@ import { defaultUsageSinks, emitUsageRun } from "@/lib/usageSinks";
 import { toNdjsonStream } from "@/lib/ndjsonStream";
 import { settleThenRelease, settleAbandonedRun } from "@/lib/runCleanup";
 import { memoryMark } from "@/lib/runtimeMemory";
+import { sampleWireTitles } from "@/lib/wireTitles";
 import {
   reserveSpend,
   settleAmount,
@@ -67,7 +68,17 @@ export const maxDuration = 120;
 // fetch API to consume mid-stream than an aborted response.
 type DigestEvent =
   | { stage: "ingesting" }
-  | { stage: "clustering"; articleCount: number }
+  | {
+      stage: "clustering";
+      articleCount: number;
+      /**
+       * Up to 20 of the titles just gathered, spread across reading units
+       * and outlets, for the loading animations to show. Fetched text the
+       * client must render only as plain text. Empty when nothing new was
+       * gathered.
+       */
+      sampleTitles: string[];
+    }
   | { stage: "triaging"; clusterCount: number }
   | { stage: "writing"; notableCount: number }
   | { stage: "ranking" }
@@ -214,7 +225,7 @@ async function* runDigestPipeline(
       longestText: articles.reduce((max, a) => Math.max(max, `${a.title}. ${a.snippet}`.length), 0),
     });
 
-    yield { stage: "clustering", articleCount: articles.length };
+    yield { stage: "clustering", articleCount: articles.length, sampleTitles: sampleWireTitles(articles) };
     const clusters = await clusterArticles(articles);
     shape.clusterCount = clusters.length;
     memoryMark("after cluster", { clusters: clusters.length });

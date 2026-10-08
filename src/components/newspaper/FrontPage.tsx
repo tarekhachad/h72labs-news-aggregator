@@ -1,45 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion, LayoutGroup } from "motion/react";
+import { useReducedMotion, LayoutGroup } from "motion/react";
 import type { Card, Digest, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
 import { PageGrid } from "@/components/newspaper/PageGrid";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusModeProvider, useFocusMode } from "@/components/newspaper/FocusModeContext";
-import {
-  useDigestGeneration,
-  STAGE_ORDER,
-  type Stage,
-} from "@/components/newspaper/DigestGenerationContext";
+import { useDigestGeneration } from "@/components/newspaper/DigestGenerationContext";
+import { EmptyDayEdition } from "@/components/newspaper/EmptyDayEdition";
+import { EditionStrip, editionSummary } from "@/components/newspaper/EditionStrip";
+import { ReadingTips } from "@/components/newspaper/ReadingTips";
+import { runningStageLabel } from "@/components/newspaper/editionStages";
 import { tierForFrontPageRank } from "@/lib/gridTiers";
 import { packGrid } from "@/lib/packGrid";
 import { newRunCardIds } from "@/lib/newRun";
 import { dateInTimeZone } from "@/lib/localDate";
-import { Button } from "@/components/ui/button";
-
-const STAGE_LABEL: Record<Stage, string> = {
-  ingesting: "Gathering articles…",
-  clustering: "Grouping articles into stories…",
-  triaging: "Checking stories for notability…",
-  writing: "Writing cards…",
-  ranking: "Picking today's front page…",
-  done: "Done",
-};
-
-function stageLabel(stage: Stage, event: Record<string, unknown>): string {
-  if (stage === "clustering" && typeof event.articleCount === "number") {
-    return `Grouping ${event.articleCount} articles into stories…`;
-  }
-  if (stage === "triaging" && typeof event.clusterCount === "number") {
-    return `Checking ${event.clusterCount} stories for notability…`;
-  }
-  if (stage === "writing" && typeof event.notableCount === "number") {
-    const n = event.notableCount as number;
-    return `Writing ${n} card${n === 1 ? "" : "s"}…`;
-  }
-  return STAGE_LABEL[stage];
-}
 
 // Stable reference so history pages (which never have pending entrances)
 // pass the same value every render instead of minting a new Map. Nothing
@@ -48,6 +24,7 @@ function stageLabel(stage: Stage, event: Record<string, unknown>): string {
 const EMPTY_ENTRANCES: Map<string, number> = new Map();
 /** Stable no-op for non-interactive pages, which own no entrance state. */
 const NOOP_ENTRANCE_PLAYED = () => {};
+const NO_TITLES: string[] = [];
 
 function frontPageCardsOf(cards: Card[]): Card[] {
   return cards
@@ -60,6 +37,9 @@ function frontPageCardsOf(cards: Card[]): Card[] {
  * "Give me/Complete today's news" generation trigger and its live progress
  * — per Tarek's call, this trigger lives here only (not on every page via
  * the masthead), matching how a real newspaper's daily edition works.
+ * An empty day centres the trigger and shows the typesetting loader while
+ * it runs (EmptyDayEdition); a day with cards pins a slim strip under the
+ * topic bar that turns into a wire ticker (EditionStrip).
  * Replaces the generation half of the old (pre-4.4) Feed.tsx; the topic-tab
  * half is gone — topics are now real routes, navigated via TopicNav.
  */
@@ -69,6 +49,7 @@ export function FrontPage({
   timeZone,
   interactive = true,
   basePath = "",
+  firstEdition = false,
 }: {
   initialDigest: Digest | null;
   userTopics: Topic[];
@@ -78,6 +59,8 @@ export function FrontPage({
   interactive?: boolean;
   /** "/history/2026-08-01" when this is a past date's front page, so TopicNav's links stay scoped to that date. */
   basePath?: string;
+  /** True when the reader has never had an edition, which adds the first-edition notice to an empty day. */
+  firstEdition?: boolean;
 }) {
   const prefersReducedMotion = useReducedMotion();
   const digestGen = useDigestGeneration();
@@ -91,6 +74,7 @@ export function FrontPage({
   const cards = seeded ? (digestGen.cards ?? []) : initialDigest?.cards;
   const loading = seeded ? digestGen.loading : false;
   const stageEvent = seeded ? digestGen.stageEvent : null;
+  const wireTitles = seeded ? digestGen.wireTitles : NO_TITLES;
   const error = seeded ? digestGen.error : null;
   // Cards present on the initial (SSR) render never animate in — only ones
   // that land live via this session's own generation runs, so a page
@@ -124,52 +108,73 @@ export function FrontPage({
 
   const hasDigest = cards !== undefined && cards.length > 0;
 
-  const stageIndex = stageEvent ? STAGE_ORDER.indexOf(stageEvent.stage) : -1;
-  const progressPercent = stageIndex >= 0 ? (stageIndex / (STAGE_ORDER.length - 1)) * 100 : 0;
   const frontPageCards = cards ? frontPageCardsOf(cards) : [];
 
   return (
     <div className="flex flex-col">
-      {/* interactive=false is always a history front page, which always has
-          a digest by construction — only gate on the live page's own
-          reactive hasDigest state. */}
-      <TopicNav topics={userTopics} basePath={basePath} digestExistsToday={interactive ? hasDigest : true} />
+      {/* One sticky band holding the topic bar and, on a live day with
+          cards, the edition strip under it. Pinning the pair together
+          means the strip needs no offset for the topic bar's height, which
+          changes as its topics wrap. The band is the sticky element, so
+          TopicNav isn't pinned on its own inside it. */}
+      <div
+        className="sticky z-10"
+        style={{ top: "var(--masthead-height)", background: "var(--color-background)" }}
+        data-testid="front-sticky-band"
+      >
+        {/* interactive=false is always a history front page, which always
+            has a digest by construction — only gate on the live page's own
+            reactive hasDigest state. */}
+        <TopicNav
+          topics={userTopics}
+          basePath={basePath}
+          digestExistsToday={interactive ? hasDigest : true}
+          pinned={false}
+        />
+        {interactive && hasDigest && (
+          <EditionStrip
+            summary={editionSummary(cards, timeZone)}
+            loading={loading}
+            onStart={digestGen.startGeneration}
+            stageEvent={stageEvent}
+            titles={wireTitles}
+            topicNames={userTopics}
+            reducedMotion={prefersReducedMotion === true}
+          />
+        )}
+      </div>
 
+      {/* The run's one live region, mounted (empty) before any run starts:
+          screen readers tend not to announce a region that appears with its
+          text already in it. The loaders show the same sentence visually. */}
       {interactive && (
-        <div className="flex flex-col items-center gap-4 px-6 py-8 text-center md:px-10">
-          <Button onClick={digestGen.startGeneration} disabled={loading} className="cursor-pointer">
-            {hasDigest ? "Complete today's news" : "Give me today's news"}
-          </Button>
-
-          {loading && (
-            <motion.div
-              className="w-full max-w-xs"
-              initial={prefersReducedMotion ? undefined : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-            >
-              <div
-                className="h-1.5 w-full overflow-hidden rounded-full"
-                style={{ background: "var(--color-muted)" }}
-              >
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${progressPercent}%`, background: "var(--color-primary)" }}
-                />
-              </div>
-              <p className="mt-2 text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-                {stageEvent ? stageLabel(stageEvent.stage, stageEvent) : STAGE_LABEL.ingesting}
-              </p>
-            </motion.div>
-          )}
-
-          {error && (
-            <p className="text-sm" style={{ color: "var(--color-destructive)" }}>
-              {error}
-            </p>
-          )}
-        </div>
+        <p role="status" aria-live="polite" className="sr-only" data-testid="edition-status">
+          {loading ? runningStageLabel(stageEvent) : ""}
+        </p>
       )}
+
+      {interactive && hasDigest && error && (
+        <p className="px-6 pt-3 text-center text-sm md:px-10" style={{ color: "var(--color-destructive)" }}>
+          {error}
+        </p>
+      )}
+
+      {interactive && !hasDigest && (
+        <EmptyDayEdition
+          loading={loading}
+          onStart={digestGen.startGeneration}
+          stageEvent={stageEvent}
+          titles={wireTitles}
+          topicNames={userTopics}
+          // A run that finished with no cards still used one of the reader's
+          // runs, so the "first edition" explanation no longer fits.
+          firstEdition={firstEdition && digestGen.finishedRunDate !== todayKey}
+          error={error}
+          reducedMotion={prefersReducedMotion === true}
+        />
+      )}
+
+      {interactive && hasDigest && <ReadingTips />}
 
       <div className="px-6 pt-4 pb-10 md:px-10">
         {
@@ -197,7 +202,8 @@ export function FrontPage({
                   interactive
                     ? hasDigest
                       ? "No front-page stories yet today."
-                      : "No edition yet today."
+                      : // EmptyDayEdition above already says so.
+                        null
                     : "No edition that day."
                 }
               />
@@ -230,8 +236,8 @@ function FrontPageGrid({
   cards: Card[];
   pendingEntrances: Map<string, number>;
   onEntrancePlayed: (cardId: string) => void;
-  /** Shown when there's genuinely nothing to render — judged after retention, not before. */
-  emptyMessage: string;
+  /** Shown when there's genuinely nothing to render — judged after retention, not before. Null shows nothing. */
+  emptyMessage: string | null;
 }) {
   const { focusedCardId } = useFocusMode();
 
@@ -277,6 +283,7 @@ function FrontPageGrid({
   const newRunIds = newRunCardIds(visibleCards);
 
   if (visibleCards.length === 0) {
+    if (emptyMessage === null) return null;
     return (
       <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
         {emptyMessage}

@@ -23,6 +23,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/profile", () => ({ getUserProfile: mocks.getUserProfile }));
 vi.mock("@/lib/digests", () => ({
   getTodayDigest: vi.fn(async () => null),
+  getLatestGeneratedAtForUser: vi.fn(async () => null),
   getDigestForDate: vi.fn(async () => null),
   getCardsForTopicOnDate: vi.fn(async () => []),
   digestExistsForDate: vi.fn(async () => true),
