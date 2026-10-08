@@ -10,6 +10,7 @@ import {
   isSignupErrorCode,
   parseInviteArgs,
   signupErrorCode,
+  wellFormedEmail,
 } from "@/lib/invite";
 
 describe("generateInviteToken", () => {
@@ -49,16 +50,58 @@ describe("INVITE_TOKEN_PATTERN", () => {
 });
 
 describe("buildInviteLink", () => {
-  it("points at /signup with the token as the invite parameter", () => {
+  it("points at /signup with the token as the invite parameter and the invitee's email", () => {
     const token = generateInviteToken();
-    const link = new URL(buildInviteLink("https://news.h72labs.com", token));
+    const link = new URL(buildInviteLink("https://news.h72labs.com", token, "reader@example.com"));
     expect(link.origin).toBe("https://news.h72labs.com");
     expect(link.pathname).toBe("/signup");
     expect(link.searchParams.get("invite")).toBe(token);
+    expect(link.searchParams.get("email")).toBe("reader@example.com");
   });
 
   it("ignores a trailing slash or path on the base URL", () => {
-    expect(buildInviteLink("http://localhost:3000/", "x")).toBe("http://localhost:3000/signup?invite=x");
+    expect(buildInviteLink("http://localhost:3000/", "x", "a@b.co")).toBe(
+      "http://localhost:3000/signup?invite=x&email=a%40b.co"
+    );
+  });
+
+  it("encodes an address with + so it survives the query string", () => {
+    const link = new URL(buildInviteLink("https://news.h72labs.com", "x", "reader+news@example.com"));
+    expect(link.search).toContain("reader%2Bnews%40example.com");
+    expect(link.searchParams.get("email")).toBe("reader+news@example.com");
+  });
+
+  it("round-trips through what parseInviteArgs produces and the signup page accepts", () => {
+    const parsed = parseInviteArgs(["Reader", "  Reader.Name@Example.COM "]);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const link = new URL(buildInviteLink("https://news.h72labs.com", generateInviteToken(), parsed.args.email));
+    expect(wellFormedEmail(link.searchParams.get("email"))).toBe("reader.name@example.com");
+  });
+});
+
+describe("wellFormedEmail", () => {
+  it.each([
+    ["a plain address", "reader@example.com", "reader@example.com"],
+    ["a plus address", "reader+pna@example.com", "reader+pna@example.com"],
+    ["mixed case, lowercased the way Auth stores it", "Reader@Example.COM", "reader@example.com"],
+  ])("accepts %s", (_, value, expected) => {
+    expect(wellFormedEmail(value)).toBe(expected);
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["null (a missing form field)", null],
+    ["a repeated query key (an array)", ["a@b.co", "c@d.co"]],
+    ["a File-like object", { name: "a@b.co" }],
+    ["empty", ""],
+    ["no @", "reader.example.com"],
+    ["markup", "<script>alert(1)</script>@example.com"],
+    ["quotes and angle brackets", '"x"<a@b.co>'],
+    ["surrounding whitespace", " reader@example.com "],
+    ["an embedded newline", "reader@example.com\nBcc: x@y.co"],
+    ["longer than 254 characters", `${"a".repeat(64)}@${"b".repeat(186)}.com`],
+  ])("rejects %s", (_, value) => {
+    expect(wellFormedEmail(value)).toBeNull();
   });
 });
 

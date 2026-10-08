@@ -3,9 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { PreferencesForm } from "@/components/PreferencesForm";
 import { SubmitButton } from "@/components/SubmitButton";
+import { PasswordInput } from "@/components/PasswordInput";
 import { updatePreferences, changePassword } from "./actions";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
 import { CHANGE_PASSWORD_ERROR_MESSAGES, isChangePasswordErrorCode } from "@/lib/authErrors";
+
+const PASSWORD_FIELD_CLASS = "rounded-xl px-3 py-2 text-sm";
+
+const PASSWORD_FIELD_STYLE = {
+  border: "1px solid var(--color-border)",
+  background: "var(--color-card)",
+  color: "var(--color-card-foreground)",
+} as const;
 
 export default async function ProfilePage({
   searchParams,
@@ -62,42 +71,28 @@ export default async function ProfilePage({
         </div>
 
         <form action={changePassword} className="mx-auto flex w-full max-w-sm flex-col gap-3">
-          <input
-            type="password"
+          <PasswordInput
             name="currentPassword"
             placeholder="Current password"
             autoComplete="current-password"
             required
-            className="rounded-xl px-3 py-2 text-sm"
-            style={{
-              border: "1px solid var(--color-border)",
-              background: "var(--color-card)",
-              color: "var(--color-card-foreground)",
-            }}
+            className={PASSWORD_FIELD_CLASS}
+            style={PASSWORD_FIELD_STYLE}
           />
-          <input
-            type="password"
+          <PasswordInput
             name="newPassword"
             placeholder="New password"
             autoComplete="new-password"
-            className="rounded-xl px-3 py-2 text-sm"
-            style={{
-              border: "1px solid var(--color-border)",
-              background: "var(--color-card)",
-              color: "var(--color-card-foreground)",
-            }}
+            showRule
+            className={PASSWORD_FIELD_CLASS}
+            style={PASSWORD_FIELD_STYLE}
           />
-          <input
-            type="password"
+          <PasswordInput
             name="confirmPassword"
             placeholder="Confirm new password"
             autoComplete="new-password"
-            className="rounded-xl px-3 py-2 text-sm"
-            style={{
-              border: "1px solid var(--color-border)",
-              background: "var(--color-card)",
-              color: "var(--color-card-foreground)",
-            }}
+            className={PASSWORD_FIELD_CLASS}
+            style={PASSWORD_FIELD_STYLE}
           />
 
           {pwErrorMessage && (

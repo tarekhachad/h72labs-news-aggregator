@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/safeNext";
+import { wellFormedEmail } from "@/lib/invite";
+import { CONFIRMED_EMAIL_COOKIE, CONFIRMED_EMAIL_COOKIE_OPTIONS } from "@/app/login/confirmedEmail";
 import { EXPIRED_SESSION_COOKIE, sessionCookieMatcher } from "@/lib/supabase/sessionCookie";
 import {
   RECOVERY_COOKIE,
@@ -71,6 +73,8 @@ export async function GET(request: Request) {
       // topics yet to /onboarding.
       if (type === "email") {
         const confirmed = NextResponse.redirect(`${origin}/login?confirmed=1`);
+        const email = wellFormedEmail(data.user?.email);
+        if (email) confirmed.cookies.set(CONFIRMED_EMAIL_COOKIE, email, CONFIRMED_EMAIL_COOKIE_OPTIONS);
         try {
           const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
           if (signOutError) console.error("[auth/confirm] ending the confirmation session failed:", signOutError);

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+// The page reads the confirmed-email cookie; none is set here.
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 
 const { default: LoginPage } = await import("@/app/login/page");
 

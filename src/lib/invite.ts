@@ -34,10 +34,31 @@ export function hashInviteToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-export function buildInviteLink(baseUrl: string, token: string): string {
+/**
+ * The email rides along so the signup page can show who the invite is for.
+ * It is display only: the hook matches the address actually submitted
+ * against the one stored with the token, whatever the link says.
+ */
+export function buildInviteLink(baseUrl: string, token: string, email: string): string {
   const url = new URL("/signup", baseUrl);
   url.searchParams.set("invite", token);
+  url.searchParams.set("email", email);
   return url.toString();
+}
+
+/** RFC 5321's limit on an address. */
+const MAX_EMAIL_LENGTH = 254;
+
+/**
+ * An address read from somewhere a visitor can edit (the invite link, a
+ * cookie), lowercased the way Auth stores it, or null when it isn't one.
+ * A shape check only: it decides whether to show the value, never whether
+ * the value is right.
+ */
+export function wellFormedEmail(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > MAX_EMAIL_LENGTH) return null;
+  const parsed = z.string().email().safeParse(value);
+  return parsed.success ? parsed.data.toLowerCase() : null;
 }
 
 export function inviteExpiry(now: Date): Date {

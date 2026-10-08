@@ -22,6 +22,11 @@ vi.mock("@supabase/ssr", () => ({
   })),
 }));
 
+// The login page reads the confirmed-email cookie; none is set here.
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({ get: () => undefined, getAll: () => [], set: vi.fn(), delete: vi.fn() })),
+}));
+
 const { proxy } = await import("@/proxy");
 const { GET: confirm } = await import("@/app/auth/confirm/route");
 const { default: LoginPage } = await import("@/app/login/page");

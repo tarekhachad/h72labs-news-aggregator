@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   console.log(`Invite for ${parsed.args.label} <${parsed.args.email}>`);
   console.log(`Expires ${expiresAt.toISOString()}`);
   console.log("");
-  console.log(buildInviteLink(baseUrl, token));
+  console.log(buildInviteLink(baseUrl, token, parsed.args.email));
 }
 
 await main();

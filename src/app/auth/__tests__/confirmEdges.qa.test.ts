@@ -240,10 +240,11 @@ describe("/logout failing does not change where the user goes, and still clears 
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("expiring the confirmation session's cookies threw"), expect.any(Error));
   });
 
-  it("a signOut that returns its failure sets no cookie on the redirect (the store already cleared them)", async () => {
+  // The only cookie on the redirect is the login form's confirmed email.
+  it("a signOut that returns its failure sets no session cookie on the redirect (the store already cleared them)", async () => {
     logoutReply = () => json(500, { msg: "boom" });
     const res = await GET(new Request(`${ORIGIN}/auth/confirm?token_hash=abc&type=email`));
-    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(res.headers.getSetCookie().map((c) => c.split("=")[0])).toEqual(["pna_confirmed_email"]);
     expect(browserSessionCookies(res)).toEqual([]);
   });
 });

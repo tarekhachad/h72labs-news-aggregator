@@ -4,8 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { INVITE_TOKEN_PATTERN, signupErrorCode, type SignupErrorCode } from "@/lib/invite";
+import { INVITE_TOKEN_PATTERN, signupErrorCode, wellFormedEmail, type SignupErrorCode } from "@/lib/invite";
 import { loginErrorCode } from "@/lib/authErrors";
+import { CONFIRMED_EMAIL_COOKIE, CONFIRMED_EMAIL_PATH } from "@/app/login/confirmedEmail";
 import { RECOVERY_COOKIE, recoverySecret, subjectFromClaims, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 
 // A missing field or a submitted File (not a string) would otherwise
@@ -15,14 +16,22 @@ const Credentials = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-function signupRedirect(invite: string, code: SignupErrorCode): never {
-  const params = new URLSearchParams({ invite, error: code });
+/**
+ * Back to the form with the same invite. A locked email stays locked, except
+ * when the hook says it isn't the invite's address: then the lock was wrong,
+ * and the reader gets an editable field, as for a link with no email.
+ */
+function signupRedirect(invite: string, code: SignupErrorCode, invitedEmail: string | null): never {
+  const params = new URLSearchParams({ invite });
+  if (invitedEmail && code !== "invite_email_mismatch") params.set("email", invitedEmail);
+  params.set("error", code);
   redirect(`/signup?${params.toString()}`);
 }
 
 export async function signUp(formData: FormData) {
   const rawInvite = formData.get("invite");
   const invite = typeof rawInvite === "string" ? rawInvite : "";
+  const invitedEmail = wellFormedEmail(formData.get("invitedEmail"));
   // A malformed token can't match any invite, so it is rejected here without
   // a round-trip. This is a shortcut, not the gate: the hook rejects it too.
   if (!INVITE_TOKEN_PATTERN.test(invite)) {
@@ -35,7 +44,7 @@ export async function signUp(formData: FormData) {
   });
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0];
-    signupRedirect(invite, field === "password" ? "weak_password" : "invalid_email");
+    signupRedirect(invite, field === "password" ? "weak_password" : "invalid_email", invitedEmail);
   }
 
   const supabase = await createClient();
@@ -47,7 +56,7 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
-    signupRedirect(invite, signupErrorCode(error.message));
+    signupRedirect(invite, signupErrorCode(error.message), invitedEmail);
   }
 
   // With email confirmation on there is no session yet, so /onboarding — which
@@ -146,6 +155,10 @@ export async function signIn(formData: FormData) {
   if (error) {
     redirect(`/login?error=${loginErrorCode(error)}`);
   }
+
+  // Kept through a failed attempt so the field stays filled; spent once the
+  // reader is in. The path must match the one it was set with.
+  (await cookies()).delete({ name: CONFIRMED_EMAIL_COOKIE, path: CONFIRMED_EMAIL_PATH });
 
   redirect("/");
 }

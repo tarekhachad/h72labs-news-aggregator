@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { resetPassword } from "@/app/auth/actions";
+import { PasswordInput } from "@/components/PasswordInput";
 import { SubmitButton } from "@/components/SubmitButton";
-import { INPUT_CLASS, INPUT_STYLE, SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
+import { SUBMIT_CLASS, SUBMIT_STYLE } from "@/components/authStyles";
 import { RESET_ERROR_MESSAGES, isResetErrorCode } from "@/lib/authErrors";
 import { RECOVERY_COOKIE, recoverySecret, subjectFromClaims, verifyRecoveryMarker } from "@/lib/recoveryMarker";
 import { createClient } from "@/lib/supabase/server";
@@ -30,15 +31,7 @@ export default async function ResetPasswordPage({
       <main className="mx-auto flex max-w-sm flex-col gap-6 px-6 py-24">
         <h1 className="font-heading text-center text-2xl font-semibold">Set a new password</h1>
         <form action={resetPassword} className="flex flex-col gap-4">
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={6}
-            placeholder="New password"
-            className={INPUT_CLASS}
-            style={INPUT_STYLE}
-          />
+          <PasswordInput name="password" required minLength={6} placeholder="New password" showRule />
           {errorMessage && (
             <p className="text-sm" style={{ color: "var(--color-destructive)" }}>
               {errorMessage}

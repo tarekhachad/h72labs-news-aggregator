@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+// The page reads the confirmed-email cookie; none is set here.
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 
 const getClaimsMock = vi.fn();
 vi.mock("@supabase/ssr", () => ({
