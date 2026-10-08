@@ -20,8 +20,13 @@ import {
  * value, so a server action reads the picks with formData.getAll(name).
  *
  * `max` stops further picks in the UI once reached (already-picked items
- * can still be removed). A default selection over `max` is kept as given,
+ * can still be removed). Below `min`, the counter says how many more to pick
+ * instead of "n of max"; nothing is blocked. A default selection over `max` is kept as given,
  * with a notice asking the reader to trim it; the server enforces the limit.
+ *
+ * `itemIcon` draws a decoration before an item's name in its row and its
+ * chip. It is hidden from screen readers, and the search still matches the
+ * name alone.
  *
  * Two pickers can share one limit: each passes `countOf`, which counts both
  * pickers' picks from its own, and the second passes `counterId` to be
@@ -34,12 +39,14 @@ export function MultiSelect<T extends string>({
   hint,
   items,
   defaultValue = [],
+  min,
   max,
   noun,
   placeholder,
   countOf = (picked) => picked.length,
   onValueChange,
   counterId,
+  itemIcon,
 }: {
   id: string
   name: string
@@ -48,6 +55,7 @@ export function MultiSelect<T extends string>({
   hint: string
   items: readonly T[]
   defaultValue?: readonly T[]
+  min?: number
   max?: number
   /** Plural noun for the counter and notices, e.g. "topics". */
   noun: string
@@ -58,6 +66,8 @@ export function MultiSelect<T extends string>({
   onValueChange?: (value: T[]) => void
   /** Id of another picker's counter: this picker then shows no counter or over-limit notice of its own, and is described by that one. */
   counterId?: string
+  /** A decorative mark before each item's name, e.g. a country's flag; it must hide itself from screen readers. */
+  itemIcon?: (item: T) => React.ReactNode
 }) {
   const [value, setValue] = React.useState<T[]>(() => [...defaultValue])
   const chipsRef = React.useRef<HTMLDivElement>(null)
@@ -118,7 +128,7 @@ export function MultiSelect<T extends string>({
             className="text-sm tabular-nums"
             style={{ color: overMax ? "var(--color-destructive)" : "var(--color-muted-foreground)" }}
           >
-            {max === undefined ? `${count} selected` : `${count} of ${max}`}
+            {counterText(count, min, max)}
           </span>
         )}
       </div>
@@ -137,6 +147,7 @@ export function MultiSelect<T extends string>({
         <ComboboxChips ref={chipsRef}>
           {value.map((item) => (
             <ComboboxChip key={item} removeLabel={`Remove ${item}`}>
+              {itemIcon?.(item)}
               {item}
             </ComboboxChip>
           ))}
@@ -157,6 +168,7 @@ export function MultiSelect<T extends string>({
                 value={item}
                 disabled={atMax && !value.includes(item)}
               >
+                {itemIcon?.(item)}
                 {item}
               </ComboboxItem>
             )}
@@ -171,4 +183,13 @@ export function MultiSelect<T extends string>({
       )}
     </div>
   )
+}
+
+function counterText(count: number, min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && count < min) {
+    if (count === 0) return `Pick at least ${min}`
+    const more = min - count
+    return more === 1 ? "Pick at least one more" : `Pick at least ${more} more`
+  }
+  return max === undefined ? `${count} selected` : `${count} of ${max}`
 }

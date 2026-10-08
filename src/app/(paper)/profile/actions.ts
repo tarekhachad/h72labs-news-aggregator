@@ -4,8 +4,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ProfileInput, saveUserProfile } from "@/lib/profile";
 import { changePasswordErrorCode, type ChangePasswordErrorCode } from "@/lib/authErrors";
+import { profileErrorCode, type PreferencesState } from "@/lib/profileErrors";
 
-export async function updatePreferences(formData: FormData) {
+// A refusal is returned rather than redirected, so the form keeps the
+// reader's picks and shows the code's fixed message.
+export async function updatePreferences(
+  _previous: unknown,
+  formData: FormData
+): Promise<PreferencesState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,20 +28,20 @@ export async function updatePreferences(formData: FormData) {
   });
 
   if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Invalid selection";
-    redirect(`/profile?prefsError=${encodeURIComponent(message)}`);
+    return { error: profileErrorCode(parsed.error.issues) };
   }
 
   const { topics, preferredSources, countries } = parsed.data;
 
   const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources, countries);
   if (error) {
-    // A failure after the delete can leave the user with no saved topics;
-    // the page gates (topics.length === 0) then send them to /onboarding
-    // rather than back here. Zero sources alone never does: it is a valid
-    // profile. Fixing the topics case needs an atomic save, which the shared
+    // A failure after the delete can leave the user with no saved topics.
+    // The form still holds their picks, so saving again restores them; a
+    // page visit first sends them to /onboarding (the pages gate on
+    // topics.length === 0). Zero sources alone never does: it is a valid
+    // profile. Closing the gap needs an atomic save, which the shared
     // delete-then-insert path doesn't have.
-    redirect(`/profile?prefsError=${encodeURIComponent(error)}`);
+    return { error: "save_failed" };
   }
 
   redirect("/profile?prefsSaved=1");

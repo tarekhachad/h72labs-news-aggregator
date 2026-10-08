@@ -11,13 +11,12 @@ export default async function ProfilePage({
   searchParams,
 }: {
   searchParams: Promise<{
-    prefsError?: string;
     prefsSaved?: string;
     pwError?: string;
     pwSaved?: string;
   }>;
 }) {
-  const { prefsError, prefsSaved, pwError, pwSaved } = await searchParams;
+  const { prefsSaved, pwError, pwSaved } = await searchParams;
   const pwErrorMessage = isChangePasswordErrorCode(pwError) ? CHANGE_PASSWORD_ERROR_MESSAGES[pwError] : null;
 
   const supabase = await createClient();
@@ -50,13 +49,8 @@ export default async function ProfilePage({
           defaultCountries={countries}
           defaultSources={preferredSources}
           submitLabel="Save preferences"
-          error={prefsError}
+          savedMessage={prefsSaved ? "Preferences saved." : undefined}
         />
-        {prefsSaved && (
-          <p className="text-center text-sm" style={{ color: "#166534" }}>
-            Preferences saved.
-          </p>
-        )}
       </section>
 
       <section

@@ -31,7 +31,7 @@ async function renderForm(defaults: { topics?: Topic[]; sources?: Source[] } = {
   await act(async () => {
     root.render(
       <PreferencesForm
-        action={() => {}}
+        action={async () => {}}
         defaultTopics={defaults.topics}
         defaultSources={defaults.sources}
         submitLabel="Save"

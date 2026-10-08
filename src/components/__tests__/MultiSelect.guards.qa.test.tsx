@@ -30,7 +30,7 @@ afterEach(async () => {
 function form(defaults: { topics?: Topic[]; sources?: Source[] } = {}) {
   return (
     <PreferencesForm
-      action={() => {}}
+      action={async () => {}}
       defaultTopics={defaults.topics}
       defaultSources={defaults.sources}
       submitLabel="Save"

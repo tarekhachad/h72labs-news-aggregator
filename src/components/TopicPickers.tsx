@@ -4,7 +4,18 @@ import { useState } from "react";
 import { TOPICS, type Topic } from "@/types";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { countryCode, type CountryCode } from "@/config/countryCodes";
 import { MAX_READING_UNITS, MIN_READING_UNITS, countReadingUnits } from "@/lib/readingUnits";
+// One named import per flag, so the bundle carries these 99 and not the
+// package's other ~160.
+import {
+  AF, AR, AT, AU, BD, BF, BG, BR, BW, CA, CD, CH, CI, CL, CM, CN, CR, CU, CY, CZ, DE, DK, DO,
+  DZ, EG, ES, ET, FI, FR, GB, GH, GM, GR, GT, HK, HR, HU, ID, IE, IL, IN, IQ, IR, IS, IT, JO,
+  JP, KE, KH, KP, KR, KZ, LB, LV, LY, MA, ML, MM, MT, MX, MY, MZ, NA, NG, NI, NO, NP, NZ, PA,
+  PE, PH, PK, PL, PR, PS, PT, RO, RS, RU, RW, SD, SE, SG, SK, SN, SY, TH, TN, TR, TZ, UA, UG,
+  US, UY, UZ, VE, ZA, ZM, ZW,
+  type FlagComponent,
+} from "country-flag-icons/react/3x2";
 
 const TOPICS_ID = "preferences-topics";
 const COUNTER_ID = `${TOPICS_ID}-count`;
@@ -12,6 +23,34 @@ const COUNTER_ID = `${TOPICS_ID}-count`;
 // Countries isn't offered as a topic: the server saves it exactly when a
 // country is picked (ProfileInput in src/lib/profile.ts).
 const PICKABLE_TOPICS = TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC);
+
+// Typed over every code, so a country added to COUNTRY_CODES without its
+// flag here fails the typecheck.
+const FLAGS: Record<CountryCode, FlagComponent> = {
+  AF, AR, AT, AU, BD, BF, BG, BR, BW, CA, CD, CH, CI, CL, CM, CN, CR, CU, CY, CZ, DE, DK, DO,
+  DZ, EG, ES, ET, FI, FR, GB, GH, GM, GR, GT, HK, HR, HU, ID, IE, IL, IN, IQ, IR, IS, IT, JO,
+  JP, KE, KH, KP, KR, KZ, LB, LV, LY, MA, ML, MM, MT, MX, MY, MZ, NA, NG, NI, NO, NP, NZ, PA,
+  PE, PH, PK, PL, PR, PS, PT, RO, RS, RU, RW, SD, SE, SG, SK, SN, SY, TH, TN, TR, TZ, UA, UG,
+  US, UY, UZ, VE, ZA, ZM, ZW,
+};
+
+// An SVG rather than an emoji flag: Windows draws emoji flags as two letters.
+// Decorative, so screen readers read only the name beside it. The ring keeps
+// white-edged flags (Japan, Cyprus) visible on a white list.
+function countryFlag(country: string) {
+  const code = countryCode(country);
+  if (code === null) return null;
+  const Flag = FLAGS[code];
+  return (
+    <Flag
+      aria-hidden="true"
+      focusable="false"
+      data-slot="country-flag"
+      className="h-3 w-[18px] shrink-0 rounded-[2px]"
+      style={{ boxShadow: "0 0 0 1px var(--color-border)" }}
+    />
+  );
+}
 
 // Counts as the server will save it, with the Countries topic added when
 // there are countries, so countReadingUnits stays the one counting rule.
@@ -47,6 +86,7 @@ export function TopicPickers({
         hint={`Pick ${MIN_READING_UNITS} to ${MAX_READING_UNITS}. Type to search, or scroll the list.`}
         items={PICKABLE_TOPICS}
         defaultValue={savedTopics}
+        min={MIN_READING_UNITS}
         max={MAX_READING_UNITS}
         noun={countries.length > 0 ? "topics and countries" : "topics"}
         placeholder="Search topics"
@@ -67,6 +107,7 @@ export function TopicPickers({
         countOf={(picked) => unitsOf(topics, picked)}
         onValueChange={setCountries}
         counterId={COUNTER_ID}
+        itemIcon={countryFlag}
       />
     </div>
   );

@@ -36,7 +36,7 @@ async function renderForm(defaults: { topics?: Topic[]; sources?: Source[] } = {
   await act(async () => {
     root.render(
       <PreferencesForm
-        action={(formData) => {
+        action={async (_previous, formData) => {
           submitted.push(formData);
         }}
         defaultTopics={defaults.topics}
@@ -128,7 +128,7 @@ describe("PreferencesForm pickers", () => {
       `Pick 3 to ${MAX_TOPICS}`
     );
     expect(document.getElementById("preferences-sources-hint")!.textContent).toContain("Optional");
-    expect(counter(topicsInput())).toBe(`0 of ${MAX_TOPICS}`);
+    expect(counter(topicsInput())).toBe("Pick at least 3");
     expect(counter(sourcesInput())).toBe("0 selected");
   });
 
@@ -152,7 +152,7 @@ describe("PreferencesForm pickers", () => {
     expect(chipLabels(topicsInput())).toEqual([TOPICS[2]]);
     expect(fieldValues("topics")).toEqual([TOPICS[2]]);
     expect(option(TOPICS[2])!.getAttribute("aria-selected")).toBe("true");
-    expect(counter(topicsInput())).toBe(`1 of ${MAX_TOPICS}`);
+    expect(counter(topicsInput())).toBe("Pick at least 2 more");
   });
 
   it("filters as you type, and shows a no-match row when nothing matches", async () => {

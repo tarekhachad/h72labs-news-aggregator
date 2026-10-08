@@ -34,7 +34,7 @@ async function renderForm(defaults: { topics?: Topic[]; countries?: string[] } =
   await act(async () => {
     root.render(
       <PreferencesForm
-        action={(formData) => {
+        action={async (_previous, formData) => {
           submitted.push(formData);
         }}
         defaultTopics={defaults.topics}
@@ -249,7 +249,7 @@ describe("QA: cross-picker state", () => {
 
   it("a saved Countries topic with zero countries adds nothing to the counter and shows no chip", async () => {
     await renderForm({ topics: [...topicsList.slice(0, 2), COUNTRIES_TOPIC] });
-    expect(counter()).toBe("2 of 10");
+    expect(counter()).toBe("Pick at least one more");
     expect(fieldValues("topics")).toEqual(topicsList.slice(0, 2));
   });
 

@@ -4,6 +4,7 @@ import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
 import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
 import { DEFAULT_TIME_ZONE } from "@/lib/localDate";
 import { MAX_READING_UNITS, MIN_READING_UNITS, countReadingUnits } from "@/lib/readingUnits";
+import type { ProfileErrorCode } from "@/lib/profileErrors";
 
 // Shared by onboarding and the profile/edit page's Server Actions — kept out
 // of those "use server" files since such files may only export async
@@ -28,6 +29,14 @@ export const MAX_TOPICS = MAX_READING_UNITS;
 
 const dedupe = <T>(values: T[]): T[] => Array.from(new Set(values));
 
+// Each refusal carries the code the form shows its fixed message by
+// (profileErrorCode in src/lib/profileErrors.ts). The zod message itself never
+// reaches the reader.
+function refuse(ctx: z.RefinementCtx, code: ProfileErrorCode, message: string): typeof z.NEVER {
+  ctx.addIssue({ code: "custom", message, params: { code } });
+  return z.NEVER;
+}
+
 export const ProfileInput = z
   .object({
     topics: z.array(z.enum(TOPICS)).transform(dedupe),
@@ -38,10 +47,7 @@ export const ProfileInput = z
   })
   .transform((input, ctx) => {
     const unknown = input.countries.find((country) => !COUNTRIES.includes(country));
-    if (unknown !== undefined) {
-      ctx.addIssue({ code: "custom", message: `${unknown} isn't a country you can pick` });
-      return z.NEVER;
-    }
+    if (unknown !== undefined) return refuse(ctx, "unknown_country", `${unknown} isn't a country you can pick`);
 
     // The reader never picks Countries itself: it is saved exactly when a
     // country is picked, so the topic and its countries can't disagree. A
@@ -55,14 +61,8 @@ export const ProfileInput = z
     // country enough, and 8 topics plus 3 countries too many.
     const units = countReadingUnits(topics, input.countries);
     const counted = withCountries ? " topics and countries (each country counts as one)" : " topics";
-    if (units < MIN_TOPICS) {
-      ctx.addIssue({ code: "custom", message: `Pick at least ${MIN_TOPICS}${counted}` });
-      return z.NEVER;
-    }
-    if (units > MAX_TOPICS) {
-      ctx.addIssue({ code: "custom", message: `Pick at most ${MAX_TOPICS}${counted}` });
-      return z.NEVER;
-    }
+    if (units < MIN_TOPICS) return refuse(ctx, "too_few", `Pick at least ${MIN_TOPICS}${counted}`);
+    if (units > MAX_TOPICS) return refuse(ctx, "too_many", `Pick at most ${MAX_TOPICS}${counted}`);
 
     return { topics, preferredSources: input.preferredSources, countries: input.countries };
   });

@@ -1,13 +1,7 @@
 import { PreferencesForm } from "@/components/PreferencesForm";
 import { saveProfile } from "./actions";
 
-export default async function OnboardingPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const { error } = await searchParams;
-
+export default function OnboardingPage() {
   return (
     <div className="min-h-screen">
       <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-16">
@@ -18,7 +12,7 @@ export default async function OnboardingPage({
           </p>
         </div>
 
-        <PreferencesForm action={saveProfile} submitLabel="Save and continue" error={error} />
+        <PreferencesForm action={saveProfile} submitLabel="Save and continue" />
       </main>
     </div>
   );

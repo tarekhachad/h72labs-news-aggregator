@@ -42,7 +42,7 @@ async function renderForm(
   await act(async () => {
     root.render(
       <PreferencesForm
-        action={(formData) => {
+        action={async (_previous, formData) => {
           submitted.push(formData);
         }}
         defaultTopics={defaults.topics && [...defaults.topics]}

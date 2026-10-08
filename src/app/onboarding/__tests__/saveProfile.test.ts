@@ -3,8 +3,8 @@ import { SOURCES, TOPICS } from "@/types";
 
 // Both preference actions parse the same FormData shape with ProfileInput
 // and hand the result to saveUserProfile. These check the action-level
-// outcomes of the 3-to-10 topic rule and optional sources: where each case
-// redirects, and what reaches the save.
+// outcomes of the 3-to-10 topic rule and optional sources: where a save
+// redirects, which code a refusal returns, and what reaches the save.
 
 const mocks = vi.hoisted(() => ({
   redirect: vi.fn((url: string) => {
@@ -48,16 +48,15 @@ beforeEach(() => {
 });
 
 const actions = [
-  { name: "onboarding saveProfile", action: saveProfile, ok: "/", errorBase: "/onboarding?error=" },
+  { name: "onboarding saveProfile", run: (f: FormData) => saveProfile(null, f), ok: "/" },
   {
     name: "profile updatePreferences",
-    action: updatePreferences,
+    run: (f: FormData) => updatePreferences(null, f),
     ok: "/profile?prefsSaved=1",
-    errorBase: "/profile?prefsError=",
   },
 ];
 
-describe.each(actions)("$name", ({ action, ok, errorBase }) => {
+describe.each(actions)("$name", ({ run: action, ok }) => {
   it("saves 3 topics with zero sources", async () => {
     await expect(action(form(TOPICS.slice(0, 3), []))).rejects.toThrow(`REDIRECT:${ok}`);
     expect(mocks.saveUserProfile).toHaveBeenCalledWith(
@@ -82,17 +81,13 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
     );
   });
 
-  it("sends 2 topics back with the minimum message, saving nothing", async () => {
-    await expect(action(form(TOPICS.slice(0, 2), []))).rejects.toThrow(
-      `REDIRECT:${errorBase}${encodeURIComponent("Pick at least 3 topics")}`
-    );
+  it("refuses 2 topics with too_few, saving nothing", async () => {
+    await expect(action(form(TOPICS.slice(0, 2), []))).resolves.toEqual({ error: "too_few" });
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
-  it("sends 11 topics back with the maximum message, saving nothing", async () => {
-    await expect(action(form(TOPICS.slice(0, 11), []))).rejects.toThrow(
-      `REDIRECT:${errorBase}${encodeURIComponent("Pick at most 10 topics")}`
-    );
+  it("refuses 11 topics with too_many, saving nothing", async () => {
+    await expect(action(form(TOPICS.slice(0, 11), []))).resolves.toEqual({ error: "too_many" });
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
@@ -119,12 +114,10 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
     );
   });
 
-  it("sends 8 topics plus 3 countries back with the maximum message, saving nothing", async () => {
+  it("refuses 8 topics plus 3 countries with too_many, saving nothing", async () => {
     await expect(
       action(form([...nonCountry.slice(0, 8), "Countries"], [], ["Uganda", "Kenya", "Morocco"]))
-    ).rejects.toThrow(
-      `REDIRECT:${errorBase}${encodeURIComponent("Pick at most 10 topics and countries (each country counts as one)")}`
-    );
+    ).resolves.toEqual({ error: "too_many" });
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
@@ -139,10 +132,35 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
     );
   });
 
-  it("sends an unknown country back with its message, saving nothing", async () => {
-    await expect(action(form(nonCountry.slice(0, 3), [], ["Atlantis"]))).rejects.toThrow(
-      `REDIRECT:${errorBase}${encodeURIComponent("Atlantis isn't a country you can pick")}`
-    );
+  it("refuses an unknown country with unknown_country, without echoing it, saving nothing", async () => {
+    const result = await action(form(nonCountry.slice(0, 3), [], ["Atlantis"]));
+    expect(result).toEqual({ error: "unknown_country" });
+    expect(JSON.stringify(result)).not.toContain("Atlantis");
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unknown topic with unknown_topic, saving nothing", async () => {
+    await expect(action(form([...nonCountry.slice(0, 3), "<b>Crafted</b>"], []))).resolves.toEqual({
+      error: "unknown_topic",
+    });
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unknown source with unknown_source, saving nothing", async () => {
+    await expect(action(form(nonCountry.slice(0, 3), ["Not A Source"]))).resolves.toEqual({
+      error: "unknown_source",
+    });
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("returns save_failed, not the save's text, when the save fails", async () => {
+    mocks.saveUserProfile.mockResolvedValue({ error: "database said something" });
+    await expect(action(form(nonCountry.slice(0, 3), []))).resolves.toEqual({ error: "save_failed" });
+  });
+
+  it("checks the session first: no user redirects to /login before anything is parsed or saved", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null } });
+    await expect(action(form(TOPICS.slice(0, 2), []))).rejects.toThrow("REDIRECT:/login");
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 });

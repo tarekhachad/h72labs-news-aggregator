@@ -3,8 +3,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ProfileInput, saveUserProfile } from "@/lib/profile";
+import { profileErrorCode, type PreferencesState } from "@/lib/profileErrors";
 
-export async function saveProfile(formData: FormData) {
+// A refusal is returned rather than redirected, so the form keeps the
+// reader's picks and shows the code's fixed message.
+export async function saveProfile(_previous: unknown, formData: FormData): Promise<PreferencesState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,15 +24,14 @@ export async function saveProfile(formData: FormData) {
   });
 
   if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Invalid selection";
-    redirect(`/onboarding?error=${encodeURIComponent(message)}`);
+    return { error: profileErrorCode(parsed.error.issues) };
   }
 
   const { topics, preferredSources, countries } = parsed.data;
 
   const { error } = await saveUserProfile(supabase, user.id, topics, preferredSources, countries);
   if (error) {
-    redirect(`/onboarding?error=${encodeURIComponent(error)}`);
+    return { error: "save_failed" };
   }
 
   redirect("/");
