@@ -13,6 +13,9 @@ import { PreferencesForm } from "@/components/PreferencesForm";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// The topics list offers every topic but Countries, which has its own picker.
+const PICKABLE_TOPICS = TOPICS.filter((t) => t !== "Countries");
+
 let container: HTMLDivElement;
 let root: Root;
 let submitted: FormData[];
@@ -136,7 +139,7 @@ describe("PreferencesForm pickers", () => {
     const listbox = document.querySelector('[role="listbox"]')!;
     expect(listbox.getAttribute("aria-label")).toBe("Topics");
     expect(listbox.getAttribute("aria-multiselectable")).toBe("true");
-    expect(optionLabels()).toEqual(TOPICS);
+    expect(optionLabels()).toEqual(PICKABLE_TOPICS);
   });
 
   it("selects an item with a click, showing a chip and a form value", async () => {
@@ -161,7 +164,7 @@ describe("PreferencesForm pickers", () => {
     await type(input, target.slice(0, Math.min(target.length, 6)));
     const narrowed = optionLabels();
     expect(narrowed).toContain(target);
-    expect(narrowed.length).toBeLessThan(TOPICS.length);
+    expect(narrowed.length).toBeLessThan(PICKABLE_TOPICS.length);
     for (const label of narrowed) {
       expect(label!.toLowerCase()).toContain(target.slice(0, 6).toLowerCase());
     }
@@ -171,7 +174,7 @@ describe("PreferencesForm pickers", () => {
     expect(document.querySelector('[data-slot="combobox-empty"]')!.textContent).toBe("No match.");
 
     await type(input, "");
-    expect(optionLabels()).toEqual(TOPICS);
+    expect(optionLabels()).toEqual(PICKABLE_TOPICS);
     expect(document.querySelector('[data-slot="combobox-empty"]')!.textContent).toBe("");
   });
 

@@ -90,7 +90,10 @@ export async function proxy(request: NextRequest) {
   const isAuthed = !!data?.claims;
   // Exact match, not startsWith — a prefix check would also match a future
   // route like "/login-foo" as "public" by accident.
-  const isPublicPath = PUBLIC_PATHS.includes(request.nextUrl.pathname);
+  const isPublicPath =
+    PUBLIC_PATHS.includes(request.nextUrl.pathname) ||
+    // The fixture page shows sample cards with no account; it exists only under `next dev`.
+    (process.env.NODE_ENV === "development" && request.nextUrl.pathname === "/dev/fixtures");
   // API routes authenticate themselves and return a proper status code
   // (e.g. POST /api/digest's own getUser() check) rather than a page
   // redirect — a 307 to /login doesn't degrade cleanly for a fetch() call

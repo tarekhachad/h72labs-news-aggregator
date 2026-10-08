@@ -65,16 +65,16 @@ describe("QA: ProfileInput country edge cases", () => {
     );
   });
 
-  it("10 plain topics + Countries with NO country: refused for the missing country, not silently 10", () => {
-    expect(msg(parse([...plain.slice(0, 10), "Countries"], []))).toBe(
-      "Pick at least one country, or remove Countries"
-    );
+  it("10 plain topics + Countries with NO country: the 10 topics save, without Countries", () => {
+    const r = parse([...plain.slice(0, 10), "Countries"], []);
+    expect(r.success).toBe(true);
+    expect(r.data?.topics).toEqual(plain.slice(0, 10));
   });
 
   it("a repeated Countries topic is counted once and countries still count", () => {
     const r = parse(["Countries", "Countries", plain[0]], ["Kenya", "Uganda"]);
     expect(r.success).toBe(true);
-    expect(r.data?.topics).toEqual(["Countries", plain[0]]);
+    expect(r.data?.topics).toEqual([plain[0], "Countries"]);
   });
 
   it("only duplicates of one country cannot make up the minimum", () => {
@@ -116,7 +116,7 @@ describe("QA: ProfileInput country edge cases", () => {
     expect(parse(plain.slice(0, 3), null as unknown as unknown[]).success).toBe(false);
   });
 
-  it("a File entry in countries WITHOUT the Countries topic is refused (not dropped like a stale string)", () => {
+  it("a File entry in countries WITHOUT the Countries topic is refused", () => {
     // QA finding (low): the element type is checked before the Countries
     // gate, so a non-string entry refuses a plain-topics save.
     const r = parse(plain.slice(0, 3), [new File([], "x")]);
@@ -212,13 +212,50 @@ describe("QA: save/load round trips through ProfileInput", () => {
     expect(db.tables.user_subtopics).toHaveLength(2);
   });
 
-  it("unticking Countries clears its rows and the load returns none", async () => {
+  it("removing every country clears its rows and the Countries topic, and the load returns none", async () => {
     const db = fakeDb();
-    await saveViaForm(db, { topics: ["Countries", plain[0]], countries: ["Kenya", "Uganda"] });
-    await saveViaForm(db, { topics: plain.slice(0, 3), countries: ["Kenya", "Uganda"] });
+    await saveViaForm(db, { topics: [plain[0]], countries: ["Kenya", "Uganda"] });
+    await saveViaForm(db, { topics: plain.slice(0, 3), countries: [] });
     expect(db.tables.user_subtopics).toEqual([]);
     expect(db.ops).not.toContain("insert user_subtopics 0");
-    expect((await getUserProfile(db.client, db.uid)).countries).toEqual([]);
+    const loaded = await getUserProfile(db.client, db.uid);
+    expect(loaded.countries).toEqual([]);
+    expect(loaded.topics).not.toContain("Countries");
+  });
+
+  it("picking countries without Countries saves the topic with them", async () => {
+    const db = fakeDb();
+    await saveViaForm(db, { topics: [plain[0], plain[1]], countries: ["Ghana"] });
+    expect(db.tables.user_topics.map((r) => r.topic).sort()).toEqual([plain[0], plain[1], "Countries"].sort());
+    const loaded = await getUserProfile(db.client, db.uid);
+    expect(loaded.topics).toContain("Countries");
+    expect(loaded.countries).toEqual(["Ghana"]);
+  });
+
+  it("a profile saved with Countries and countries re-saves to the same rows from what the form sends", async () => {
+    const db = fakeDb({
+      topics: [plain[0], "Countries", plain[1]],
+      sources: ["BBC"],
+      subtopics: [
+        { topic: "Countries", subtopic: "Uganda" },
+        { topic: "Countries", subtopic: "Kenya" },
+      ],
+    });
+    const rows = () => ({
+      topics: db.tables.user_topics.map((r) => r.topic).sort(),
+      sources: db.tables.user_preferred_sources.map((r) => r.source).sort(),
+      subtopics: db.tables.user_subtopics.map((r) => `${r.topic}|${r.subtopic}`).sort(),
+    });
+    const before = rows();
+    const loaded = await getUserProfile(db.client, db.uid);
+    // The form has no Countries chip: it sends the other topics and the countries.
+    const parsed = ProfileInput.parse({
+      topics: loaded.topics.filter((t) => t !== "Countries"),
+      preferredSources: loaded.preferredSources,
+      countries: loaded.countries,
+    });
+    await saveUserProfile(db.client, db.uid, parsed.topics, parsed.preferredSources, parsed.countries);
+    expect(rows()).toEqual(before);
   });
 
   it("only this user's rows are deleted", async () => {

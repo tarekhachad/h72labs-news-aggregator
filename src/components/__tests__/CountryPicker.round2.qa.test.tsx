@@ -145,13 +145,13 @@ describe("QA round 2: duplicate saved countries", () => {
     await act(async () => input.focus());
     await key(input, "Backspace");
     expect(fieldValues("countries")).toEqual([]);
-    expect(fieldValues("topics")).toContain(COUNTRIES_TOPIC);
+    expect(fieldValues("topics")).not.toContain(COUNTRIES_TOPIC);
     expect(counter()).toBe("3 of 10");
   });
 
-  it("duplicates without the Countries topic are still dropped", async () => {
+  it("duplicates without the Countries topic are collapsed too", async () => {
     await renderForm({ topics: topicsList.slice(0, 3), countries: ["Kenya", "Kenya"] });
-    expect(countriesInput()).toBeNull();
-    expect(fieldValues("countries")).toEqual([]);
+    expect(fieldValues("countries")).toEqual(["Kenya"]);
+    expect(counter()).toBe("4 of 10");
   });
 });

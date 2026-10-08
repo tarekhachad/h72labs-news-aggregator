@@ -108,11 +108,15 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
     );
   });
 
-  it("sends Countries with no country back with its message, saving nothing", async () => {
-    await expect(action(form([...nonCountry.slice(0, 3), "Countries"], []))).rejects.toThrow(
-      `REDIRECT:${errorBase}${encodeURIComponent("Pick at least one country, or remove Countries")}`
+  it("saves Countries sent with no country as no Countries", async () => {
+    await expect(action(form([...nonCountry.slice(0, 3), "Countries"], []))).rejects.toThrow(`REDIRECT:${ok}`);
+    expect(mocks.saveUserProfile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      nonCountry.slice(0, 3),
+      [],
+      []
     );
-    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
   it("sends 8 topics plus 3 countries back with the maximum message, saving nothing", async () => {
@@ -124,14 +128,21 @@ describe.each(actions)("$name", ({ action, ok, errorBase }) => {
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
-  it("drops countries sent without the Countries topic", async () => {
-    await expect(action(form(nonCountry.slice(0, 3), [], ["Kenya"]))).rejects.toThrow(`REDIRECT:${ok}`);
+  it("saves the Countries topic with countries sent without it, as the form sends them", async () => {
+    await expect(action(form(nonCountry.slice(0, 2), [], ["Kenya"]))).rejects.toThrow(`REDIRECT:${ok}`);
     expect(mocks.saveUserProfile).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      nonCountry.slice(0, 3),
+      [...nonCountry.slice(0, 2), "Countries"],
       [],
-      []
+      ["Kenya"]
     );
+  });
+
+  it("sends an unknown country back with its message, saving nothing", async () => {
+    await expect(action(form(nonCountry.slice(0, 3), [], ["Atlantis"]))).rejects.toThrow(
+      `REDIRECT:${errorBase}${encodeURIComponent("Atlantis isn't a country you can pick")}`
+    );
+    expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 });

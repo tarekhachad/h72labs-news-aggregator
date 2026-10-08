@@ -9,11 +9,21 @@ import { MAX_READING_UNITS, MIN_READING_UNITS, countReadingUnits } from "@/lib/r
 const TOPICS_ID = "preferences-topics";
 const COUNTER_ID = `${TOPICS_ID}-count`;
 
+// Countries isn't offered as a topic: the server saves it exactly when a
+// country is picked (ProfileInput in src/lib/profile.ts).
+const PICKABLE_TOPICS = TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC);
+
+// Counts as the server will save it, with the Countries topic added when
+// there are countries, so countReadingUnits stays the one counting rule.
+function unitsOf(topics: readonly Topic[], countries: readonly string[]): number {
+  return countReadingUnits(countries.length > 0 ? [...topics, COUNTRIES_TOPIC] : topics, countries);
+}
+
 /**
- * The topics picker and, while Countries is picked, a countries picker right
- * below it. Both share one counter and one limit, in reading units: each
- * country counts as one, the Countries topic itself as nothing. They submit
- * as repeated `topics` / `countries` form fields.
+ * The topics picker and, always below it, the optional countries picker.
+ * Both share one counter and one limit, in reading units: each topic and each
+ * country counts as one. They submit as repeated `topics` / `countries` form
+ * fields; picking a country is what turns the Countries page on.
  */
 export function TopicPickers({
   defaultTopics = [],
@@ -22,19 +32,11 @@ export function TopicPickers({
   defaultTopics?: Topic[];
   defaultCountries?: string[];
 }) {
-  const [topics, setTopics] = useState<Topic[]>(defaultTopics);
-  // Countries saved without the Countries topic have nothing to show in.
-  const [countries, setCountries] = useState<string[]>(() =>
-    defaultTopics.includes(COUNTRIES_TOPIC) ? [...new Set(defaultCountries)] : []
-  );
-  const countriesPicked = topics.includes(COUNTRIES_TOPIC);
-
-  function handleTopicsChange(next: Topic[]) {
-    setTopics(next);
-    // Unpicking Countries drops its countries, so picking it again starts
-    // empty instead of bringing back picks the count no longer has room for.
-    if (!next.includes(COUNTRIES_TOPIC)) setCountries([]);
-  }
+  // A saved profile with countries also has the Countries topic, which has no
+  // chip to show in: its countries stand for it.
+  const savedTopics = defaultTopics.filter((topic) => topic !== COUNTRIES_TOPIC);
+  const [topics, setTopics] = useState<Topic[]>(savedTopics);
+  const [countries, setCountries] = useState<string[]>(() => [...new Set(defaultCountries)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,31 +45,29 @@ export function TopicPickers({
         name="topics"
         label="Topics"
         hint={`Pick ${MIN_READING_UNITS} to ${MAX_READING_UNITS}. Type to search, or scroll the list.`}
-        items={TOPICS}
-        defaultValue={defaultTopics}
+        items={PICKABLE_TOPICS}
+        defaultValue={savedTopics}
         max={MAX_READING_UNITS}
-        noun={countriesPicked ? "topics and countries" : "topics"}
+        noun={countries.length > 0 ? "topics and countries" : "topics"}
         placeholder="Search topics"
-        countOf={(picked) => countReadingUnits(picked, countries)}
-        onValueChange={handleTopicsChange}
+        countOf={(picked) => unitsOf(picked, countries)}
+        onValueChange={setTopics}
       />
 
-      {countriesPicked && (
-        <MultiSelect
-          id="preferences-countries"
-          name="countries"
-          label="Countries"
-          hint={`Each country counts as one of your ${MAX_READING_UNITS}.`}
-          items={COUNTRIES}
-          defaultValue={countries}
-          max={MAX_READING_UNITS}
-          noun="countries"
-          placeholder="Search countries"
-          countOf={(picked) => countReadingUnits(topics, picked)}
-          onValueChange={setCountries}
-          counterId={COUNTER_ID}
-        />
-      )}
+      <MultiSelect
+        id="preferences-countries"
+        name="countries"
+        label="Countries (optional)"
+        hint={`Each country counts as one of your ${MAX_READING_UNITS}.`}
+        items={COUNTRIES}
+        defaultValue={countries}
+        max={MAX_READING_UNITS}
+        noun="countries"
+        placeholder="Search countries"
+        countOf={(picked) => unitsOf(topics, picked)}
+        onValueChange={setCountries}
+        counterId={COUNTER_ID}
+      />
     </div>
   );
 }

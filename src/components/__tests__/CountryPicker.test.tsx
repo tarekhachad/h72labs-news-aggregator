@@ -118,24 +118,21 @@ async function submit() {
 const plainTopics = TOPICS.filter((t) => t !== COUNTRIES_TOPIC);
 
 describe("the countries picker", () => {
-  it("offers Countries among the topics and shows no countries picker until it is picked", async () => {
+  it("offers no Countries topic, and shows the countries picker from the start, empty", async () => {
     await renderForm({ topics: plainTopics.slice(0, 3) });
     await open(topicsInput());
-    expect(optionLabels()).toContain(COUNTRIES_TOPIC);
-    expect(countriesInput()).toBeNull();
+    expect(optionLabels()).not.toContain(COUNTRIES_TOPIC);
+    expect(optionLabels()).toEqual(plainTopics);
+    expect(countriesInput()).not.toBeNull();
     expect(fieldValues("countries")).toEqual([]);
   });
 
-  it("appears right below the topics picker when Countries is picked, which adds nothing to the count", async () => {
+  it("sits right below the topics picker, reads as optional, and shares its counter", async () => {
     await renderForm({ topics: plainTopics.slice(0, 3) });
     expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
 
-    await pickWithClick(topicsInput(), COUNTRIES_TOPIC);
-    expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
-
     const input = countriesInput()!;
-    expect(input).not.toBeNull();
-    expect(document.querySelector('label[for="preferences-countries"]')!.textContent).toBe("Countries");
+    expect(document.querySelector('label[for="preferences-countries"]')!.textContent).toBe("Countries (optional)");
     // Right below: the next picker in document order after the topics one.
     const comboboxes = [...container.querySelectorAll('[role="combobox"]')];
     expect(comboboxes.indexOf(input)).toBe(comboboxes.indexOf(topicsInput()) + 1);
@@ -151,8 +148,8 @@ describe("the countries picker", () => {
     expect(optionLabels()).toEqual([...COUNTRIES]);
   });
 
-  it("submits one countries field per pick, and each country counts as one", async () => {
-    await renderForm({ topics: [...plainTopics.slice(0, 3), COUNTRIES_TOPIC] });
+  it("submits one countries field per pick and no Countries topic, and each country counts as one", async () => {
+    await renderForm({ topics: plainTopics.slice(0, 3) });
     const input = countriesInput()!;
     await pickWithClick(input, COUNTRIES[1]);
     await pickWithClick(input, COUNTRIES[3]);
@@ -162,7 +159,7 @@ describe("the countries picker", () => {
 
     const formData = await submit();
     expect(formData.getAll("countries")).toEqual([COUNTRIES[1], COUNTRIES[3]]);
-    expect(formData.getAll("topics")).toEqual([...plainTopics.slice(0, 3), COUNTRIES_TOPIC]);
+    expect(formData.getAll("topics")).toEqual(plainTopics.slice(0, 3));
   });
 
   it("picks a country from the keyboard while searching without submitting", async () => {
@@ -177,8 +174,8 @@ describe("the countries picker", () => {
   });
 
   it(`disables picks in both pickers once topics and countries reach ${MAX_READING_UNITS}`, async () => {
-    const topics = [...plainTopics.slice(0, MAX_READING_UNITS - 3), COUNTRIES_TOPIC];
-    await renderForm({ topics, countries: COUNTRIES.slice(0, 2) });
+    const topics = plainTopics.slice(0, MAX_READING_UNITS - 3);
+    await renderForm({ topics: [...topics, COUNTRIES_TOPIC], countries: COUNTRIES.slice(0, 2) });
     expect(counter()).toBe(`${MAX_READING_UNITS - 1} of ${MAX_READING_UNITS}`);
 
     await pickWithClick(countriesInput()!, COUNTRIES[2]);
@@ -204,8 +201,8 @@ describe("the countries picker", () => {
   });
 
   it("frees a slot in the topics picker when a country is removed", async () => {
-    const topics = [...plainTopics.slice(0, MAX_READING_UNITS - 2), COUNTRIES_TOPIC];
-    await renderForm({ topics, countries: COUNTRIES.slice(0, 2) });
+    const topics = plainTopics.slice(0, MAX_READING_UNITS - 2);
+    await renderForm({ topics: [...topics, COUNTRIES_TOPIC], countries: COUNTRIES.slice(0, 2) });
     expect(counter()).toBe(`${MAX_READING_UNITS} of ${MAX_READING_UNITS}`);
 
     await removeChip(COUNTRIES[0]);
@@ -215,43 +212,41 @@ describe("the countries picker", () => {
     expect(counter()).toBe(`${MAX_READING_UNITS} of ${MAX_READING_UNITS}`);
   });
 
-  it("removes the countries picker and its fields when Countries is unpicked, and starts empty when picked again", async () => {
+  it("removing every country leaves the picker up, empty, and submits none", async () => {
     await renderForm({ topics: [...plainTopics.slice(0, 3), COUNTRIES_TOPIC], countries: COUNTRIES.slice(0, 3) });
     expect(counter()).toBe(`6 of ${MAX_READING_UNITS}`);
 
-    await removeChip(COUNTRIES_TOPIC);
-    expect(countriesInput()).toBeNull();
-    expect(fieldValues("countries")).toEqual([]);
-    expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
-    expect((await submit()).getAll("countries")).toEqual([]);
-
-    await pickWithClick(topicsInput(), COUNTRIES_TOPIC);
+    for (const country of COUNTRIES.slice(0, 3)) await removeChip(country);
     expect(countriesInput()).not.toBeNull();
     expect(fieldValues("countries")).toEqual([]);
     expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
+    const formData = await submit();
+    expect(formData.getAll("countries")).toEqual([]);
+    expect(formData.getAll("topics")).toEqual(plainTopics.slice(0, 3));
   });
 
-  it("drops Countries and its countries when the topics picker's Backspace removes it", async () => {
+  it("Backspace in the topics picker removes the last topic and leaves the countries alone", async () => {
     await renderForm({ topics: [...plainTopics.slice(0, 3), COUNTRIES_TOPIC], countries: [COUNTRIES[0]] });
     const input = topicsInput();
     await act(async () => input.focus());
     await key(input, "Backspace");
-    expect(fieldValues("topics")).toEqual(plainTopics.slice(0, 3));
-    expect(countriesInput()).toBeNull();
-    expect(fieldValues("countries")).toEqual([]);
+    expect(fieldValues("topics")).toEqual(plainTopics.slice(0, 2));
+    expect(fieldValues("countries")).toEqual([COUNTRIES[0]]);
+    expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
   });
 
-  it("loads saved countries as the picker's defaults", async () => {
+  it("loads saved countries as the picker's defaults, with no Countries chip among the topics", async () => {
     await renderForm({ topics: [plainTopics[0], COUNTRIES_TOPIC], countries: [COUNTRIES[4], COUNTRIES[0]] });
     expect(fieldValues("countries")).toEqual([COUNTRIES[4], COUNTRIES[0]]);
+    expect(fieldValues("topics")).toEqual([plainTopics[0]]);
+    expect(document.querySelector(`[aria-label="Remove ${COUNTRIES_TOPIC}"]`)).toBeNull();
     expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
   });
 
-  it("ignores saved countries when Countries isn't among the saved topics", async () => {
+  it("shows the countries it is given whatever the topics: the profile read decides which to give", async () => {
     await renderForm({ topics: plainTopics.slice(0, 3), countries: [COUNTRIES[0]] });
-    expect(countriesInput()).toBeNull();
-    expect(fieldValues("countries")).toEqual([]);
-    expect(counter()).toBe(`3 of ${MAX_READING_UNITS}`);
+    expect(fieldValues("countries")).toEqual([COUNTRIES[0]]);
+    expect(counter()).toBe(`4 of ${MAX_READING_UNITS}`);
   });
 
   it("never clears countries on Escape, open or closed", async () => {

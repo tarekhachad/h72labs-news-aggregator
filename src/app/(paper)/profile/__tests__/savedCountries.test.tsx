@@ -57,10 +57,10 @@ const fieldValues = (name: string) =>
   [...container.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)].map((i) => i.value);
 
 describe("/profile with saved countries", () => {
-  it("loads them into the countries picker and counts each one", async () => {
-    const topics = [...TOPICS.filter((t) => t !== COUNTRIES_TOPIC).slice(0, 3), COUNTRIES_TOPIC];
+  it("loads them into the countries picker and counts each one, with no Countries chip among the topics", async () => {
+    const plain = TOPICS.filter((t) => t !== COUNTRIES_TOPIC).slice(0, 3);
     mocks.getUserProfile.mockResolvedValue({
-      topics,
+      topics: [...plain, COUNTRIES_TOPIC],
       preferredSources: [],
       countries: ["Uganda", "Kenya"],
       timeZone: "UTC",
@@ -68,7 +68,7 @@ describe("/profile with saved countries", () => {
     const tree = (await ProfilePage({ searchParams: Promise.resolve({}) })) as ReactElement;
     await act(async () => root.render(tree));
 
-    expect(fieldValues("topics")).toEqual(topics);
+    expect(fieldValues("topics")).toEqual(plain);
     expect(fieldValues("countries")).toEqual(["Uganda", "Kenya"]);
     expect(document.getElementById("preferences-topics-count")!.textContent).toBe("5 of 10");
   });

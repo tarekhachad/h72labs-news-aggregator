@@ -16,6 +16,7 @@ import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
 import { ENTRANCE_DURATION_SECONDS } from "@/lib/entranceTiming";
 import { safeExternalHref } from "@/lib/safeHref";
 import { cardTopicLabel } from "@/components/cardTopicLabel";
+import { MIN_FLIP_PERSPECTIVE_PX, flipPerspectivePx } from "@/lib/flipPerspective";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -51,8 +52,15 @@ const TITLE_CLASS: Record<GridTier, string> = {
 const CARD_FACE_STYLE = {
   background: "var(--color-card)",
   color: "var(--color-card-foreground)",
-  border: "1px solid var(--color-border)",
 } as const;
+
+// Both faces carry it, so a flipped card answers hover too. Colour only, on
+// the faces: the card stays flat print (no shadow, lift or scale), and the
+// outer element's transform belongs to layoutId and the entrance scale-in.
+// The 1 px width never changes, so nothing shifts. Tailwind's `hover:` only
+// applies on devices that really hover, so a tap doesn't leave it stuck on.
+const CARD_FACE_CLASS =
+  "absolute inset-0 flex flex-col overflow-hidden rounded-md border border-[var(--color-border)] p-5 transition-[border-color] duration-200 ease-out group-hover/card:border-[var(--color-foreground)] group-focus-visible/card:border-[var(--color-foreground)]";
 
 /** Where a live-arriving card's scale-in starts. Small enough to read as the card settling into place rather than zooming in. */
 const ENTRANCE_START_SCALE = 0.97;
@@ -146,6 +154,25 @@ export function NewsCard({
   const focused = focusedCardId === card.id;
   const prevFocused = useRef(focused);
   const { faceRef, summaryRef, footerRef, clampLines } = useDynamicLineClamp();
+  const [perspectivePx, setPerspectivePx] = useState(MIN_FLIP_PERSPECTIVE_PX);
+
+  // The flip's camera distance follows the card's own layout size (see
+  // flipPerspective.ts), so a full-width hero stays on screen mid-flip.
+  // offsetWidth/offsetHeight, not getBoundingClientRect: the latter includes
+  // the flip's own transform, the projection being bounded. Keyed on
+  // `focused` because opening focus mode swaps this element for a
+  // placeholder; closing mounts a new one to observe.
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+    function measure() {
+      if (node) setPerspectivePx(flipPerspectivePx(node.offsetWidth, node.offsetHeight));
+    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [focused]);
 
   // Per the inert spec, marking a subtree inert while it contains the
   // focused element forcibly ejects focus to <body> — a keyboard user who
@@ -333,8 +360,8 @@ export function NewsCard({
           tabIndex={0}
           onClick={openOrFlipBack}
           onKeyDown={handleOpenKeyDown}
-          className="relative cursor-pointer"
-          style={{ ...gridPosition, perspective: "1200px" }}
+          className="group/card relative cursor-pointer"
+          style={{ ...gridPosition, perspective: `${perspectivePx}px` }}
           // The entrance is a scale-in over a card that is already fully
           // visible, never a fade from opacity 0: it runs on
           // requestAnimationFrame, which a hidden tab never fires, so it can
@@ -394,7 +421,7 @@ export function NewsCard({
           <motion.div
             className="relative h-full w-full"
             style={{ transformStyle: "preserve-3d" }}
-            animate={{ rotateY: flipped ? 180 : 0 }}
+            animate={{ rotateX: flipped ? 180 : 0 }}
             transition={{ duration: prefersReducedMotion ? 0 : 0.5, ease: "easeInOut" }}
           >
             {/* Front face. inert when the back face is showing — backface-visibility
@@ -403,7 +430,7 @@ export function NewsCard({
                 could reach and activate controls that are invisibly rotated away. */}
             <div
               ref={faceRef}
-              className="absolute inset-0 flex flex-col overflow-hidden rounded-md p-5"
+              className={CARD_FACE_CLASS}
               style={{ ...CARD_FACE_STYLE, backfaceVisibility: "hidden" }}
               inert={flipped}
             >
@@ -526,15 +553,15 @@ export function NewsCard({
               </div>
             </div>
 
-            {/* Back face — pre-rotated 180deg so it reads right-way-round once the
-                card has flipped. inert while the front face is showing, same
-                reasoning as the front face's inert above. */}
+            {/* Back face — pre-rotated 180deg on the flip's own axis so it reads
+                right way up once the card has flipped. inert while the front
+                face is showing, same reasoning as the front face's inert above. */}
             <div
-              className="absolute inset-0 flex flex-col overflow-hidden rounded-md p-5"
+              className={CARD_FACE_CLASS}
               style={{
                 ...CARD_FACE_STYLE,
                 backfaceVisibility: "hidden",
-                transform: "rotateY(180deg)",
+                transform: "rotateX(180deg)",
               }}
               inert={!flipped}
             >
@@ -553,7 +580,10 @@ export function NewsCard({
                 </button>
               </div>
 
-              <ul className="mt-2 flex flex-col gap-2 overflow-y-auto">
+              {/* pb-1: the list is a scroll box, clipped at its padding edge,
+                  and a hovered link's underline drops to a 4 px offset, past
+                  the last line's own box. */}
+              <ul className="mt-2 flex flex-col gap-2 overflow-y-auto pb-1">
                 {card.sources.map((s) => (
                   <li key={s.url} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
                     <span className="font-medium">{s.source}</span> —{" "}

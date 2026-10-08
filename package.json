@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
+    "dev:fixtures": "ANTHROPIC_API_KEY=disabled-for-fixtures SUPABASE_URL=http://127.0.0.1:9 SUPABASE_PUBLISHABLE_KEY=disabled-for-fixtures VERCEL_OIDC_TOKEN= RECOVERY_MARKER_SECRET=fixture-only-secret-00000000000000000000000 SOURCE_LINK_SECRET=fixture-only-secret-00000000000000000000000 next dev -p ${FIXTURES_PORT:-3100}",
     "cost-report": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/cost-report.mts",
     "invite": "node --env-file=.env.admin --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/invite.mts",
     "lint": "eslint",

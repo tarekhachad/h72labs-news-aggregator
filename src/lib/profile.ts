@@ -33,29 +33,27 @@ export const ProfileInput = z
     topics: z.array(z.enum(TOPICS)).transform(dedupe),
     preferredSources: z.array(z.enum(SOURCES)).transform(dedupe),
     // Optional so a form without the countries picker still parses. Plain
-    // strings here, checked against COUNTRIES below only when Countries is
-    // picked: a country left in the form after Countries was unticked is
-    // dropped, not refused.
+    // strings here so an unknown one gets its own message below.
     countries: z.array(z.string()).default([]).transform(dedupe),
   })
   .transform((input, ctx) => {
-    const withCountries = input.topics.includes(COUNTRIES_TOPIC);
-    const countries = withCountries ? input.countries : [];
-
-    const unknown = countries.find((country) => !COUNTRIES.includes(country));
+    const unknown = input.countries.find((country) => !COUNTRIES.includes(country));
     if (unknown !== undefined) {
       ctx.addIssue({ code: "custom", message: `${unknown} isn't a country you can pick` });
       return z.NEVER;
     }
-    if (withCountries && countries.length === 0) {
-      ctx.addIssue({ code: "custom", message: "Pick at least one country, or remove Countries" });
-      return z.NEVER;
-    }
 
-    // Without Countries the messages stay exactly as they were; with it, they
-    // say a country counts, since that is what makes 2 ticked topics plus a
+    // The reader never picks Countries itself: it is saved exactly when a
+    // country is picked, so the topic and its countries can't disagree. A
+    // Countries sent among the topics is ignored either way.
+    const withCountries = input.countries.length > 0;
+    const picked = input.topics.filter((topic) => topic !== COUNTRIES_TOPIC);
+    const topics: Topic[] = withCountries ? [...picked, COUNTRIES_TOPIC] : picked;
+
+    // Without countries the messages stay exactly as they were; with them,
+    // they say a country counts, since that is what makes 2 topics plus a
     // country enough, and 8 topics plus 3 countries too many.
-    const units = countReadingUnits(input.topics, countries);
+    const units = countReadingUnits(topics, input.countries);
     const counted = withCountries ? " topics and countries (each country counts as one)" : " topics";
     if (units < MIN_TOPICS) {
       ctx.addIssue({ code: "custom", message: `Pick at least ${MIN_TOPICS}${counted}` });
@@ -66,7 +64,7 @@ export const ProfileInput = z
       return z.NEVER;
     }
 
-    return { topics: input.topics, preferredSources: input.preferredSources, countries };
+    return { topics, preferredSources: input.preferredSources, countries: input.countries };
   });
 
 // Neither query below has an ORDER BY, and Postgres guarantees no row order
@@ -151,8 +149,8 @@ export async function getUserProfile(
     (sourceRows ?? []).map((r) => r.source as string)
   );
 
-  // Only with the Countries topic: a save drops countries picked without it,
-  // and the read keeps to the same rule rather than trusting the rows to.
+  // Only with the Countries topic: a save writes the two together, and the
+  // read keeps to the same rule rather than trusting the rows to.
   const countries = topics.includes(COUNTRIES_TOPIC)
     ? inCuratedOrder(
         COUNTRIES,

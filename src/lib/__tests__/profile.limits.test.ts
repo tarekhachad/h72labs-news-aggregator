@@ -198,7 +198,8 @@ describe("getUserProfile with more than the maximum saved", () => {
 });
 
 // Countries count as reading units: the Countries topic itself counts as
-// nothing, each picked country as one.
+// nothing, each picked country as one. The reader never picks the topic: it
+// is saved exactly when a country is.
 describe("ProfileInput with countries", () => {
   const nonCountry = TOPICS.filter((t) => t !== "Countries");
   const parse = (picked: readonly string[], countries?: string[]) =>
@@ -221,10 +222,24 @@ describe("ProfileInput with countries", () => {
     expect(parse(["Countries"], ["Kenya", "Uganda", "Ghana"]).success).toBe(true);
   });
 
-  it("rejects Countries with no country", () => {
+  it("saves no Countries topic when Countries is sent with no country", () => {
     const parsed = parse([...nonCountry.slice(0, 3), "Countries"], []);
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe("Pick at least one country, or remove Countries");
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.topics).toEqual(nonCountry.slice(0, 3));
+    expect(parsed.data?.countries).toEqual([]);
+  });
+
+  it("adds the Countries topic when countries come without it, after the picked topics", () => {
+    const parsed = parse(nonCountry.slice(0, 2), ["Kenya"]);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.topics).toEqual([...nonCountry.slice(0, 2), "Countries"]);
+    expect(parsed.data?.countries).toEqual(["Kenya"]);
+  });
+
+  it("ignores where Countries was sent among the topics, and sends it once", () => {
+    const parsed = parse(["Countries", nonCountry[0], "Countries", nonCountry[1]], ["Kenya"]);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.topics).toEqual([nonCountry[0], nonCountry[1], "Countries"]);
   });
 
   it("rejects 1 topic plus Countries with one country: 2 units, with a message that counts countries", () => {
@@ -254,14 +269,23 @@ describe("ProfileInput with countries", () => {
     expect(parsed.data?.countries).toEqual(["Kenya", "Uganda"]);
   });
 
-  it("drops countries picked without the Countries topic, unknown ones included", () => {
+  it("rejects an unknown country sent without the Countries topic", () => {
     const parsed = parse(nonCountry.slice(0, 3), ["Kenya", "Atlantis"]);
-    expect(parsed.success).toBe(true);
-    expect(parsed.data?.countries).toEqual([]);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.message).toBe("Atlantis isn't a country you can pick");
   });
 
-  it("does not let dropped countries count toward the limits", () => {
-    const parsed = parse(nonCountry.slice(0, 2), ["Kenya", "Uganda"]);
+  it("counts countries sent without the Countries topic toward the limits", () => {
+    expect(parse(nonCountry.slice(0, 2), ["Kenya", "Uganda"]).success).toBe(true);
+    const over = parse(nonCountry.slice(0, 9), ["Kenya", "Uganda"]);
+    expect(over.success).toBe(false);
+    expect(over.error?.issues[0]?.message).toBe(
+      "Pick at most 10 topics and countries (each country counts as one)"
+    );
+  });
+
+  it("keeps the plain-topics message when no country is picked", () => {
+    const parsed = parse([nonCountry[0], nonCountry[1], "Countries"], []);
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.message).toBe("Pick at least 3 topics");
   });
