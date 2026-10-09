@@ -4,7 +4,7 @@ import { COUNTRIES_TOPIC, COUNTRY_FEEDS } from "@/config/countries";
 import { isImplausiblyFuture } from "@/lib/cursor";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 import { TOPICS, type Article, type Source, type Topic } from "@/types";
-import { MAX_READING_UNITS, readingUnits, type ReadingUnit } from "@/lib/readingUnits";
+import { MAX_READING_UNITS, readingUnits, unitKey, type ReadingUnit } from "@/lib/readingUnits";
 
 const parser = new Parser({
   timeout: 10_000,
@@ -48,6 +48,53 @@ async function fetchFeed({ topic, subtopic, source, url }: PlannedFeed): Promise
 // a feed's entire history; someone returning after a week gets 48h too,
 // rather than seven days of backlog in one digest.
 const LOOKBACK_CEILING_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * The publish time an article must reach to be read, for one since-cursor:
+ * the later of the cursor and the lookback ceiling.
+ *
+ * A malformed cursor (e.g. a corrupted stored timestamp) must not silently
+ * turn into a cutoff that every article fails: it's treated as no cursor at
+ * all, leaving the ceiling as the cutoff.
+ *
+ * A cursor ahead of this machine's clock is split in two, because the two
+ * ends of that range fail in opposite directions:
+ *
+ *  - Ordinary skew (within tolerance) is honoured as-is. It yields a run that
+ *    finds nothing, which is the truthful answer to "what's new since a
+ *    moment ago." Falling back to the ceiling here would be actively harmful:
+ *    if the process stamping the cursor runs a few seconds fast, EVERY
+ *    subsequent run would see a future cursor, fall back, and re-ingest a
+ *    full 48h, a permanent duplicate storm at roughly 10x the per-digest
+ *    cost, not a one-off.
+ *
+ *  - A cursor implausibly far ahead is corrupt, and using it would empty the
+ *    digest silently. Falling back to the ceiling is the better of two bad
+ *    outcomes, but not self-correcting: a stored garbage timestamp fires this
+ *    on every run until wall-clock time overtakes it. That's why the primary
+ *    defence is one layer up, in the queries that load cursors, which exclude
+ *    such rows so a legitimate older value can win instead. This branch is
+ *    the backstop for a value that reaches here anyway (ingestUnits is
+ *    exported and callable with any cursor, and the clock can move between
+ *    the query and this line), so it should essentially never fire in
+ *    production; the warning is what makes it say so out loud.
+ */
+function lookbackCutoff(sinceIso: string | null, now: number): Date {
+  const ceiling = new Date(now - LOOKBACK_CEILING_MS);
+  const parsedSince = sinceIso ? new Date(sinceIso) : null;
+  if (!parsedSince || Number.isNaN(parsedSince.getTime())) return ceiling;
+  if (isImplausiblyFuture(parsedSince, now)) {
+    // Best-effort: a diagnostic on a critical path must not be able to fail
+    // the thing it is reporting on. A throwing logger here would turn a
+    // deliberate graceful fallback into a failed digest run.
+    bestEffortLog(
+      "warn",
+      `[ingest] since-cursor ${parsedSince.toISOString()} is implausibly far ahead of this machine's clock — treating as corrupt and falling back to the ${LOOKBACK_CEILING_MS / (60 * 60 * 1000)}h window`
+    );
+    return ceiling;
+  }
+  return parsedSince > ceiling ? parsedSince : ceiling;
+}
 
 /**
  * The most feeds one digest reads for one topic.
@@ -308,11 +355,19 @@ export function dedupeArticles(articles: readonly Article[]): Article[] {
  * story already covered in an earlier run isn't ingested a second time.
  * Pass `null` when the user has never generated (see LOOKBACK_CEILING_MS
  * above, which also caps how far back a stale cursor can reach).
+ *
+ * `unitSince`, keyed by `unitKey`, gives units their own cutoff instead: a
+ * unit mapped to a time is read from that time, a unit mapped to null (never
+ * read, e.g. added since the last run) from the full lookback window. A unit
+ * the map doesn't mention, or no map at all, falls back to `sinceIso`.
+ * Articles are cut by the unit they were read for, which is the unit that
+ * owns the feed (see planUnitFeeds).
  */
 export async function ingestUnits(
   units: readonly ReadingUnit[],
   preferredSources: readonly Source[],
-  sinceIso: string | null
+  sinceIso: string | null,
+  unitSince?: ReadonlyMap<string, string | null>
 ): Promise<Article[]> {
   const jobs = planUnitFeeds(units, preferredSources).map((feed) =>
     fetchFeed(feed).catch((err) => {
@@ -324,52 +379,11 @@ export async function ingestUnits(
 
   const results = await Promise.all(jobs);
 
-  // A malformed sinceIso (e.g. a corrupted stored timestamp) must not
-  // silently turn into a cutoff of "everything fails the >= check" — it's
-  // treated as no cursor at all, leaving the ceiling as the cutoff.
-  //
-  // A cursor ahead of this machine's clock is split in two, because the two
-  // ends of that range fail in opposite directions:
-  //
-  //  - Ordinary skew (within tolerance) is honoured as-is. It yields a run
-  //    that finds nothing, which is the truthful answer to "what's new since
-  //    a moment ago." Falling back to the ceiling here would be actively
-  //    harmful: if the process stamping the cursor runs a few seconds fast,
-  //    EVERY subsequent run would see a future cursor, fall back, and
-  //    re-ingest a full 48h — a permanent duplicate storm at roughly 10× the
-  //    per-digest cost, not a one-off.
-  //
-  //  - A cursor implausibly far ahead is corrupt, and using it would empty
-  //    the digest silently. Falling back to the ceiling is the better of two
-  //    bad outcomes, but it is genuinely a *bad* one and not self-correcting:
-  //    if a stored row really does hold a garbage timestamp, this branch
-  //    fires on every run until wall-clock time overtakes it or someone
-  //    fixes the row. That's why the primary defence is one layer up, in
-  //    getLatestGeneratedAtForUser, which excludes such rows from the query
-  //    so a legitimate older cursor can win instead — see the note there.
-  //    This branch is the backstop for a value that reaches here anyway
-  //    (ingestUnits is exported and callable with any cursor, and the
-  //    clock can move between the query and this line), so it should
-  //    essentially never fire in production; the warning is what makes it
-  //    say so out loud rather than degrading quietly.
-  const parsedSince = sinceIso ? new Date(sinceIso) : null;
   const now = Date.now();
-  const ceiling = new Date(now - LOOKBACK_CEILING_MS);
-
-  let cutoff = ceiling;
-  if (parsedSince && !Number.isNaN(parsedSince.getTime())) {
-    if (isImplausiblyFuture(parsedSince, now)) {
-      // Best-effort: a diagnostic on a critical path must not be able to fail
-      // the thing it is reporting on. A throwing logger here would turn a
-      // deliberate graceful fallback into a failed digest run.
-      bestEffortLog(
-        "warn",
-        `[ingest] since-cursor ${parsedSince.toISOString()} is implausibly far ahead of this machine's clock — treating as corrupt and falling back to the ${LOOKBACK_CEILING_MS / (60 * 60 * 1000)}h window`
-      );
-    } else if (parsedSince > ceiling) {
-      cutoff = parsedSince;
-    }
-  }
+  const fallbackCutoff = lookbackCutoff(sinceIso, now);
+  const unitCutoffs = new Map<string, Date>();
+  for (const [key, since] of unitSince ?? []) unitCutoffs.set(key, lookbackCutoff(since, now));
+  const cutoffFor = (article: Article) => unitCutoffs.get(unitKey(article.topic, article.subtopic)) ?? fallbackCutoff;
 
   // The cutoff runs before duplicate removal, not after: the title check
   // matches different links from one outlet, so a stale item seen first
@@ -382,7 +396,7 @@ export async function ingestUnits(
   // story look corroborated. The first sighting wins, and feeds are in unit
   // order, so an article a country shares with Africa keeps the country:
   // Countries comes before the regional topics.
-  return dedupeArticles(results.flat().filter((a) => new Date(a.publishedAt) >= cutoff));
+  return dedupeArticles(results.flat().filter((a) => new Date(a.publishedAt) >= cutoffFor(a)));
 }
 
 /**

@@ -167,7 +167,7 @@ describe("gate", () => {
     expect(mocks.ingestUnits).toHaveBeenCalledWith(
       TOPICS.slice(0, 2).map((topic) => ({ topic, subtopic: null })),
       [],
-      expect.anything()
+      expect.anything(), undefined
     );
   });
 });

@@ -3,6 +3,8 @@ import type { Card, Digest, Topic } from "@/types";
 import { getBookmarkedCardIds } from "@/lib/bookmarks";
 import { plausibleCursorLimitIso } from "@/lib/cursor";
 import { dateInTimeZone } from "@/lib/localDate";
+import { unitKey, type ReadingUnit } from "@/lib/readingUnits";
+import { COUNTRIES_TOPIC } from "@/config/countries";
 
 export interface CardRow {
   id: string;
@@ -365,6 +367,52 @@ export async function getLatestGeneratedAtForUser(
 }
 
 /**
+ * The read times (unit_read_cursors) of the units a run is about to read,
+ * keyed by `unitKey`: when a successful run last read each topic or country.
+ * A unit missing from the map has never been read, so the run reads it from
+ * the full lookback window.
+ *
+ * Only these units are asked for, never every row the user holds: a result
+ * cut short by the API's row limit would drop real units and make them look
+ * new. Two queries, each bounded by the units being read. Plain topics are
+ * asked for by topic alone, since persist_generated_cards stores them only
+ * with subtopic '' (one row each); countries by their names under Countries.
+ * Neither filters on an empty string, whose encoding as an IN list ("in.()")
+ * is ambiguous.
+ *
+ * Rows implausibly far ahead of the clock are left out, as
+ * getLatestGeneratedAtForUser leaves out such cursors, so the unit falls back
+ * to a full lookback rather than reading nothing. Throws on a failed query:
+ * the caller decides what a run does without per-unit times.
+ */
+export async function getUnitReadTimes(
+  supabase: SupabaseClient,
+  userId: string,
+  units: readonly ReadingUnit[]
+): Promise<Map<string, string>> {
+  const plainTopics = [...new Set(units.filter((u) => !u.subtopic).map((u) => u.topic))];
+  const countries = [...new Set(units.filter((u) => u.topic === COUNTRIES_TOPIC && u.subtopic).map((u) => u.subtopic as string))];
+  const limit = plausibleCursorLimitIso();
+  const base = () =>
+    supabase.from("unit_read_cursors").select("topic, subtopic, read_at").eq("user_id", userId).lte("read_at", limit);
+
+  const [plain, countryRows] = await Promise.all([
+    plainTopics.length === 0 ? { data: [], error: null } : base().in("topic", plainTopics),
+    countries.length === 0 ? { data: [], error: null } : base().eq("topic", COUNTRIES_TOPIC).in("subtopic", countries),
+  ]);
+  const error = plain.error ?? countryRows.error;
+  if (error) throw new Error(`getUnitReadTimes: ${error.message}`);
+
+  const wanted = new Set(units.map((u) => unitKey(u.topic, u.subtopic)));
+  const times = new Map<string, string>();
+  for (const row of [...(plain.data ?? []), ...(countryRows.data ?? [])] as { topic: Topic; subtopic: string; read_at: string }[]) {
+    const key = unitKey(row.topic, row.subtopic);
+    if (wanted.has(key)) times.set(key, row.read_at);
+  }
+  return times;
+}
+
+/**
  * Finds or creates today's digest row for this user and returns its id.
  *
  * Deliberately does *not* return a since-cursor: the cursor is a property of
@@ -426,13 +474,18 @@ export async function upsertDigestForToday(
  * existingRankUpdates is rank.ts's fail-open contract made concrete: an
  * empty array (ranking failed, or there was nothing new to rank this run)
  * is a correct no-op in the underlying SQL, not a special case here.
+ *
+ * unitsRead marks every unit this run read as read at generatedAt, in the
+ * same transaction, so the next run reads each of them from here and a unit
+ * not among them (added later) from the full lookback window.
  */
 export async function saveGeneratedCards(
   supabase: SupabaseClient,
   digestId: string,
   cards: Card[],
   generatedAt: string,
-  existingRankUpdates: { id: string; frontPageRank: number | null }[]
+  existingRankUpdates: { id: string; frontPageRank: number | null }[],
+  unitsRead: readonly ReadingUnit[]
 ): Promise<void> {
   const { error } = await supabase.rpc("persist_generated_cards", {
     p_digest_id: digestId,
@@ -450,6 +503,7 @@ export async function saveGeneratedCards(
     })),
     p_generated_at: generatedAt,
     p_existing_rank_updates: existingRankUpdates,
+    p_units: unitsRead.map((unit) => ({ topic: unit.topic, subtopic: unit.subtopic })),
   });
 
   if (error) {

@@ -159,6 +159,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-01T03:00:00Z",
+      undefined,
     );
   });
 
@@ -180,6 +181,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       null,
+      undefined,
     );
   });
 
@@ -197,6 +199,7 @@ describe("digest route: since-cursor wiring (F.4.4)", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-12T23:50:00Z",
+      undefined,
     );
   });
 

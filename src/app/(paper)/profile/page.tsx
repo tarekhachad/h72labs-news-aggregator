@@ -56,6 +56,10 @@ export default async function ProfilePage({
           <p className="mt-2 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
             Update the topics and sources your daily digest is built from.
           </p>
+          <p className="mt-1 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+            Changes apply from your next run, and today&apos;s cards stay. A topic or country you add gets a full
+            first edition the next time you press &ldquo;Complete today&apos;s news&rdquo;.
+          </p>
         </div>
 
         <PreferencesForm

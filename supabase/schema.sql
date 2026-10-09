@@ -320,13 +320,22 @@ create policy "delete own bookmarks"
 -- gotcha above only bites on a signature change; double-checked this
 -- isn't one before assuming the earlier drop-and-recreate isn't needed
 -- again.
+--
+-- V2.7: the function gained p_units (the reading units this run read), so the
+-- 4-arg signature is dropped too. p_units defaults to an empty array, which
+-- is what lets code still calling with four named arguments keep working
+-- between this block being applied and the new code deploying. That is also
+-- why this block must run BEFORE the deploy: the new code sends p_units,
+-- which the old 4-arg function doesn't accept.
 drop function if exists public.persist_generated_cards(uuid, jsonb, timestamptz);
+drop function if exists public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb);
 
 create or replace function public.persist_generated_cards(
   p_digest_id uuid,
   p_cards jsonb,
   p_generated_at timestamptz,
-  p_existing_rank_updates jsonb default '[]'::jsonb
+  p_existing_rank_updates jsonb default '[]'::jsonb,
+  p_units jsonb default '[]'::jsonb
 ) returns void
 language plpgsql
 security definer
@@ -411,6 +420,45 @@ begin
   update public.digests
   set last_generated_at = p_generated_at
   where id = p_digest_id;
+
+  -- Each unit this run read is marked read at this run's time, in the same
+  -- transaction as the cards and the cursor above, so a unit's read time can
+  -- never claim articles a failed save didn't keep. The next run reads each
+  -- unit from its own time, and a unit with no row (added since its last
+  -- run) from the full lookback window. The window check on p_generated_at
+  -- above bounds what a direct caller can write here to "now": marking units
+  -- read can only shorten the next run's reach, never lengthen it.
+  --
+  -- Only units the caller has saved get a row: a plain topic in user_topics,
+  -- a country in user_subtopics under Countries. Anything else is skipped, so
+  -- a direct caller can't fill the table with rows for units they never
+  -- picked. distinct, because ON CONFLICT DO UPDATE refuses to touch one row
+  -- twice in a statement. greatest, so a read time never moves backwards. A
+  -- real run sends at most MAX_READING_UNITS (10).
+  if jsonb_typeof(p_units) is distinct from 'array' or jsonb_array_length(p_units) > 32 then
+    raise exception 'persist_generated_cards: p_units must be an array of at most 32 units';
+  end if;
+
+  insert into public.unit_read_cursors (user_id, topic, subtopic, read_at)
+  select distinct v_user, u->>'topic', coalesce(u->>'subtopic', ''), p_generated_at
+  from jsonb_array_elements(p_units) as u
+  where (
+      u->>'topic' <> 'Countries'
+      and coalesce(u->>'subtopic', '') = ''
+      and exists (
+        select 1 from public.user_topics t
+        where t.user_id = v_user and t.topic = u->>'topic'
+      )
+    )
+    or (
+      u->>'topic' = 'Countries'
+      and exists (
+        select 1 from public.user_subtopics s
+        where s.user_id = v_user and s.topic = 'Countries' and s.subtopic = u->>'subtopic'
+      )
+    )
+  on conflict (user_id, topic, subtopic) do update
+    set read_at = greatest(public.unit_read_cursors.read_at, excluded.read_at);
 end;
 $$;
 
@@ -517,8 +565,8 @@ $$;
 -- so the default grant is exactly the hole this item exists to close: without
 -- these revokes, dropping the RLS write policies below would move the write
 -- path from "any authenticated session" to "anyone at all".
-revoke execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb) from public, anon;
-grant execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb) to authenticated;
+revoke execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb, jsonb) from public, anon;
+grant execute on function public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb, jsonb) to authenticated;
 revoke execute on function public.ensure_digest_for_today(date) from public, anon;
 grant execute on function public.ensure_digest_for_today(date) to authenticated;
 revoke execute on function public.set_expanded_report(uuid, text) from public, anon;
@@ -1486,4 +1534,86 @@ on conflict (user_id, topic, subtopic) do nothing;
 delete from public.user_topics where topic = 'Morocco';
 
 update public.cards set topic = 'Countries', subtopic = 'Morocco' where topic = 'Morocco';
+commit;
+
+-- V2.7 migration: each reading unit's own read time. MUST be run by hand,
+-- BEFORE the persist_generated_cards block above and before the deploy.
+--
+-- A run used to read every unit from one cursor, the user's last run. A unit
+-- added since then got only what was published after that run, often
+-- nothing. Now each unit (a topic, or a country within Countries, stored with
+-- subtopic '' for a plain topic) keeps its own read time, written by
+-- persist_generated_cards. A unit with no row, or one older than the user's
+-- last run (picked again after being dropped), was not read last time: it
+-- reads from its own time (no row: the full lookback) and gets a first
+-- run's card allowance.
+--
+-- Read-only for signed-in users: no insert, update or delete policy, so only
+-- persist_generated_cards (security definer) writes here, and only for units
+-- the caller has saved. Deleting a row would make a unit look new and buy it
+-- a longer lookback, so there is no delete path at all; a row for a unit the
+-- reader has since dropped stays until they pick it again. getUnitReadTimes
+-- reads only the units a run is about to read, so however many rows a user
+-- holds, a run sees at most one per unit it reads.
+--
+-- The backfill gives every unit already in a profile the user's current
+-- cursor, the same value every run used until now, so the first run after
+-- the deploy reads exactly what it would have before. The plausibility bound
+-- matches getLatestGeneratedAtForUser (FUTURE_CURSOR_TOLERANCE_MS, 5 minutes).
+--
+-- Order: this block, then the persist_generated_cards block above (its body
+-- writes this table, so it fails until the table exists), then the deploy,
+-- then this backfill once more straight after the deploy. Runs on the old
+-- code in between save no unit rows, and the second pass moves every saved
+-- unit up to the cursor those runs left. Run it promptly: a unit picked after
+-- the deploy and caught by a late second pass would be marked read and lose
+-- its first edition.
+--
+-- Safe to re-run: `if not exists`, the policy is dropped before it is
+-- created, and the backfill only ever moves a read time forward.
+create table if not exists public.unit_read_cursors (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  topic text not null,
+  subtopic text not null default '',
+  read_at timestamptz not null,
+  primary key (user_id, topic, subtopic)
+);
+
+alter table public.unit_read_cursors enable row level security;
+
+drop policy if exists "select own unit read cursors" on public.unit_read_cursors;
+create policy "select own unit read cursors"
+  on public.unit_read_cursors for select
+  using (auth.uid() = user_id);
+
+begin;
+with cursors as (
+  select user_id, max(last_generated_at) as read_at
+  from public.digests
+  where last_generated_at is not null
+    and last_generated_at <= now() + interval '5 minutes'
+  group by user_id
+)
+insert into public.unit_read_cursors (user_id, topic, subtopic, read_at)
+select t.user_id, t.topic, '', c.read_at
+from public.user_topics t
+join cursors c on c.user_id = t.user_id
+where t.topic <> 'Countries'
+on conflict (user_id, topic, subtopic) do update
+  set read_at = greatest(public.unit_read_cursors.read_at, excluded.read_at);
+
+with cursors as (
+  select user_id, max(last_generated_at) as read_at
+  from public.digests
+  where last_generated_at is not null
+    and last_generated_at <= now() + interval '5 minutes'
+  group by user_id
+)
+insert into public.unit_read_cursors (user_id, topic, subtopic, read_at)
+select s.user_id, 'Countries', s.subtopic, c.read_at
+from public.user_subtopics s
+join cursors c on c.user_id = s.user_id
+where s.topic = 'Countries'
+on conflict (user_id, topic, subtopic) do update
+  set read_at = greatest(public.unit_read_cursors.read_at, excluded.read_at);
 commit;

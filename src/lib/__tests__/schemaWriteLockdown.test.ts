@@ -33,7 +33,7 @@ const schemaSql = readFileSync(join(process.cwd(), "supabase/schema.sql"), "utf8
 const WRITE_FUNCTIONS = [
   {
     name: "persist_generated_cards",
-    signature: "public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb)",
+    signature: "public.persist_generated_cards(uuid, jsonb, timestamptz, jsonb, jsonb)",
   },
   {
     name: "ensure_digest_for_today",

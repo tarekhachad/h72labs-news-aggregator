@@ -181,7 +181,7 @@ describe("cards: code vs supabase/schema.sql", () => {
       severity: 3,
       frontPageRank: null,
     };
-    await saveGeneratedCards(client, "d1", [card], "2026-10-03T00:00:00Z", []);
+    await saveGeneratedCards(client, "d1", [card], "2026-10-03T00:00:00Z", [], []);
     const sent = calls.find((c) => c.rpc?.name === "persist_generated_cards")!.rpc!.args.p_cards as Record<
       string,
       unknown

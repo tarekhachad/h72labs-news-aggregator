@@ -166,6 +166,7 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-12T22:00:00.000Z",
+      undefined,
     );
 
     // Run 1 "finished" and (via persist_generated_cards) advanced
@@ -181,6 +182,7 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-13T10:00:00.000Z",
+      undefined,
     );
 
     // Run 3: same pattern, one more advance. A regression that re-derived
@@ -196,6 +198,7 @@ describe("digest route: cursor across a sequence of same-day runs", () => {
       [{ topic: "Tech/AI", subtopic: null }],
       ["BBC"],
       "2026-08-13T11:30:00.000Z",
+      undefined,
     );
 
     expect(mocks.ingestUnits).toHaveBeenCalledTimes(3);

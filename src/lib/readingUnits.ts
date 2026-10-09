@@ -14,6 +14,16 @@ export interface ReadingUnit {
   subtopic: string | null;
 }
 
+/**
+ * The key a unit is known by wherever per-unit state is kept (the card limit,
+ * each unit's read time): its topic and, within Countries, its country. A
+ * missing or empty subtopic is the same unit as none, so a plain topic stored
+ * with subtopic '' matches one held in memory with null.
+ */
+export function unitKey(topic: Topic, subtopic: string | null | undefined): string {
+  return JSON.stringify([topic, subtopic || null]);
+}
+
 export const MIN_READING_UNITS = 3;
 export const MAX_READING_UNITS = 10;
 

@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { ingestUnits, planFeeds } from "@/lib/ingest";
-import { countReadingUnits, readingUnits } from "@/lib/readingUnits";
+import { countReadingUnits, readingUnits, unitKey } from "@/lib/readingUnits";
 import { clusterArticles } from "@/lib/cluster";
 import { filterAlreadyCovered } from "@/lib/dedup";
 import { triageClusters, triageBatchCount } from "@/lib/triage";
@@ -19,6 +19,7 @@ import type { RankUpdate } from "@/lib/rankUpdates";
 import {
   upsertDigestForToday,
   getLatestGeneratedAtForUser,
+  getUnitReadTimes,
   saveGeneratedCards,
   getTodaysCardSummaries,
 } from "@/lib/digests";
@@ -109,6 +110,9 @@ async function* runDigestPipeline(
   digestId: string,
   profile: { topics: Topic[]; preferredSources: Source[]; countries: string[] },
   sinceIso: string | null,
+  // Each unit's own read time (getUnitReadTimes), or null when that lookup
+  // failed and every unit reads from sinceIso, as before per-unit times.
+  unitReadTimes: ReadonlyMap<string, string> | null,
   reservation: Reservation,
   claim: GenerationClaim
 ): AsyncGenerator<DigestEvent> {
@@ -216,7 +220,31 @@ async function* runDigestPipeline(
         profile.preferredSources
       ).length,
     });
-    const articles = await ingestUnits(units.read, profile.preferredSources, sinceIso);
+    // A unit no run has read yet (picked since the last run, or a reader's
+    // very first run) reads the full lookback window; every other unit reads
+    // from its own last read. Without the per-unit times, every unit reads
+    // from sinceIso: a new topic then gets only what appeared since the last
+    // run, the old behaviour, which is cheaper and never wrong, just thin.
+    const unitSince =
+      unitReadTimes === null
+        ? undefined
+        : new Map(units.read.map((u) => [unitKey(u.topic, u.subtopic), unitReadTimes.get(unitKey(u.topic, u.subtopic)) ?? null]));
+    // Units the last run didn't read: never read (no time), or read before
+    // the last run and picked again since. They read from their own time
+    // above, and the card cap gives them a first run's allowance below. Every
+    // unit the last run read carries exactly its time, so it isn't new.
+    const lastRun = sinceIso === null ? null : new Date(sinceIso).getTime();
+    const newUnits = new Set(
+      unitSince === undefined
+        ? []
+        : [...unitSince]
+            .filter(([, since]) => since === null || (lastRun !== null && new Date(since).getTime() < lastRun))
+            .map(([key]) => key)
+    );
+    if (sinceIso !== null && newUnits.size > 0) {
+      bestEffortLog("log", `[digest] ${newUnits.size} topic(s) or countries not read before; reading them from the full lookback window`);
+    }
+    const articles = await ingestUnits(units.read, profile.preferredSources, sinceIso, unitSince);
     shape.articleCount = articles.length;
     // longestText is here because it is the one input to clustering with no
     // bound at all: a single feed item has arrived at 48,191 characters.
@@ -340,6 +368,7 @@ async function* runDigestPipeline(
       // not read a broken read as an empty digest.
       existingCards: existingCardsFetchFailed ? null : existingCards,
       preferredSources: profile.preferredSources,
+      newUnits,
     });
     // Stories the cap kept that report the same real-world event become one
     // card citing every outlet, before anything is written. After the cap, not
@@ -519,7 +548,7 @@ async function* runDigestPipeline(
     // next run's since-cutoff and won't be retried. Consciously accepted for
     // now (documented in ROADMAP.md's deferred section) rather than adding
     // per-cluster retry tracking; see that entry for the reasoning.
-    await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates);
+    await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates, units.read);
 
     reachedDone = true;
     yield {
@@ -656,13 +685,25 @@ export async function POST() {
   // generating until the staleness window expires.
   let digestId: string;
   let sinceCursor: string | null;
+  let unitReadTimes: Map<string, string> | null;
   try {
-    const [upserted, cursor] = await Promise.all([
+    const [upserted, cursor, readTimes] = await Promise.all([
       upsertDigestForToday(supabase, profile.timeZone),
       getLatestGeneratedAtForUser(supabase, user.id),
+      // A failed lookup degrades to one cursor for every unit rather than
+      // failing the run: that reads less, never more, so it can't cost more.
+      // Started inside .then so a synchronous throw degrades the same way.
+      // Every unit is then saved as read at the end, as before per-unit
+      // times; a unit picked since the last run loses its first edition
+      // rather than every unit getting one on the next run.
+      Promise.resolve().then(() => getUnitReadTimes(supabase, user.id, readingUnits(profile.topics, profile.countries).read)).catch((err) => {
+        bestEffortLog("error", "[digest] unit read times unavailable; reading every unit from the run cursor:", err instanceof Error ? err.message : err);
+        return null;
+      }),
     ]);
     digestId = upserted.digestId;
     sinceCursor = cursor;
+    unitReadTimes = readTimes;
   } catch (err) {
     await releaseGenerationClaim(supabase, claim);
     throw err;
@@ -685,7 +726,7 @@ export async function POST() {
 
   return new Response(
     toNdjsonStream(
-      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, reservation, claim),
+      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, unitReadTimes, reservation, claim),
       async () => {
         await settleAbandonedRun(supabase, reservation, claim);
       }

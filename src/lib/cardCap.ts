@@ -1,6 +1,7 @@
 import type { Cluster, Topic } from "@/types";
 import type { RunShape } from "@/lib/usageRecord";
 import { countPreferredSources, type PreferredSources } from "@/lib/preferredSources";
+import { unitKey } from "@/lib/readingUnits";
 
 /**
  * How many stories one topic can contribute on the first run of a digest.
@@ -85,6 +86,12 @@ export interface CardCapOptions {
    * empty: the ordering is then severity, article count, input order.
    */
   preferredSources?: PreferredSources;
+  /**
+   * Units the reader's last run didn't read (keys from `unitKey`): topics or
+   * countries picked since then. Each gets a first run's allowance whatever
+   * the run's shape, when today's cards are known. Optional; absent means none.
+   */
+  newUnits?: ReadonlySet<string>;
 }
 
 /**
@@ -113,6 +120,22 @@ export function perRunAllowanceFor(runShape: RunShape): number {
 }
 
 /**
+ * A unit the reader's last run didn't read gets a first run's allowance
+ * whatever the run's shape, so a topic or country picked since then gets a
+ * real section on "Complete today's news" rather than a top-up's two cards.
+ * Every other unit keeps the run's allowance, and the daily ceiling still
+ * applies to both (topicAllowance).
+ *
+ * Only when today's cards are known (`existingKnown`): a unit picked again
+ * after being dropped can already have cards today, and without the count the
+ * ceiling can't hold, which is the unclampable spend perRunAllowanceFor's
+ * `unknown` case exists to avoid.
+ */
+export function unitRunAllowance(perRunAllowance: number, isNewUnit: boolean, existingKnown: boolean): number {
+  return isNewUnit && existingKnown ? FIRST_RUN_CARDS_PER_TOPIC : perRunAllowance;
+}
+
+/**
  * The per-run allowance narrowed by whatever headroom the ceiling leaves.
  *
  * `existingForTopic` of null is the failed-lookup case: the ceiling cannot be
@@ -123,15 +146,6 @@ export function perRunAllowanceFor(runShape: RunShape): number {
 export function topicAllowance(perRunAllowance: number, existingForTopic: number | null): number {
   if (existingForTopic === null) return perRunAllowance;
   return Math.max(0, Math.min(perRunAllowance, DAILY_CARDS_PER_TOPIC_CEILING - existingForTopic));
-}
-
-/**
- * The key a card or cluster is capped under: its topic and, within
- * Countries, its country, so each picked country gets the full allowance and
- * ceiling of a topic. A missing or empty subtopic is the same unit as none.
- */
-function unitKey(topic: Topic, subtopic: string | null | undefined): string {
-  return JSON.stringify([topic, subtopic || null]);
 }
 
 /** Counted here rather than by the caller, so a wrong map cannot be handed in. */
@@ -224,7 +238,7 @@ export function applyCardCap<T extends TriagedCluster>(
     // above every allowance is what makes that safe, and if it ever fails this
     // line is the reason to come back and read.
     const allowance = topicAllowance(
-      perRunAllowance,
+      unitRunAllowance(perRunAllowance, options.newUnits?.has(key) ?? false, existingByUnit !== null),
       existingByUnit === null ? null : (existingByUnit.get(key) ?? 0)
     );
 

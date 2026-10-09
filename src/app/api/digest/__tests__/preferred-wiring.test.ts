@@ -336,7 +336,7 @@ describe("digest route: preferred sources", () => {
     ]);
     expect(record.clustersBoosted).toBe(0);
     expect(record.sourceCount).toBe(0);
-    expect(mocks.ingestUnits).toHaveBeenCalledWith([{ topic: TOPIC, subtopic: null }], [], expect.anything());
+    expect(mocks.ingestUnits).toHaveBeenCalledWith([{ topic: TOPIC, subtopic: null }], [], expect.anything(), undefined);
     expect(mocks.rankFrontPage.mock.calls[0][0].map((c: { preferredSourceCount: number }) => c.preferredSourceCount)).toEqual([0, 0]);
   });
 

@@ -79,8 +79,10 @@ describe("QA: the V2.5 block", () => {
   });
 
   it("no other user_subtopics grant or policy elsewhere widens it", () => {
+    // Earlier blocks may read the table (persist_generated_cards checks a
+    // caller's saved countries); what must not appear is a grant or policy.
     const outside = stripComments(schema.slice(0, schema.indexOf("-- V2.5 migration")));
-    expect(outside).not.toMatch(/user_subtopics/);
+    expect(outside).not.toMatch(/(grant|revoke|policy)[^;]*user_subtopics/i);
   });
 });
 
@@ -112,7 +114,7 @@ describe("QA: saveGeneratedCards payload keys", () => {
 
   it("a card with subtopic absent is sent with subtopic: null (JSON null -> SQL NULL via ->>)", async () => {
     const { client, calls } = rpcRecorder();
-    await saveGeneratedCards(client, "d1", [base as Card], "2026-10-03T00:00:00Z", []);
+    await saveGeneratedCards(client, "d1", [base as Card], "2026-10-03T00:00:00Z", [], []);
     const sent = (calls[0].args.p_cards as Record<string, unknown>[])[0];
     expect(sent).toHaveProperty("subtopic", null);
     expect(JSON.parse(JSON.stringify(sent)).subtopic).toBeNull();
@@ -120,7 +122,7 @@ describe("QA: saveGeneratedCards payload keys", () => {
 
   it("zero-country invariant: a plain card's payload is the old payload plus subtopic: null only", async () => {
     const { client, calls } = rpcRecorder();
-    await saveGeneratedCards(client, "d1", [{ ...base, subtopic: null }], "2026-10-03T00:00:00Z", []);
+    await saveGeneratedCards(client, "d1", [{ ...base, subtopic: null }], "2026-10-03T00:00:00Z", [], []);
     const sent = (calls[0].args.p_cards as Record<string, unknown>[])[0];
     expect(Object.keys(sent).sort()).toEqual(
       ["frontPageRank", "id", "labels", "publishedAt", "severity", "shortSummary", "sources", "subtopic", "title", "topic"].sort()

@@ -170,7 +170,7 @@ describe("digest route: picked countries as reading units", () => {
         { topic: COUNTRIES_TOPIC, subtopic: "Kenya" },
       ],
       [],
-      "2026-10-02T10:00:00Z"
+      "2026-10-02T10:00:00Z", undefined
     );
     expect(mocks.reserveSpend.mock.calls[0][2].topicCount).toBe(3);
     expect(record?.topicCount).toBe(3);
