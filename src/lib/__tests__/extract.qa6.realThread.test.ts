@@ -110,10 +110,12 @@ afterEach(() => {
 
 // Shapes that a real page could also look like are allowed to extract; the
 // rest must be refused. Either way: back inside the time limit plus slack,
-// loop never held. entities3mb is one <p> of ampersands: on a fast CPU
-// Readability finishes it inside PARSE_TIMEOUT_MS and returns that text, cut
-// to the cap like any page's, so it may extract the way amp199kFlat does.
-const MAY_EXTRACT = new Set(["amp199kFlat", "hugeAttrValue", "textareaTagText", "entities3mb"]);
+// loop never held. entities3mb (one <p> of ampersands) and chains317x63 take
+// about as long as PARSE_TIMEOUT_MS itself: on a fast CPU Readability finishes
+// them inside the limit and returns their text, cut to the cap like any
+// page's, so they may extract the way amp199kFlat does. What they must never
+// do is outlast the limit or hold the loop, which the checks below still pin.
+const MAY_EXTRACT = new Set(["amp199kFlat", "hugeAttrValue", "textareaTagText", "entities3mb", "chains317x63"]);
 
 describe("attack shapes through extractArticles (8 s budget, as the full report)", () => {
   it.each(Object.keys(SHAPES))("%s", async (name) => {
@@ -130,7 +132,9 @@ describe("attack shapes through extractArticles (8 s budget, as the full report)
 
 describe("attack shapes through extractForStory (15 s budget, as a digest card)", () => {
   it("a story of five hostile pages: the good fallbacks are never reached, but it returns in time and the loop stays free", async () => {
-    const urls = ["ltltComment", "slow", "cdata3mb", "chains317x63", "nbsp3mb"].map((n, i) => `https://h${i}.example/${n}`);
+    // closeBr3mb, not chains317x63: on a fast CPU that page can finish just
+    // inside PARSE_TIMEOUT_MS and extract, and this test needs every page refused.
+    const urls = ["ltltComment", "slow", "cdata3mb", "closeBr3mb", "nbsp3mb"].map((n, i) => `https://h${i}.example/${n}`);
     const { value, ms, gap } = await watchLoop(() => extractForStory(urls, { deadline: Date.now() + 15_000 }));
     process.stdout.write(`[qa6] story of 5 hostile: ${value.map(outcome).join(",")} in ${ms} ms, gap ${gap} ms\n`);
     expect(value.every((r) => r && !r.ok)).toBe(true);
