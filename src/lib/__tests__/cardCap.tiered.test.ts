@@ -125,14 +125,14 @@ describe("applyCardCap — the top-up allowance", () => {
   // that particular topic already has cards. A topic that was quiet this
   // morning gets 2 this evening, the same as one that already has 8.
   it("allows two per topic on a top-up, including a topic with no cards yet", () => {
-    const input = [...group("Tech/AI", 12), ...group("Morocco", 12)];
+    const input = [...group("Tech/AI", 12), ...group("Morocco Politics", 12)];
     const { kept } = applyCardCap(input, {
       runShape: "sameDayTopUp",
       existingCards: existing("Tech/AI", 8),
     });
 
     expect(kept.filter((k) => k.cluster.topic === "Tech/AI")).toHaveLength(2);
-    expect(kept.filter((k) => k.cluster.topic === "Morocco")).toHaveLength(2);
+    expect(kept.filter((k) => k.cluster.topic === "Morocco Politics")).toHaveLength(2);
   });
 
   it("keeps the two highest-severity and reports the allowance it applied", () => {
@@ -162,7 +162,7 @@ describe("applyCardCap — the per-digest ceiling", () => {
   });
 
   it("allows nothing for a topic at or past the ceiling, and leaves its siblings alone", () => {
-    const input = [...group("Tech/AI", 5), ...group("Morocco", 5)];
+    const input = [...group("Tech/AI", 5), ...group("Morocco Politics", 5)];
 
     for (const already of [DAILY_CARDS_PER_TOPIC_CEILING, DAILY_CARDS_PER_TOPIC_CEILING + 1]) {
       const { kept, cuts } = applyCardCap(input, {
@@ -171,8 +171,8 @@ describe("applyCardCap — the per-digest ceiling", () => {
       });
 
       expect(kept.filter((k) => k.cluster.topic === "Tech/AI")).toHaveLength(0);
-      // Counts are per topic, never global: Morocco still gets its two.
-      expect(kept.filter((k) => k.cluster.topic === "Morocco")).toHaveLength(2);
+      // Counts are per topic, never global: Morocco Politics still gets its two.
+      expect(kept.filter((k) => k.cluster.topic === "Morocco Politics")).toHaveLength(2);
 
       const cut = cuts.find((c) => c.topic === "Tech/AI");
       expect(cut).toMatchObject({ allowance: 0, dropped: 5, total: 5 });

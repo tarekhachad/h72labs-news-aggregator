@@ -136,17 +136,20 @@ describe("country catalog through the real planner", () => {
     expect(planUnitFeeds(read, [...SOURCES]).length).toBeLessThanOrEqual(60);
   });
 
-  it("Morocco the country is read before Morocco the topic, so a shared article keeps the country", () => {
-    const { read } = readingUnits(["Morocco", COUNTRIES_TOPIC] as Topic[], ["Morocco"]);
+  it("Morocco is a country, not a topic, and a reader moved from the topic to the country keeps the same number of units", () => {
+    expect(TOPICS as readonly string[]).not.toContain("Morocco");
+    expect(COUNTRIES).toContain("Morocco");
+    const { read } = readingUnits(["Tech/AI", "Football", COUNTRIES_TOPIC], ["Morocco"]);
     expect(read).toEqual([
+      { topic: "Tech/AI", subtopic: null },
       { topic: COUNTRIES_TOPIC, subtopic: "Morocco" },
-      { topic: "Morocco", subtopic: null },
+      { topic: "Football", subtopic: null },
     ]);
   });
 
   it("Countries sits before every regional topic in TOPICS", () => {
     const at = (t: string) => (TOPICS as readonly string[]).indexOf(t);
-    for (const regional of ["Africa", "Asia-Pacific", "Latin America", "Middle East", "European Union", "Morocco"]) {
+    for (const regional of ["Africa", "Asia-Pacific", "Latin America", "Middle East", "European Union"]) {
       expect(at(COUNTRIES_TOPIC), regional).toBeLessThan(at(regional));
     }
   });

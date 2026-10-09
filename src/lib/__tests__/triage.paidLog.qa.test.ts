@@ -72,8 +72,8 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
-    const a = topicReadableOnce("Morocco", "Story A");
-    const b = topicReadableOnce("Morocco", "Story B");
+    const a = topicReadableOnce("Morocco Politics", "Story A");
+    const b = topicReadableOnce("Morocco Politics", "Story B");
 
     const outcomes = await triageClusters([a.cluster, b.cluster]);
 
@@ -84,9 +84,9 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     expect(mockParse).toHaveBeenCalledTimes(3);
     expect(a.reads()).toBe(1);
     expect(b.reads()).toBe(1);
-    expect(error).toHaveBeenCalledWith("[triage] batch of 2 for Morocco failed:", expect.any(Error));
-    expect(log).toHaveBeenCalledWith('[triage] Morocco — PASS (severity 4) — "Story A"');
-    expect(log).toHaveBeenCalledWith('[triage] Morocco — reject — "Story B"');
+    expect(error).toHaveBeenCalledWith("[triage] batch of 2 for Morocco Politics failed:", expect.any(Error));
+    expect(log).toHaveBeenCalledWith('[triage] Morocco Politics — PASS (severity 4) — "Story A"');
+    expect(log).toHaveBeenCalledWith('[triage] Morocco Politics — reject — "Story B"');
   });
 
   it("keeps a reasons-on batch's verdicts, billed once, when topic throws on a second read", async () => {
@@ -96,7 +96,7 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     );
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
-    const poisoned = topicReadableOnce("Morocco", "Poisoned");
+    const poisoned = topicReadableOnce("Morocco Politics", "Poisoned");
     const collector = createUsageCollector();
 
     const outcomes = await withUsageCollector(collector, () => triageClusters([poisoned.cluster]));
@@ -109,7 +109,7 @@ describe("judgeBatch's verdict log — QA gaps", () => {
       .map(([l]) => l as string)
       .filter((l) => l.startsWith("[triage]") && !l.includes(" — judged "));
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("[triage] Morocco — reject");
+    expect(lines[0]).toContain("[triage] Morocco Politics — reject");
     expect(lines[0]).toContain("routine local item");
   });
 
@@ -117,7 +117,7 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     mockParse.mockResolvedValue(response([{ index: 0, notable: true, severity: 5 }]));
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
-    const cluster = makeCluster("Morocco", "Fine at prompt time");
+    const cluster = makeCluster("Morocco Politics", "Fine at prompt time");
     const articles = cluster.articles;
     let reads = 0;
     Object.defineProperty(cluster, "articles", {
@@ -132,19 +132,19 @@ describe("judgeBatch's verdict log — QA gaps", () => {
 
     expect(outcomes).toEqual([{ notable: true, severity: 5 }]);
     expect(mockParse).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith("[triage] Morocco — PASS (severity 5)");
+    expect(log).toHaveBeenCalledWith("[triage] Morocco Politics — PASS (severity 5)");
   });
 
   it("logs every verdict in a multi-topic run from each batch's own topic", async () => {
     mockParse.mockImplementation(async (req: { messages: { content: string }[] }) => {
       const content = req.messages[0].content;
-      return content.startsWith("Topic: Morocco")
+      return content.startsWith("Topic: Morocco Politics")
         ? response([{ index: 0, notable: true, severity: 3 }])
         : response([{ index: 0, notable: false, severity: 1 }]);
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
-    const m = topicReadableOnce("Morocco", "M story");
+    const m = topicReadableOnce("Morocco Politics", "M story");
     const t = topicReadableOnce("Technology" as Topic, "T story");
 
     await expect(triageClusters([m.cluster, t.cluster])).resolves.toEqual([
@@ -152,7 +152,7 @@ describe("judgeBatch's verdict log — QA gaps", () => {
       { notable: false, severity: 1 },
     ]);
     expect(mockParse).toHaveBeenCalledTimes(2);
-    expect(log).toHaveBeenCalledWith('[triage] Morocco — PASS (severity 3) — "M story"');
+    expect(log).toHaveBeenCalledWith('[triage] Morocco Politics — PASS (severity 3) — "M story"');
     expect(log).toHaveBeenCalledWith('[triage] Technology — reject — "T story"');
   });
 
@@ -166,7 +166,7 @@ describe("judgeBatch's verdict log — QA gaps", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
 
-    const outcomes = await triageClusters([makeCluster("Morocco", "S")]);
+    const outcomes = await triageClusters([makeCluster("Morocco Politics", "S")]);
 
     expect(outcomes).toEqual([{ notable: true, severity }]);
     expect(mockParse).toHaveBeenCalledTimes(1);
@@ -180,9 +180,9 @@ describe("judgeBatch's verdict log — QA gaps", () => {
       });
     }
     const { triageClusters } = await import("@/lib/triage");
-    const poisoned = topicReadableOnce("Morocco", "P");
+    const poisoned = topicReadableOnce("Morocco Politics", "P");
 
-    const outcomes = await triageClusters([poisoned.cluster, makeCluster("Morocco", "Q")]);
+    const outcomes = await triageClusters([poisoned.cluster, makeCluster("Morocco Politics", "Q")]);
     expect(outcomes).toHaveLength(2);
     expect(outcomes.every((o) => o.notable === false)).toBe(true);
     expect(poisoned.reads()).toBe(1);

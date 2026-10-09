@@ -33,10 +33,10 @@ This is a measurement on one day, not a permanent ranking. Re-run the script and
 
 ## Summary
 
-- **Topics:** 65 shipped of the 68 candidates (the 67 approved topics other than Countries, which is wave 5, plus the existing Morocco topic). Football replaces European Football. Dropped: Startups & Venture Capital, Work & Careers, Telecom.
-- **Sources:** 150 shipped of about 225 approved, including 41 of the 48 existing sources.
-- **Feeds:** 371, all passing on the final run.
-- **Countries:** 99 offered inside the Countries topic, with 428 more feeds and 331 more outlets (2026-10-03; see *Countries*).
+- **Topics:** 64 offered. 65 shipped of the 68 candidates (the 67 approved topics other than Countries, which is wave 5, plus the existing Morocco topic); Morocco was later retired, since the Morocco country lists all its feeds. Football replaces European Football. Dropped: Startups & Venture Capital, Work & Careers, Telecom.
+- **Sources:** 148 behind the topics. 150 shipped of about 225 approved, including 41 of the 48 existing sources; Yabiladi and Challenge.ma now come only through the Morocco country.
+- **Feeds:** 365 behind the topics, all passing on the final run (371 before the Morocco topic's 6 left).
+- **Countries:** 99 offered inside the Countries topic, with 428 more feeds and 333 more outlets (2026-10-03; see *Countries*).
 
 ## Topics left out
 
@@ -50,7 +50,7 @@ This is a measurement on one day, not a permanent ranking. Re-run the script and
 - **Tech/AI:** ZDNet removed; IEEE Spectrum, The Guardian and MIT Technology Review added.
 - **French Politics:** France24 and RFI (EN) now use their France feeds instead of their all-news feeds; BFM TV added.
 - **Morocco Politics:** Le360 removed (headlines only); TelQuel added. Still exactly 3 feeds, and TelQuel's site throttles bursts of requests, so a full verification run can fail it once and pass it the next time.
-- **Morocco:** Le360 and Medias24 removed; TelQuel and Yabiladi added. Challenge.ma's feed refused one run with a 403 and passed the next, so it is the weakest link here.
+- **Morocco:** Le360 and Medias24 removed; TelQuel and Yabiladi added. Later retired as a topic: the Morocco country lists the same six feeds plus AllAfrica and Le Desk.
 - **Morocco Finance:** Medias24, Le Boursier and Challenge.ma's market feed now refuse our requests (403) and Le360 sends headlines only, so all four are gone. Hespress (EN and FR), The North Africa Post and TelQuel replace them, with their economy feeds.
 - **US Finance:** Yahoo Finance removed: its old feed was 10 days stale with no text, and its S&P 500 feed redirects to `feeds.finance.yahoo.com`, whose robots.txt disallows every crawler. NPR, Fortune, NYT and CBS News added (Forbes's business feed was tried and left out: it is mostly puzzle answers, sport and celebrity).
 - **World Finance:** Al Jazeera removed, since it has only an all-news feed. The Financial Times feed moved from its homepage (which carries US politics and more) to its Global Economy section. The Guardian, DW, CNBC and BBC added.
@@ -260,14 +260,7 @@ In shipping order, with the measurement each feed passed on: median snippet leng
 16. Foreign Policy: `https://foreignpolicy.com/feed/` (80 characters, newest 4.2h)
 17. The Economist: `https://www.economist.com/international/rss.xml` (70 characters, newest 39.6h)
 
-**Morocco** (6 feeds)
-
-1. Hespress (EN): `https://en.hespress.com/feed` (482 characters, newest 3.3h)
-2. The North Africa Post: `https://northafricapost.com/feed` (367 characters, newest 8.4h)
-3. Hespress (FR): `https://fr.hespress.com/feed` (526 characters, newest 0.1h, not English)
-4. TelQuel: `https://telquel.ma/feed` (345 characters, newest 5.6h, not English)
-5. Yabiladi: `https://www.yabiladi.com/rss/news.xml` (262 characters, newest 3.1h, not English)
-6. Challenge.ma: `https://www.challenge.ma/feed` (168 characters, newest 60.9h, not English)
+Morocco is not a topic: the Morocco country (see *Countries*) lists all six of its former feeds, plus AllAfrica and Le Desk. A digest reads six feeds per country, so without preferred outlets it reads AllAfrica and Le Desk in place of Yabiladi and Challenge.ma.
 
 **UK Politics** (4 feeds)
 
@@ -700,7 +693,7 @@ The Countries topic is a container: a reader picks countries inside it, and each
 - **A country ships only with at least 3 passing feeds from at least 3 different outlets.** Two editions of one outlet (an English and a local-language feed) count as one outlet here, because they mostly carry the same stories.
 - **A feed must be about that one country.** A regional feed (East Africa, the South Caucasus, Central Asia, Latin America, Asia-Pacific) is not filed under a country, and neither is a sport-only feed or a commentary site that covers every subject.
 - **Terms are read the same way as for topics,** from the prose in each new host's robots.txt, with one addition: a host that asks not to have its content fed into AI models (a `Content-Signal: ai-input=no` line, or wording that rules out any AI-related use) is left out, because the card writer is an AI model reading the feed. Restrictions limited to training AI models, or to text and data mining, are noted below for Tarek but do not exclude a feed.
-- **A feed shared with a topic is read once.** Thirteen country feeds are also topic feeds (six of Morocco's are the Morocco topic's, one of them spelled `/feed` there and `/feed/` here, two of France's are French Politics's, and one or two each for South Africa, Nigeria, Japan and Argentina). A reader who picks both reads such a feed once, under whichever comes first in reading order, and the other gives that slot to its next feed.
+- **A feed shared with a topic is read once.** Seven country feeds are also topic feeds: two of France's (shared with French Politics), two of South Africa's, and one each of Nigeria's, Japan's and Argentina's. A reader who picks both reads such a feed once, under whichever comes first in reading order, and the other gives that slot to its next feed.
 - **Countries are listed alphabetically,** which is the order the picker shows them and the order a digest reads them. When two of a reader's countries carry the same article, the first one in this order keeps it.
 
 ### Summary

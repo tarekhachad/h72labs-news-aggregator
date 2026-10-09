@@ -183,13 +183,13 @@ describe("digest route: triage outcome alignment (F.4.5)", () => {
     // what catches a route that assumed grouped-by-topic ordering.
     const clusters = [
       cluster("Tech/AI", "tech-1"),
-      cluster("Morocco", "morocco-1"),
+      cluster("Morocco Politics", "morocco-1"),
       cluster("Tech/AI", "tech-2"),
-      cluster("Morocco", "morocco-2"),
+      cluster("Morocco Politics", "morocco-2"),
     ];
     mocks.clusterArticles.mockResolvedValue(clusters);
     mocks.getUserProfile.mockResolvedValue({
-      topics: ["Tech/AI", "Morocco"],
+      topics: ["Tech/AI", "Morocco Politics"],
       preferredSources: [],
     });
     mocks.triageClusters.mockResolvedValue([

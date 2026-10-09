@@ -1448,3 +1448,42 @@ create policy "delete own subtopics"
 --
 -- Safe to re-run: `if not exists`.
 alter table public.usage_runs add column if not exists clusters_merged integer;
+
+-- V2.7 migration: the Morocco topic becomes the Morocco country. MUST be run by
+-- hand, in the same release as the code that drops 'Morocco' from TOPICS.
+--
+-- The Morocco country lists every feed the topic did, plus AllAfrica and Le
+-- Desk, so a reader who followed the topic follows the country instead, and
+-- every card filed under the topic is refiled under Countries · Morocco, where
+-- the Countries page's country filter finds it. A digest reads six feeds per
+-- country, so without preferred outlets the country reads AllAfrica and Le
+-- Desk in place of the topic's Yabiladi and Challenge.ma.
+--
+-- Safe on either side of the deploy. Before it, the code still knows the
+-- Countries topic and the Morocco country, so the migrated rows are an
+-- ordinary profile. After it, until this runs, getUserProfile drops the
+-- 'Morocco' row as a name no longer in TOPICS: the reader keeps their other
+-- picks, loses Morocco news from their runs, and is sent to onboarding only if
+-- 'Morocco' was their only saved topic row.
+--
+-- A reader who already had both the topic and the Morocco country ends up with
+-- one reading unit fewer, since the two collapse into one. Nothing re-checks
+-- the 3-unit minimum on read; the next save asks for a third pick.
+--
+-- The cards keep their ids, so bookmarks and front-page ranks follow them.
+--
+-- Safe to re-run: the inserts skip rows that already exist, and once the
+-- delete and the update have run, nothing matches 'Morocco' as a topic.
+begin;
+insert into public.user_topics (user_id, topic)
+select user_id, 'Countries' from public.user_topics where topic = 'Morocco'
+on conflict (user_id, topic) do nothing;
+
+insert into public.user_subtopics (user_id, topic, subtopic)
+select user_id, 'Countries', 'Morocco' from public.user_topics where topic = 'Morocco'
+on conflict (user_id, topic, subtopic) do nothing;
+
+delete from public.user_topics where topic = 'Morocco';
+
+update public.cards set topic = 'Countries', subtopic = 'Morocco' where topic = 'Morocco';
+commit;

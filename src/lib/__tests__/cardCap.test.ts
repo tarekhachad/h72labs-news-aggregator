@@ -86,14 +86,14 @@ describe("applyCardCap", () => {
   it("caps each topic independently", () => {
     const input = [
       ...group("Tech/AI", 12, 5),
-      ...group("Morocco", 2, 5),
+      ...group("Morocco Politics", 2, 5),
       ...group("Geopolitics", 20, 5),
     ];
     const { kept } = applyCardCap(input, FIRST_RUN);
     const perTopic = (topic: Topic) => kept.filter((k) => k.cluster.topic === topic).length;
 
     expect(perTopic("Tech/AI")).toBe(FIRST_RUN_CARDS_PER_TOPIC);
-    expect(perTopic("Morocco")).toBe(2);
+    expect(perTopic("Morocco Politics")).toBe(2);
     expect(perTopic("Geopolitics")).toBe(FIRST_RUN_CARDS_PER_TOPIC);
   });
 
@@ -131,7 +131,7 @@ describe("applyCardCap", () => {
   });
 
   it("reports a cut consistent with what it actually kept", () => {
-    const input = [...group("Tech/AI", 11, 5), ...group("Morocco", 20, 5)];
+    const input = [...group("Tech/AI", 11, 5), ...group("Morocco Politics", 20, 5)];
     const { kept, cuts } = applyCardCap(input, FIRST_RUN);
 
     // The two halves of the return value must describe the same operation:
@@ -161,7 +161,7 @@ describe("applyCardCap cuts", () => {
   });
 
   it("reports the topic, counts, and the severities that were cut", () => {
-    const input = [...group("Tech/AI", 10, 5), ...group("Morocco", 2, 5)];
+    const input = [...group("Tech/AI", 10, 5), ...group("Morocco Politics", 2, 5)];
     const { cuts } = applyCardCap(input, FIRST_RUN);
 
     expect(cuts).toHaveLength(1);

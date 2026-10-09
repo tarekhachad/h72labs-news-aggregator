@@ -65,12 +65,12 @@ describe("planTriageBatches", () => {
     const { planTriageBatches } = await import("@/lib/triage");
     const batches = planTriageBatches([
       ...clustersOf("Tech/AI", 3),
-      ...clustersOf("Morocco", 2),
+      ...clustersOf("Morocco Politics", 2),
     ]);
 
     expect(batches).toHaveLength(2);
     expect(batches[0]).toEqual({ topic: "Tech/AI", subtopic: null, indices: [0, 1, 2] });
-    expect(batches[1]).toEqual({ topic: "Morocco", subtopic: null, indices: [3, 4] });
+    expect(batches[1]).toEqual({ topic: "Morocco Politics", subtopic: null, indices: [3, 4] });
   });
 
   it("never mixes topics in one batch, even when interleaved", async () => {
@@ -79,7 +79,7 @@ describe("planTriageBatches", () => {
     const { planTriageBatches } = await import("@/lib/triage");
     const clusters = [
       makeCluster("Tech/AI", "a"),
-      makeCluster("Morocco", "b"),
+      makeCluster("Morocco Politics", "b"),
       makeCluster("Tech/AI", "c"),
     ];
 
@@ -90,7 +90,7 @@ describe("planTriageBatches", () => {
     }
     // And the indices are into the ORIGINAL array, not a per-topic subarray.
     expect(batches.find((b) => b.topic === "Tech/AI")!.indices).toEqual([0, 2]);
-    expect(batches.find((b) => b.topic === "Morocco")!.indices).toEqual([1]);
+    expect(batches.find((b) => b.topic === "Morocco Politics")!.indices).toEqual([1]);
   });
 
   it("evens out batch sizes instead of leaving a runt", async () => {
@@ -136,7 +136,7 @@ describe("triageBatchCount", () => {
       clustersOf("Tech/AI", 20),
       clustersOf("Tech/AI", 21),
       clustersOf("Tech/AI", 62),
-      [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco", 30)],
+      [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco Politics", 30)],
     ];
 
     for (const shape of shapes) {
@@ -229,10 +229,10 @@ describe("triageClusters", () => {
   });
 
   it("MISALIGNMENT CANARY: batch-local indices map to global positions across topics", async () => {
-    // Interleaved topics: Tech/AI holds global 0 and 2, Morocco holds 1.
+    // Interleaved topics: Tech/AI holds global 0 and 2, Morocco Politics holds 1.
     // Each batch numbers its own clusters from 0, so a naive
     // "verdict.index === cluster index" would put Tech/AI's second verdict
-    // onto Morocco's cluster.
+    // onto Morocco Politics' cluster.
     mockParse.mockImplementation(async ({ messages }) => {
       const content = messages[0].content as string;
       return content.includes("Topic: Tech/AI")
@@ -252,7 +252,7 @@ describe("triageClusters", () => {
 
     const outcomes = await triageClusters([
       makeCluster("Tech/AI", "a"),
-      makeCluster("Morocco", "b"),
+      makeCluster("Morocco Politics", "b"),
       makeCluster("Tech/AI", "c"),
     ]);
 
@@ -516,7 +516,7 @@ describe("triageClusters failure handling", () => {
   it("isolates a failing batch from a healthy one in another topic", async () => {
     mockParse.mockImplementation(async ({ messages }) => {
       const content = messages[0].content as string;
-      if (content.includes("Topic: Morocco")) throw new Error("this topic fails");
+      if (content.includes("Topic: Morocco Politics")) throw new Error("this topic fails");
       const size = (content.match(/^\d+\. /gm) ?? []).length;
       return verdictsFor(size);
     });
@@ -524,7 +524,7 @@ describe("triageClusters failure handling", () => {
 
     const outcomes = await triageClusters([
       ...clustersOf("Tech/AI", 2),
-      ...clustersOf("Morocco", 2),
+      ...clustersOf("Morocco Politics", 2),
     ]);
 
     expect(outcomes[0].notable).toBe(true);
@@ -920,11 +920,11 @@ describe("triage log line", () => {
     const { triageClusters } = await import("@/lib/triage");
 
     const { lines } = await captureLines(() =>
-      triageClusters([makeCluster("Morocco", "A routine ministry reshuffle")])
+      triageClusters([makeCluster("Morocco Politics", "A routine ministry reshuffle")])
     );
 
     expect(lines).toEqual([
-      '[triage] Morocco — reject — "A routine ministry reshuffle"',
+      '[triage] Morocco Politics — reject — "A routine ministry reshuffle"',
     ]);
   });
 

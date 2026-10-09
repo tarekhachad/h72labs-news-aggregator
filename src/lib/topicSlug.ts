@@ -22,7 +22,6 @@ const TOPIC_TO_SLUG: Record<Topic, string> = {
   "French Politics": "french-politics",
   Countries: "countries",
   Geopolitics: "geopolitics",
-  Morocco: "morocco",
   "UK Politics": "uk-politics",
   "European Union": "european-union",
   "Middle East": "middle-east",

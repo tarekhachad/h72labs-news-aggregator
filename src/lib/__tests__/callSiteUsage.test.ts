@@ -379,8 +379,8 @@ describe("cost summary: triageBatchCount's real prediction against triageCluster
       { clusters: clustersOf("Tech/AI", 1), fail: "always" },
       { clusters: clustersOf("Tech/AI", 4), fail: "always" },
       { clusters: clustersOf("Tech/AI", 4), fail: "once" },
-      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco", 30)], fail: "never" },
-      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco", 30)], fail: "always" },
+      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco Politics", 30)], fail: "never" },
+      { clusters: [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco Politics", 30)], fail: "always" },
     ];
 
     for (const { clusters, fail } of shapes) {

@@ -34,9 +34,12 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // The football topic's slug changed, and old links (bookmarked pages, the
-  // history calendar's past days) still carry the old one. Permanent, so
-  // browsers and crawlers update the stored URL.
+  // Old links (bookmarked pages, the history calendar's past days) still
+  // carry slugs the app no longer serves: the football topic's old slug, and
+  // the retired Morocco topic, which the Morocco country replaced, so its
+  // links land on the Countries page filtered to Morocco (the URL
+  // CountryFilter builds). Permanent, so browsers and crawlers update the
+  // stored URL.
   async redirects() {
     return [
       {
@@ -47,6 +50,16 @@ const nextConfig: NextConfig = {
       {
         source: "/history/:date/topic/european-football",
         destination: "/history/:date/topic/football",
+        permanent: true,
+      },
+      {
+        source: "/topic/morocco",
+        destination: "/topic/countries?country=morocco",
+        permanent: true,
+      },
+      {
+        source: "/history/:date/topic/morocco",
+        destination: "/history/:date/topic/countries?country=morocco",
         permanent: true,
       },
     ];

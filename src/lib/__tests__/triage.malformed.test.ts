@@ -58,7 +58,7 @@ function mixedClusters(): Cluster[] {
   return [
     makeCluster("Tech/AI", "valid-0"),
     null as unknown as Cluster,
-    makeCluster("Morocco", "valid-2"),
+    makeCluster("Morocco Politics", "valid-2"),
     { articles: makeCluster("Tech/AI", "no-topic").articles } as unknown as Cluster,
     { ...makeCluster("Tech/AI", "numeric-topic"), topic: 42 } as unknown as Cluster,
     throwingTopic,
@@ -80,7 +80,7 @@ describe("triage with malformed clusters", () => {
 
     expect(planTriageBatches(mixedClusters())).toEqual([
       { topic: "Tech/AI", subtopic: null, indices: [0, 6] },
-      { topic: "Morocco", subtopic: null, indices: [2] },
+      { topic: "Morocco Politics", subtopic: null, indices: [2] },
     ]);
   });
 

@@ -92,13 +92,13 @@ describe("getUserProfile", () => {
   it("returns topics in curated order regardless of the order the DB hands them back", async () => {
     // The case that fails against an unordered map/filter implementation.
     const { client } = makeFakeSupabase({
-      user_topics: { data: topicRows("Tennis", "Tech/AI", "Morocco", "US Politics") },
+      user_topics: { data: topicRows("Tennis", "Tech/AI", "Morocco Politics", "US Politics") },
       user_preferred_sources: { data: sourceRows("NYT") },
     });
 
     const profile = await getUserProfile(client, "user-1");
 
-    expect(profile.topics).toEqual(["Tech/AI", "US Politics", "Morocco", "Tennis"]);
+    expect(profile.topics).toEqual(["Tech/AI", "US Politics", "Morocco Politics", "Tennis"]);
   });
 
   it("orders by the curated list, not alphabetically", async () => {
@@ -308,6 +308,23 @@ describe("getUserProfile: countries", () => {
     });
 
     expect((await getUserProfile(client, "user-1")).countries).toEqual(["Kenya"]);
+  });
+
+  // The retired Morocco topic, between the deploy that drops it and the
+  // migration that moves it to the Morocco country: the row is ignored, and
+  // the reader's other topics and countries come back untouched, so a reader
+  // with anything else saved is not sent to onboarding.
+  it("drops a stored Morocco topic row and keeps the reader's other topics and countries", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: { data: topicRows("Morocco", "Tech/AI", "Countries", "Football") },
+      user_preferred_sources: { data: sourceRows("NYT") },
+      user_subtopics: { data: countryRows("Kenya") },
+    });
+
+    const profile = await getUserProfile(client, "user-1");
+
+    expect(profile.topics).toEqual(["Tech/AI", "Countries", "Football"]);
+    expect(profile.countries).toEqual(["Kenya"]);
   });
 
   it("returns no countries when the Countries topic isn't saved, whatever the rows say", async () => {

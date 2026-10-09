@@ -29,7 +29,6 @@ export const TOPIC_GROUPS: readonly { name: string; topics: readonly Topic[] }[]
       "Morocco Politics",
       "French Politics",
       "Geopolitics",
-      "Morocco",
       "UK Politics",
       "European Union",
       "Middle East",

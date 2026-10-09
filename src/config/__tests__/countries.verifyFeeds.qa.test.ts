@@ -20,7 +20,6 @@ vi.stubGlobal("fetch", async (url: string): Promise<Response> =>
 );
 
 const lib = await import("../../../scripts/verify-feeds.mts");
-import { FEEDS } from "@/config/feeds";
 import { COUNTRY_FEEDS } from "@/config/countries";
 
 const FEED = { topic: "Countries/Kenya", source: "X", url: "https://a.example/feed" };
@@ -103,9 +102,9 @@ describe("catalogFeeds", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("keeps Morocco the topic and Morocco the country apart", () => {
+  it("lists Morocco only as a country, with every one of its feeds", () => {
     const feeds = lib.catalogFeeds();
-    expect(feeds.filter((f) => f.topic === "Morocco")).toHaveLength(Object.keys(FEEDS["Morocco"] ?? {}).length);
+    expect(feeds.filter((f) => f.topic === "Morocco")).toEqual([]);
     expect(feeds.filter((f) => f.topic === "Countries/Morocco")).toHaveLength(
       Object.keys(COUNTRY_FEEDS["Morocco"] ?? {}).length
     );

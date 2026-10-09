@@ -192,7 +192,7 @@ describe("digest route: two truly concurrent runs (different users) never cross-
   it("attributes each run's own userId, digestId and shape to its own record", async () => {
     await Promise.all([
       runPostAs("user-A", "digest-A", ["Tech/AI"], clustersFor("Tech/AI", 3)),
-      runPostAs("user-B", "digest-B", ["Tech/AI", "Morocco", "World"], clustersFor("Morocco", 7)),
+      runPostAs("user-B", "digest-B", ["Tech/AI", "Morocco Politics", "World"], clustersFor("Morocco Politics", 7)),
     ]);
 
     expect(emitted).toHaveLength(2);

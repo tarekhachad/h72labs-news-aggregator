@@ -82,15 +82,15 @@ beforeEach(() => {
 });
 
 describe("the three overlaps named in the brief, through readingUnits (real catalog)", () => {
-  it("Morocco country + Morocco topic: country read first, no exact URL twice, topic keeps only feeds the country doesn't", () => {
-    const { read } = readingUnits(["Morocco", COUNTRIES_TOPIC] as Topic[], ["Morocco"]);
-    expect(read).toEqual([C("Morocco"), T("Morocco")]);
+  it("Morocco country + Morocco Politics + Morocco Finance: three section feeds of the same outlets, each read in full", () => {
+    const { read } = readingUnits(["Morocco Politics", "Morocco Finance", COUNTRIES_TOPIC] as Topic[], ["Morocco"]);
+    expect(read).toEqual([T("Morocco Politics"), C("Morocco"), T("Morocco Finance")]);
     const plan = planUnitFeeds(read);
     const urls = plan.map((f) => f.url);
     expect(new Set(urls).size).toBe(urls.length);
     expect(plan.filter((f) => f.subtopic === "Morocco")).toHaveLength(MAX_FEEDS_PER_TOPIC);
-    // The topic's own 6 feeds minus the 4 the country's first 6 already read.
-    expect(plan.filter((f) => f.topic === "Morocco").map((f) => f.source)).toEqual(["Yabiladi", "Challenge.ma"]);
+    expect(plan.filter((f) => f.topic === "Morocco Politics")).toHaveLength(Object.keys(FEEDS["Morocco Politics"]).length);
+    expect(plan.filter((f) => f.topic === "Morocco Finance")).toHaveLength(Object.keys(FEEDS["Morocco Finance"]).length);
   });
 
   it("France + French Politics: French Politics sorts first and keeps RFI (EN) and Le Monde; France reads 6 others", () => {
@@ -131,25 +131,17 @@ describe("the three overlaps named in the brief, through readingUnits (real cata
 });
 
 describe("a feed fetched twice under two spellings of one URL", () => {
-  // Morocco the topic lists https://www.challenge.ma/feed and Morocco the
-  // country lists https://www.challenge.ma/feed/ — the same feed (the first
-  // 301s to the second). The skip compares exact strings, so it misses it.
-  it("Morocco country + Morocco topic with Challenge.ma preferred fetches Challenge.ma only once", () => {
-    const units = readingUnits(["Morocco", COUNTRIES_TOPIC] as Topic[], ["Morocco"]).read;
-    const plan = planUnitFeeds(units, ["Challenge.ma"] as Source[]);
-    const keys = plan.map((f) => normalizeArticleUrl(f.url));
-    expect(plan.map(label)).toEqual(expect.any(Array));
-    expect(new Set(keys).size, plan.map((f) => `${label(f)} ${f.url}`).join("\n")).toBe(keys.length);
-  });
-
-  // The catalog does hold one such pair (Challenge.ma, `/feed` in FEEDS and
-  // `/feed/` in COUNTRY_FEEDS); the planner must treat every pair as one feed.
+  // The planner must treat every such pair as one feed. The catalog holds
+  // none today, so the scan also gets Challenge.ma's feed without its
+  // trailing slash (the URL 301s to the country's `/feed/`), which keeps the
+  // check from passing on an empty list.
   it("plans every pair of catalog URLs that differ only by a trailing slash, scheme, www or case as one feed", () => {
     const seen = new Map<string, string>();
     const clashes: [string, string][] = [];
     const all = [
       ...Object.values(FEEDS).flatMap((g) => Object.values(g as Record<string, string>)),
       ...Object.values(COUNTRY_FEEDS).flatMap((g) => Object.values(g as Record<string, string>)),
+      "https://www.challenge.ma/feed",
     ];
     for (const url of new Set(all)) {
       const key = url.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
@@ -256,13 +248,14 @@ describe("the route's planFeeds(...).length is what ingestArticles fetches (real
     }
   });
 
-  it("ingestUnits for Morocco country + topic fetches each planned URL once and tags the shared outlets' articles to the country", async () => {
-    const units = readingUnits(["Morocco", COUNTRIES_TOPIC] as Topic[], ["Morocco"]).read;
+  it("ingestUnits for Morocco country + Morocco Politics fetches each planned URL once and tags each outlet's section to its own unit", async () => {
+    const units = readingUnits(["Morocco Politics", COUNTRIES_TOPIC] as Topic[], ["Morocco"]).read;
     const articles = await ingestUnits(units, [], null);
     const fetched = mocks.parseURL.mock.calls.map((c) => c[0] as string);
     expect(fetched).toEqual(planUnitFeeds(units).map((f) => f.url));
     const hespress = articles.filter((a) => a.source === "Hespress (EN)");
-    expect(hespress).toHaveLength(1);
-    expect(hespress[0]).toMatchObject({ topic: COUNTRIES_TOPIC, subtopic: "Morocco" });
+    expect(hespress).toHaveLength(2);
+    expect(hespress.find((a) => a.url.includes("/politics/"))).toMatchObject({ topic: "Morocco Politics" });
+    expect(hespress.find((a) => !a.url.includes("/politics/"))).toMatchObject({ topic: COUNTRIES_TOPIC, subtopic: "Morocco" });
   });
 });

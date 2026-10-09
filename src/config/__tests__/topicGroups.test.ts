@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 import { TOPICS } from "@/types";
 import { COUNTRIES_TOPIC } from "@/config/countries";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
-import { TOPIC_DESCRIPTIONS } from "@/config/topicDescriptions";
+import { TOPIC_DESCRIPTIONS, TOPIC_SEARCH_TERMS } from "@/config/topicDescriptions";
 
 const PICKABLE = TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC);
 
@@ -62,8 +62,55 @@ describe("topic descriptions", () => {
     }
   });
 
-  it("keeps each line short enough for a chip's second line", () => {
-    const long = Object.entries(TOPIC_DESCRIPTIONS).filter(([, line]) => line.length > 80);
+  // A chip's description line is about 190 px of 12 px Source Serif 4 at
+  // laptop widths, where the page's max-w-6xl caps the grid at five 216 px
+  // chips. Measured on the fixture page, the widest of these lines is 180 px
+  // and the longest is 33 characters; much past that, lines start to wrap.
+  it("keeps each line short enough to fit one line of its chip", () => {
+    const long = Object.entries(TOPIC_DESCRIPTIONS).filter(([, line]) => line.length > 33);
     expect(long).toEqual([]);
+  });
+});
+
+describe("topic search terms", () => {
+  it("gives every pickable topic one non-empty line of search text, and no other key", () => {
+    expect(Object.keys(TOPIC_SEARCH_TERMS).sort()).toEqual([...PICKABLE].sort());
+    for (const topic of PICKABLE) {
+      const line = TOPIC_SEARCH_TERMS[topic as keyof typeof TOPIC_SEARCH_TERMS];
+      expect(line.trim(), topic).not.toBe("");
+      expect(line, topic).not.toContain("\n");
+    }
+  });
+
+  // Words a reader would type that the one-line descriptions had no room for.
+  // Each must still be found in the topic's searchable text: its name, its
+  // line and its search terms, folded the way a search box compares them.
+  const fold = (text: string) => text.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const searchable = (topic: keyof typeof TOPIC_SEARCH_TERMS) =>
+    fold(`${topic} ${TOPIC_DESCRIPTIONS[topic]} ${TOPIC_SEARCH_TERMS[topic]}`);
+  it.each([
+    ["climate change", "Climate & Environment"],
+    ["electric", "Energy Transition & Renewables"],
+    ["hospital", "Health & Medicine"],
+    ["clinical trials", "Biotech & Pharma"],
+    ["video games", "Gaming"],
+    ["washington", "US Politics"],
+    ["parliament", "Morocco Politics"],
+    ["parliament", "French Politics"],
+    ["parliament", "UK Politics"],
+    ["southeast asia", "Asia-Pacific"],
+    ["south africa", "Africa"],
+    ["defence", "Defense & Security"],
+    ["casablanca", "Morocco Finance"],
+    ["interest rates", "Economy"],
+    ["mortgage", "Personal Finance"],
+    ["mortgage", "Real Estate"],
+    ["transfers", "Football"],
+    ["grand prix", "Formula 1"],
+    ["hollywood", "Film & TV"],
+    ["wildfire", "Weather & Natural Disasters"],
+    ["earthquake", "Weather & Natural Disasters"],
+  ] as const)("finds %s under %s", (query, topic) => {
+    for (const term of fold(query).split(/\s+/)) expect(searchable(topic)).toContain(term);
   });
 });

@@ -178,11 +178,11 @@ describe("digest route: cardsDroppedByCap and notableCount are the actual cap ar
     // mutation still fail, since notableCount and cardsDroppedByCap must
     // each be independently correct).
     mocks.getUserProfile.mockResolvedValue({
-      topics: ["Tech/AI", "Morocco"],
+      topics: ["Tech/AI", "Morocco Politics"],
       preferredSources: ["BBC"],
     });
     const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
-    const b = Array.from({ length: 20 }, (_, i) => cluster("Morocco", `b-${i}`));
+    const b = Array.from({ length: 20 }, (_, i) => cluster("Morocco Politics", `b-${i}`));
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
     mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
       cs.map(() => ({ notable: true, severity: 3 }))
@@ -206,7 +206,7 @@ describe("digest route: cardsDroppedByCap and notableCount are the actual cap ar
     // against, so the arithmetic has to be pinned here and not only in the
     // unit tests.
     mocks.getUserProfile.mockResolvedValue({
-      topics: ["Tech/AI", "Morocco"],
+      topics: ["Tech/AI", "Morocco Politics"],
       preferredSources: ["BBC"],
     });
     mocks.getTodaysCardSummaries.mockResolvedValue(
@@ -218,7 +218,7 @@ describe("digest route: cardsDroppedByCap and notableCount are the actual cap ar
       }))
     );
     const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
-    const b = Array.from({ length: 20 }, (_, i) => cluster("Morocco", `b-${i}`));
+    const b = Array.from({ length: 20 }, (_, i) => cluster("Morocco Politics", `b-${i}`));
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
     mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
       cs.map(() => ({ notable: true, severity: 3 }))

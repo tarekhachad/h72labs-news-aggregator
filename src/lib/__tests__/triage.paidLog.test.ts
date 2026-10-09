@@ -66,11 +66,11 @@ describe("judgeBatch's verdict log after the paid call", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { triageClusters } = await import("@/lib/triage");
-    const poisoned = topicReadableOnce("Morocco", "The poisoned one");
+    const poisoned = topicReadableOnce("Morocco Politics", "The poisoned one");
     const collector = createUsageCollector();
 
     const outcomes = await withUsageCollector(collector, () =>
-      triageClusters([makeCluster("Morocco", "A healthy story"), poisoned.cluster]),
+      triageClusters([makeCluster("Morocco Politics", "A healthy story"), poisoned.cluster]),
     );
 
     expect(outcomes).toEqual([
@@ -81,7 +81,7 @@ describe("judgeBatch's verdict log after the paid call", () => {
     expect(collector.calls().filter((call) => call.stage === "triage")).toHaveLength(1);
     // The line is built from the batch's topic, never from a second read.
     expect(poisoned.reads()).toBe(1);
-    expect(log).toHaveBeenCalledWith('[triage] Morocco — PASS (severity 3) — "The poisoned one"');
+    expect(log).toHaveBeenCalledWith('[triage] Morocco Politics — PASS (severity 3) — "The poisoned one"');
   });
 
   it("keeps the verdicts when the console is dead too", async () => {
@@ -92,7 +92,7 @@ describe("judgeBatch's verdict log after the paid call", () => {
       });
     }
     const { triageClusters } = await import("@/lib/triage");
-    const poisoned = topicReadableOnce("Morocco", "The poisoned one");
+    const poisoned = topicReadableOnce("Morocco Politics", "The poisoned one");
 
     await expect(triageClusters([poisoned.cluster])).resolves.toEqual([{ notable: true, severity: 2 }]);
     expect(mockParse).toHaveBeenCalledTimes(1);

@@ -94,3 +94,45 @@ describe("football redirects, resolved the way Next's router does", () => {
     expect(follow("/history/2026/09/14/topic/european-football").hops).toEqual([]);
   });
 });
+
+describe("Morocco topic redirects, resolved the way Next's router does", () => {
+  it("sends /topic/morocco to the Countries page filtered to Morocco with a 308", () => {
+    expect(follow("/topic/morocco")).toEqual({
+      hops: [{ to: "/topic/countries?country=morocco", status: 308 }],
+      final: "/topic/countries?country=morocco",
+    });
+  });
+
+  it("carries the date across for history pages", () => {
+    expect(follow("/history/2026-09-14/topic/morocco").final).toBe(
+      "/history/2026-09-14/topic/countries?country=morocco"
+    );
+  });
+
+  it("handles a trailing slash in two permanent hops", () => {
+    const r = follow("/topic/morocco/");
+    expect(r.final).toBe("/topic/countries?country=morocco");
+    expect(r.hops.every((h) => h.status === 308)).toBe(true);
+    expect(follow("/history/2026-09-14/topic/morocco/").final).toBe(
+      "/history/2026-09-14/topic/countries?country=morocco"
+    );
+  });
+
+  it("keeps the incoming query string beside the country", () => {
+    const final = new URL(follow("/topic/morocco?ref=mail").final, "https://pna.example");
+    expect(final.pathname).toBe("/topic/countries");
+    expect(Object.fromEntries(final.searchParams)).toEqual({ country: "morocco", ref: "mail" });
+  });
+
+  it("matches case-insensitively, as Next does by default", () => {
+    expect(follow("/Topic/Morocco").final).toBe("/topic/countries?country=morocco");
+  });
+
+  it("leaves the destination and look-alikes alone", () => {
+    expect(follow("/topic/countries?country=morocco").hops).toEqual([]);
+    expect(follow("/topic/morocco-politics").hops).toEqual([]);
+    expect(follow("/topic/morocco-finance").hops).toEqual([]);
+    expect(follow("/topic/morocco/extra").hops).toEqual([]);
+    expect(follow("/history/2026/09/14/topic/morocco").hops).toEqual([]);
+  });
+});

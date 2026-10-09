@@ -32,13 +32,18 @@ describe("topicToSlug / slugToTopic", () => {
     expect(slugToTopic("european-football")).toBeNull();
   });
 
+  // Same for the retired Morocco topic, whose old links redirect to the
+  // Countries page filtered to Morocco.
+  it("no longer resolves the old morocco slug", () => {
+    expect(slugToTopic("morocco")).toBeNull();
+  });
+
   it("keeps the slugs old links already carry", () => {
     expect(topicToSlug("Tech/AI")).toBe("tech-ai");
     expect(topicToSlug("US Politics")).toBe("us-politics");
     expect(topicToSlug("Morocco Politics")).toBe("morocco-politics");
     expect(topicToSlug("French Politics")).toBe("french-politics");
     expect(topicToSlug("Geopolitics")).toBe("geopolitics");
-    expect(topicToSlug("Morocco")).toBe("morocco");
     expect(topicToSlug("Morocco Finance")).toBe("morocco-finance");
     expect(topicToSlug("US Finance")).toBe("us-finance");
     expect(topicToSlug("World Finance")).toBe("world-finance");

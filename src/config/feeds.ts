@@ -175,15 +175,6 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     "The Economist": "https://www.economist.com/international/rss.xml",
   },
 
-  Morocco: {
-    "Hespress (EN)": "https://en.hespress.com/feed",
-    "The North Africa Post": "https://northafricapost.com/feed",
-    "Hespress (FR)": "https://fr.hespress.com/feed",
-    TelQuel: "https://telquel.ma/feed",
-    Yabiladi: "https://www.yabiladi.com/rss/news.xml",
-    "Challenge.ma": "https://www.challenge.ma/feed",
-  },
-
   "UK Politics": {
     "The Guardian": "https://www.theguardian.com/politics/rss",
     "Sky News": "https://feeds.skynews.com/feeds/rss/politics.xml",

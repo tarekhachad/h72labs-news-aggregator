@@ -21,7 +21,6 @@ export const TOPICS = [
   // article shared with one of them is tagged with the reader's country.
   "Countries",
   "Geopolitics",
-  "Morocco",
   "UK Politics",
   "European Union",
   "Middle East",

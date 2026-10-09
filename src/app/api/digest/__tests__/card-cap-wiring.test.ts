@@ -271,10 +271,10 @@ describe("digest route: per-topic card cap", () => {
       cluster("Tech/AI", `a-${i}`),
     );
     const b = Array.from({ length: 12 }, (_, i) =>
-      cluster("Morocco", `b-${i}`),
+      cluster("Morocco Politics", `b-${i}`),
     );
     mocks.getUserProfile.mockResolvedValue({
-      topics: ["Tech/AI", "Morocco"],
+      topics: ["Tech/AI", "Morocco Politics"],
       preferredSources: [],
     });
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
@@ -290,7 +290,7 @@ describe("digest route: per-topic card cap", () => {
     expect(written.filter((t) => t === "Tech/AI")).toHaveLength(
       FIRST_RUN_CARDS_PER_TOPIC,
     );
-    expect(written.filter((t) => t === "Morocco")).toHaveLength(
+    expect(written.filter((t) => t === "Morocco Politics")).toHaveLength(
       FIRST_RUN_CARDS_PER_TOPIC,
     );
   });
@@ -320,12 +320,12 @@ describe("digest route: per-topic card cap", () => {
 
   it("applies the top-up allowance to every topic, not only the ones with cards", async () => {
     const a = Array.from({ length: 12 }, (_, i) => cluster("Tech/AI", `a-${i}`));
-    const b = Array.from({ length: 12 }, (_, i) => cluster("Morocco", `b-${i}`));
+    const b = Array.from({ length: 12 }, (_, i) => cluster("Morocco Politics", `b-${i}`));
     mocks.clusterArticles.mockResolvedValue([...a, ...b]);
     mocks.triageClusters.mockImplementation(async (cs: Cluster[]) =>
       cs.map(() => ({ notable: true, severity: 3 })),
     );
-    // Only Tech/AI has cards today; Morocco is still empty.
+    // Only Tech/AI has cards today; Morocco Politics is still empty.
     mocks.getTodaysCardSummaries.mockResolvedValue(
       Array.from({ length: 8 }, (_, i) => ({
         id: `existing-${i}`,
@@ -339,7 +339,7 @@ describe("digest route: per-topic card cap", () => {
 
     const written = mocks.writeCard.mock.calls.map((c) => (c[0] as Cluster).topic);
     expect(written.filter((t) => t === "Tech/AI")).toHaveLength(2);
-    expect(written.filter((t) => t === "Morocco")).toHaveLength(2);
+    expect(written.filter((t) => t === "Morocco Politics")).toHaveLength(2);
   });
 
   it("narrows to the ceiling's headroom for a topic near it", async () => {
