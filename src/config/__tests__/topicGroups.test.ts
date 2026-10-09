@@ -5,8 +5,6 @@ import { TOPICS } from "@/types";
 import { COUNTRIES_TOPIC } from "@/config/countries";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
 import { TOPIC_DESCRIPTIONS } from "@/config/topicDescriptions";
-import { STARTER_SETS } from "@/config/starterSets";
-import { MAX_READING_UNITS, MIN_READING_UNITS } from "@/lib/readingUnits";
 
 const PICKABLE = TOPICS.filter((topic) => topic !== COUNTRIES_TOPIC);
 
@@ -67,25 +65,5 @@ describe("topic descriptions", () => {
   it("keeps each line short enough for a chip's second line", () => {
     const long = Object.entries(TOPIC_DESCRIPTIONS).filter(([, line]) => line.length > 80);
     expect(long).toEqual([]);
-  });
-});
-
-describe("starter sets", () => {
-  it("has the four drafted sets", () => {
-    expect(STARTER_SETS.map((set) => set.name)).toEqual([
-      "Morocco watcher",
-      "World and geopolitics",
-      "Tech and markets",
-      "Sport",
-    ]);
-  });
-
-  it("uses only real pickable topics, each once, within the limits", () => {
-    for (const set of STARTER_SETS) {
-      for (const topic of set.topics) expect(PICKABLE, `${set.name}: ${topic}`).toContain(topic);
-      expect(new Set(set.topics).size, set.name).toBe(set.topics.length);
-      expect(set.topics.length, set.name).toBeGreaterThanOrEqual(Math.max(MIN_READING_UNITS, 5));
-      expect(set.topics.length, set.name).toBeLessThanOrEqual(Math.min(MAX_READING_UNITS, 6));
-    }
   });
 });

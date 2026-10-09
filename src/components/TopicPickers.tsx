@@ -57,8 +57,8 @@ function unitNoun(countries: readonly string[]): string {
 
 /**
  * The topic grid, counting the picked countries against the shared limit.
- * `onboarding` adds the starter sets and pins the counter while the grid
- * scrolls; /profile has neither (its masthead holds the top of the screen).
+ * `onboarding` pins the counter while the grid scrolls; /profile doesn't
+ * (its masthead holds the top of the screen).
  */
 export function TopicsPicker({
   topics,
@@ -81,8 +81,6 @@ export function TopicsPicker({
       min={MIN_READING_UNITS}
       max={MAX_READING_UNITS}
       noun={unitNoun(countries)}
-      countryCount={countries.length}
-      starterSets={onboarding}
       stickyCounter={onboarding}
     />
   );

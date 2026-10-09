@@ -5,10 +5,7 @@ import { Search } from "lucide-react";
 import type { Topic } from "@/types";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
 import { TOPIC_DESCRIPTIONS } from "@/config/topicDescriptions";
-import { STARTER_SETS } from "@/config/starterSets";
 import { counterText } from "@/components/ui/multi-select";
-
-type StarterSet = (typeof STARTER_SETS)[number];
 
 /** Lower case with accents dropped, so "elysee" finds "Élysée". */
 function fold(text: string): string {
@@ -46,8 +43,6 @@ export function TopicGrid({
   min,
   max,
   noun,
-  countryCount,
-  starterSets = false,
   stickyCounter = false,
 }: {
   id: string;
@@ -59,10 +54,6 @@ export function TopicGrid({
   max: number;
   /** Plural noun for the over-limit notice, e.g. "topics and countries". */
   noun: string;
-  /** How many countries are picked, for the starter sets' "over the limit" message. */
-  countryCount: number;
-  /** Show the one-click starter sets above the search. */
-  starterSets?: boolean;
   /**
    * Pin the label and counter to the top of the viewport while the grid
    * scrolls, so the limit's reason stays in sight. Only where nothing else is
@@ -71,10 +62,6 @@ export function TopicGrid({
   stickyCounter?: boolean;
 }) {
   const [query, setQuery] = useState("");
-  // Kept with the country count it was written against: once countries
-  // change, its numbers may no longer hold, so it stops showing.
-  const [setNote, setSetNote] = useState<{ text: string; countryCount: number } | null>(null);
-  const setMessage = setNote !== null && setNote.countryCount === countryCount ? setNote.text : null;
   const uid = useId();
 
   const count = countOf(value);
@@ -103,22 +90,6 @@ export function TopicGrid({
       if (atMax || countOf([...value, topic]) > max) return;
       onChange([...value, topic]);
     }
-    setSetNote(null);
-  }
-
-  function applySet(set: StarterSet) {
-    const topics = [...set.topics];
-    if (countOf(topics) > max) {
-      setSetNote({
-        text: `${set.name} has ${topics.length} topics; with your ${countryCount} ${
-          countryCount === 1 ? "country" : "countries"
-        } that's over ${max}. Remove a country first.`,
-        countryCount,
-      });
-      return;
-    }
-    onChange(topics);
-    setSetNote({ text: `${set.name}: ${topics.length} topics picked. Edit below.`, countryCount });
   }
 
   // Enter in the search box never submits the form or moves the steps on.
@@ -154,37 +125,6 @@ export function TopicGrid({
         <p role="status" className="text-sm" style={{ color: "var(--color-destructive)" }}>
           {`You follow ${count} ${noun}; the limit is now ${max}. Remove ${count - max} before you next save.`}
         </p>
-      )}
-
-      {starterSets && (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby={`${uid}-sets`}>
-            <span id={`${uid}-sets`} className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-              Start from a set:
-            </span>
-            {STARTER_SETS.map((set) => {
-              const descriptionId = `${uid}-set-${set.name.replace(/\W+/g, "-")}`;
-              return (
-                <span key={set.name}>
-                  <button
-                    type="button"
-                    onClick={() => applySet(set)}
-                    aria-describedby={descriptionId}
-                    className="cursor-pointer rounded-[2px] border border-[var(--color-foreground)] px-3 py-1 text-sm outline-none hover:bg-[var(--color-foreground)] hover:text-[var(--color-background)] focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2"
-                  >
-                    {set.name}
-                  </button>
-                  <span id={descriptionId} className="sr-only">
-                    {`Picks ${set.topics.join(", ")}, replacing your topics.`}
-                  </span>
-                </span>
-              );
-            })}
-          </div>
-          <p role="status" className="min-h-5 text-sm" style={{ color: "var(--color-foreground)" }}>
-            {setMessage}
-          </p>
-        </div>
       )}
 
       <div className="relative">

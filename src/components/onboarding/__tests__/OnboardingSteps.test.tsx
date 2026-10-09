@@ -8,7 +8,7 @@ import type { PreferencesState } from "@/lib/profileErrors";
 // The stepped onboarding form as a new reader uses it: four steps in one
 // <form>, a section index, the 3-unit check on Next, Enter that never submits
 // or advances, saving only from Review, the review summary with its Edit
-// links, starter sets, and the header.
+// links, and the header.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,7 +17,6 @@ vi.mock("@/app/auth/actions", () => ({ signOutAction: mocks.signOut }));
 
 const { COUNTRIES_TOPIC } = await import("@/config/countries");
 const { PRODUCT_NAME } = await import("@/config/brand");
-const { STARTER_SETS } = await import("@/config/starterSets");
 const { TOPIC_GROUPS } = await import("@/config/topicGroups");
 const { PROFILE_ERROR_MESSAGES } = await import("@/lib/profileErrors");
 const { OnboardingView } = await import("@/components/onboarding/OnboardingView");
@@ -302,86 +301,9 @@ describe("the review step", () => {
   });
 });
 
-describe("starter sets", () => {
-  it("offers the four sets above the grid on onboarding", () => {
-    for (const set of STARTER_SETS) expect(button(set.name)).toBeDefined();
-  });
-
-  it("replaces the topic picks with the set's, says so, and saves nothing", async () => {
-    await clickChip(plain.find((t) => !STARTER_SETS[0].topics.includes(t))!);
-    await press(STARTER_SETS[0].name);
-    expect(fieldValues("topics")).toEqual([...STARTER_SETS[0].topics]);
-    expect(STARTER_SETS[0].topics.every(isPicked)).toBe(true);
-    expect(container.textContent).toContain(
-      `${STARTER_SETS[0].name}: ${STARTER_SETS[0].topics.length} topics picked. Edit below.`
-    );
-    expect(action).not.toHaveBeenCalled();
-
-    // Still editable afterwards.
-    await clickChip(STARTER_SETS[0].topics[0]);
-    expect(isPicked(STARTER_SETS[0].topics[0])).toBe(false);
-  });
-
-  it("leaves countries and outlets alone", async () => {
-    await pickTopics(3);
-    await press("Next: Countries");
-    await pickFromDropdown("preferences-countries", "Morocco");
-    await press("A · Topics");
-    await press(STARTER_SETS[1].name);
-    expect(fieldValues("countries")).toEqual(["Morocco"]);
-    expect(fieldValues("topics")).toEqual([...STARTER_SETS[1].topics]);
-  });
-
-  it("refuses a set that would pass the limit with the countries picked, and says why", async () => {
-    await pickTopics(3);
-    await press("Next: Countries");
-    for (const c of ["Morocco", "Kenya", "Nigeria", "France", "Japan"]) {
-      await pickFromDropdown("preferences-countries", c);
-    }
-    await press("A · Topics");
-    const set = STARTER_SETS.find((s) => s.topics.length + 5 > 10)!;
-    await press(set.name);
-    expect(fieldValues("topics")).toEqual(plain.slice(0, 3));
-    expect(container.textContent).toContain(
-      `${set.name} has ${set.topics.length} topics; with your 5 countries that's over 10. Remove a country first.`
-    );
-  });
-
-  it("drops the set's message once the countries change, since its numbers may no longer hold", async () => {
-    await press(STARTER_SETS[0].name);
-    const message = `${STARTER_SETS[0].name}: ${STARTER_SETS[0].topics.length} topics picked. Edit below.`;
-    expect(container.textContent).toContain(message);
-    await press("Next: Countries");
-    await pickFromDropdown("preferences-countries", "Morocco");
-    await press("A · Topics");
-    expect(container.textContent).not.toContain(message);
-    expect(fieldValues("topics")).toEqual([...STARTER_SETS[0].topics]);
-  });
-
-  it("keeps the set's message when a disabled chip is clicked at the limit", async () => {
-    await pickTopics(3);
-    await press("Next: Countries");
-    for (const c of ["Morocco", "Kenya", "Nigeria", "France"]) await pickFromDropdown("preferences-countries", c);
-    await press("A · Topics");
-    const set = STARTER_SETS.find((s) => s.topics.length === 6)!;
-    await press(set.name);
-    const message = `${set.name}: 6 topics picked. Edit below.`;
-    expect(container.textContent).toContain(message);
-
-    const blocked = plain.find((t) => !set.topics.includes(t))!;
-    expect(chip(blocked)!.getAttribute("aria-disabled")).toBe("true");
-    await clickChip(blocked);
-    expect(isPicked(blocked)).toBe(false);
-    expect(container.textContent).toContain(message);
-  });
-
-  it("each set's button is named by the set alone and described by the topics it picks", () => {
-    const set = STARTER_SETS[2];
-    const target = button(set.name)!;
-    expect(target.textContent).toBe(set.name);
-    expect(document.getElementById(target.getAttribute("aria-describedby")!)!.textContent).toContain(
-      set.topics.join(", ")
-    );
+describe("the topics step", () => {
+  it("offers no starter sets", () => {
+    expect(document.body.textContent).not.toContain("Start from a set");
   });
 });
 
