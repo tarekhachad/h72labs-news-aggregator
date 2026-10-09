@@ -301,11 +301,10 @@ describe("stepped onboarding with the provider", () => {
     );
   }
 
-  it("outlets step regroups from topics and countries picked on earlier steps, and the review names coverage", async () => {
+  it("outlets step regroups from the topics and countries picked on the first step, and the review names coverage", async () => {
     await renderStepped();
     const t = plain.slice(0, 3);
     for (const topic of t) await clickChip(topic);
-    await press("Next: Countries");
     await open(countriesInput());
     await act(async () => option("Japan")!.click());
     await flush();

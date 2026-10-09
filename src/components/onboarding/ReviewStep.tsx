@@ -5,6 +5,7 @@ import { TOPIC_GROUPS } from "@/config/topicGroups";
 import { MAX_READING_UNITS } from "@/lib/readingUnits";
 import { picksPhrase, unitsOf } from "@/components/onboarding/picks";
 import { coverageSentence, type SourceCoverage } from "@/lib/sourceCoverage";
+import { OUTLETS_STEP, PICKS_STEP } from "@/components/onboarding/OnboardingStepContext";
 
 /**
  * "Your edition will read…": the picks the save will send, each line with an
@@ -37,7 +38,7 @@ export function ReviewStep({
         {`${picksPhrase(topics.length, countries.length)} · ${unitsOf(topics, countries)} of ${MAX_READING_UNITS}`}
       </p>
       <dl className="flex flex-col">
-        <ReviewRow label="Topics" step={0} onEdit={onEdit}>
+        <ReviewRow label="Topics" step={PICKS_STEP} onEdit={onEdit}>
           {groups.length === 0 ? (
             <span style={{ color: "var(--color-muted-foreground)" }}>None yet</span>
           ) : (
@@ -51,14 +52,14 @@ export function ReviewStep({
             </ul>
           )}
         </ReviewRow>
-        <ReviewRow label="Countries" step={1} onEdit={onEdit}>
+        <ReviewRow label="Countries" step={PICKS_STEP} onEdit={onEdit}>
           {countries.length === 0 ? (
             <span style={{ color: "var(--color-muted-foreground)" }}>None</span>
           ) : (
             countries.join(", ")
           )}
         </ReviewRow>
-        <ReviewRow label="Outlets" step={2} onEdit={onEdit}>
+        <ReviewRow label="Outlets" step={OUTLETS_STEP} onEdit={onEdit}>
           {sources.length === 0 ? (
             "Every outlet for your topics"
           ) : coverage === null ? (

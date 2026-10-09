@@ -91,87 +91,98 @@ async function pickTopics(n: number) {
 }
 
 describe("the steps", () => {
-  it("are four sections of one form, all mounted, with only Topics showing", () => {
+  it("are three sections of one form, all mounted, with only Topics & countries showing", () => {
     expect(container.querySelectorAll("form")).toHaveLength(1);
-    expect(sections()).toHaveLength(4);
-    expect(sections().map((s) => s.hidden)).toEqual([false, true, true, true]);
+    expect(sections()).toHaveLength(3);
+    expect(sections().map((s) => s.hidden)).toEqual([false, true, true]);
     expect(document.getElementById("preferences-countries")).not.toBeNull();
     expect(document.getElementById("preferences-sources")).not.toBeNull();
   });
 
+  it("put the topic grid and the countries picker on the first step together", () => {
+    const first = sections()[0];
+    expect(first.querySelector("#preferences-topics-search")).not.toBeNull();
+    expect(first.querySelector("#preferences-countries")).not.toBeNull();
+    expect(headingOf(0).textContent).toBe("Pick your topics and countries");
+  });
+
   it("draw a section index with the current step in ink and unreached steps as plain text", () => {
     expect(indexItems().map((li) => li.textContent!.replace(/^—/, "").trim())).toEqual([
-      "A · Topics",
-      "B · Countries",
-      "C · Outlets",
-      "D · Review",
+      "A · Topics & countries",
+      "B · Outlets",
+      "C · Review",
     ]);
-    expect(container.querySelector('[aria-current="step"]')!.textContent).toBe("A · Topics");
+    expect(container.querySelector('[aria-current="step"]')!.textContent).toBe("A · Topics & countries");
     for (const li of indexItems().slice(1)) expect(li.querySelector("button")).toBeNull();
   });
 
-  it("won't leave Topics below the minimum, and says why", async () => {
+  it("won't leave the first step below the minimum, and says why", async () => {
     await pickTopics(2);
-    await press("Next: Countries");
+    await press("Next: Outlets");
     expect(shownStep()).toBe(0);
     expect(alertText()).toBe("Pick at least 1 more topic to continue. Each country counts as one.");
 
     await clickChip(plain[2]);
     expect(alertText()).toBeNull();
-    await press("Next: Countries");
+    await press("Next: Outlets");
     expect(shownStep()).toBe(1);
+  });
+
+  it("lets 2 topics and 1 country continue, since countries count on the same step", async () => {
+    await pickTopics(2);
+    await pickFromDropdown("preferences-countries", "Morocco");
+    await press("Next: Outlets");
+    expect(shownStep()).toBe(1);
+    expect(fieldValues("topics")).toEqual(plain.slice(0, 2));
+    expect(fieldValues("countries")).toEqual(["Morocco"]);
   });
 
   it("move focus to the new step's heading, but not on first load", async () => {
     expect(document.activeElement).toBe(document.body);
     await pickTopics(3);
-    await press("Next: Countries");
+    await press("Next: Outlets");
     expect(document.activeElement).toBe(headingOf(1));
     await press("Back");
     expect(document.activeElement).toBe(headingOf(0));
   });
 
-  it("let Countries and Outlets be skipped, and say Next once something is picked", async () => {
+  it("let Outlets be skipped, and say Next once one is picked", async () => {
     await pickTopics(3);
-    await press("Next: Countries");
-    expect(button("Skip")).toBeDefined();
-    await pickFromDropdown("preferences-countries", "Morocco");
-    expect(button("Skip")).toBeUndefined();
     await press("Next: Outlets");
+    expect(button("Skip")).toBeDefined();
+    await pickFromDropdown("preferences-sources", SOURCES[0]);
+    expect(button("Skip")).toBeUndefined();
+    await press("Next: Review");
     expect(shownStep()).toBe(2);
-    await press("Skip");
-    expect(shownStep()).toBe(3);
   });
 
   it("let the index jump back to any step already reached", async () => {
     await pickTopics(3);
-    await press("Next: Countries");
+    await press("Next: Outlets");
     await press("Skip");
-    await press("Skip");
-    expect(shownStep()).toBe(3);
-    for (const li of indexItems().slice(0, 3)) expect(li.querySelector("button")).not.toBeNull();
+    expect(shownStep()).toBe(2);
+    for (const li of indexItems().slice(0, 2)) expect(li.querySelector("button")).not.toBeNull();
 
-    await press("B · Countries");
-    expect(shownStep()).toBe(1);
-    expect(container.querySelector('[aria-current="step"]')!.textContent).toBe("B · Countries");
+    await press("A · Topics & countries");
+    expect(shownStep()).toBe(0);
+    expect(container.querySelector('[aria-current="step"]')!.textContent).toBe("A · Topics & countries");
     // Review stays reachable from the index once reached.
-    await press("D · Review");
-    expect(shownStep()).toBe(3);
+    await press("C · Review");
+    expect(shownStep()).toBe(2);
   });
 
   it("put the step in the header", async () => {
     expect(container.querySelector("header")!.textContent).toContain(PRODUCT_NAME);
-    expect(container.querySelector("header")!.textContent).toContain("Step 1 of 4");
+    expect(container.querySelector("header")!.textContent).toContain("Step 1 of 3");
     await pickTopics(3);
-    await press("Next: Countries");
-    expect(container.querySelector("header")!.textContent).toContain("Step 2 of 4");
+    await press("Next: Outlets");
+    expect(container.querySelector("header")!.textContent).toContain("Step 2 of 3");
   });
 });
 
 describe("saving", () => {
   it("submits every pick from the Review step, though the other steps are hidden", async () => {
     await pickTopics(3);
-    await press("Next: Countries");
     await pickFromDropdown("preferences-countries", "Morocco");
     await press("Next: Outlets");
     await pickFromDropdown("preferences-sources", SOURCES[2]);
@@ -190,7 +201,7 @@ describe("saving", () => {
     await pickTopics(3);
     await act(async () => container.querySelector("form")!.requestSubmit());
     await flush();
-    await press("Next: Countries");
+    await press("Next: Outlets");
     await act(async () => container.querySelector("form")!.requestSubmit());
     await flush();
     expect(action).not.toHaveBeenCalled();
@@ -200,25 +211,28 @@ describe("saving", () => {
     await pickTopics(3);
     expect(await key(topicSearch(), "Enter")).toBe(true);
     expect(shownStep()).toBe(0);
-    await press("Next: Countries");
     const countries = document.getElementById("preferences-countries") as HTMLInputElement;
     await act(async () => countries.focus());
     expect(await key(countries, "Enter")).toBe(true);
+    expect(shownStep()).toBe(0);
+    await press("Next: Outlets");
+    const sources = document.getElementById("preferences-sources") as HTMLInputElement;
+    await act(async () => sources.focus());
+    expect(await key(sources, "Enter")).toBe(true);
     expect(shownStep()).toBe(1);
     expect(action).not.toHaveBeenCalled();
   });
 
   it("disables Save on Review below the minimum, with the reason beside it", async () => {
     await pickTopics(3);
-    await press("Next: Countries");
-    await press("Skip");
+    await press("Next: Outlets");
     await press("Skip");
     const save = () => button("Save and continue")!;
     expect(save().disabled).toBe(false);
 
-    await press("A · Topics");
+    await press("A · Topics & countries");
     await clickChip(plain[0]);
-    await press("D · Review");
+    await press("C · Review");
     expect(save().disabled).toBe(true);
     expect(document.getElementById(save().getAttribute("aria-describedby")!)!.textContent).toBe(
       "Pick at least 1 more topic to save. Each country counts as one."
@@ -231,7 +245,6 @@ describe("saving", () => {
   it("shows a refused save's message on Review and keeps every pick", async () => {
     action.mockResolvedValue({ error: "save_failed" });
     await pickTopics(3);
-    await press("Next: Countries");
     await pickFromDropdown("preferences-countries", "Kenya");
     await press("Next: Outlets");
     await press("Skip");
@@ -239,7 +252,7 @@ describe("saving", () => {
     await flush();
 
     expect(alertText()).toBe(PROFILE_ERROR_MESSAGES.save_failed);
-    expect(shownStep()).toBe(3);
+    expect(shownStep()).toBe(2);
     expect(fieldValues("topics")).toEqual(plain.slice(0, 3));
     expect(fieldValues("countries")).toEqual(["Kenya"]);
     expect(plain.slice(0, 3).every(isPicked)).toBe(true);
@@ -248,8 +261,7 @@ describe("saving", () => {
 
 describe("the review step", () => {
   async function toReview() {
-    await press("Next: Countries");
-    await press(button("Skip") ? "Skip" : "Next: Outlets");
+    await press("Next: Outlets");
     await press(button("Skip") ? "Skip" : "Next: Review");
   }
 
@@ -258,13 +270,12 @@ describe("the review step", () => {
     await clickChip(a);
     await clickChip(b);
     await clickChip(TOPIC_GROUPS[0].topics[2]);
-    await press("Next: Countries");
     await pickFromDropdown("preferences-countries", "Morocco");
     await pickFromDropdown("preferences-countries", "Kenya");
     await press("Next: Outlets");
     await press("Skip");
 
-    const review = sections()[3];
+    const review = sections()[2];
     expect(review.querySelector("h2")!.textContent).toBe("Your edition will read…");
     expect(review.querySelector('[data-testid="review-units"]')!.textContent).toBe(
       "3 topics and 2 countries · 5 of 10"
@@ -279,25 +290,29 @@ describe("the review step", () => {
     expect(rows[2].textContent).toContain("Every outlet for your topics");
   });
 
-  it("has an Edit link per line, back to its step", async () => {
+  it("has an Edit link per line: topics and countries back to the first step, outlets to theirs", async () => {
     await pickTopics(3);
     await toReview();
-    const edits = [...sections()[3].querySelectorAll("dl button")];
-    expect(edits.map((e) => e.textContent)).toEqual(["Edit topics", "Edit countries", "Edit outlets"]);
+    const edits = () => [...sections()[2].querySelectorAll<HTMLButtonElement>("dl button")];
+    expect(edits().map((e) => e.textContent)).toEqual(["Edit topics", "Edit countries", "Edit outlets"]);
 
-    await act(async () => (edits[1] as HTMLButtonElement).click());
+    await act(async () => edits()[1].click());
+    expect(shownStep()).toBe(0);
+    expect(document.activeElement).toBe(headingOf(0));
+
+    await press("C · Review");
+    await act(async () => edits()[2].click());
     expect(shownStep()).toBe(1);
     expect(document.activeElement).toBe(headingOf(1));
   });
 
   it("names the outlets picked", async () => {
     await pickTopics(3);
-    await press("Next: Countries");
-    await press("Skip");
+    await press("Next: Outlets");
     await pickFromDropdown("preferences-sources", SOURCES[0]);
     await pickFromDropdown("preferences-sources", SOURCES[4]);
     await press("Next: Review");
-    expect([...sections()[3].querySelectorAll("dl > div")][2].textContent).toContain(`${SOURCES[0]}, ${SOURCES[4]}`);
+    expect([...sections()[2].querySelectorAll("dl > div")][2].textContent).toContain(`${SOURCES[0]}, ${SOURCES[4]}`);
   });
 });
 

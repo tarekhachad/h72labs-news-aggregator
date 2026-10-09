@@ -125,8 +125,8 @@ describe("/onboarding", () => {
   it("shows a reader with no topics the stepped form, and syncs their time zone", async () => {
     await renderPage();
     expect(container.querySelector("form")).not.toBeNull();
-    expect(container.textContent).toContain("Step 1 of 4");
-    expect(container.querySelector("h2")!.textContent).toBe("Pick your topics");
+    expect(container.textContent).toContain("Step 1 of 3");
+    expect(container.querySelector("h2")!.textContent).toBe("Pick your topics and countries");
     expect(mocks.timeZoneSync).toHaveBeenCalledWith("Africa/Casablanca");
   });
 
@@ -136,11 +136,10 @@ describe("/onboarding", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
 
     for (const topic of plain.slice(0, 3)) await clickChip(topic);
-    await press("Next: Countries");
     await pickCountry("Morocco");
     await press("Next: Outlets");
     await press("Skip");
-    expect(container.textContent).toContain("Step 4 of 4");
+    expect(container.textContent).toContain("Step 3 of 3");
 
     await act(async () => container.querySelector("form")!.requestSubmit());
     await flush();
@@ -155,7 +154,7 @@ describe("/onboarding", () => {
     expect(alert.textContent).toBe(PROFILE_ERROR_MESSAGES.too_few);
     // On the Review step, which is still the one showing.
     expect(alert.closest("section")!.hidden).toBe(false);
-    expect(container.textContent).toContain("Step 4 of 4");
+    expect(container.textContent).toContain("Step 3 of 3");
   });
 
   it("hands the form the outlets' coverage from the real catalog, with no feed URL in it", async () => {
@@ -174,8 +173,7 @@ describe("/onboarding", () => {
   it("sorts the outlets step by what each outlet covers for the topics picked", async () => {
     await renderPage();
     for (const topic of plain.slice(0, 3)) await clickChip(topic);
-    await press("Next: Countries");
-    await press("Skip");
+    await press("Next: Outlets");
     const input = document.getElementById("preferences-sources") as HTMLInputElement;
     await act(async () => input.focus());
     await key(input, "ArrowDown");

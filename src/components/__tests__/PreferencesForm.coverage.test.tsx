@@ -348,14 +348,13 @@ describe("the review step's outlet lines", () => {
 
   async function toReview(sources: Source[], countries: string[] = []) {
     for (const topic of TOPICS3) await clickChip(topic);
-    await press("Next: Countries");
     for (const country of countries) {
       await open(countriesInput());
       await act(async () => option(country)!.click());
       await flush();
       await close(countriesInput());
     }
-    await press(countries.length > 0 ? "Next: Outlets" : "Skip");
+    await press("Next: Outlets");
     for (const source of sources) await pickSource(source);
     await press(sources.length > 0 ? "Next: Review" : "Skip");
   }
@@ -383,8 +382,7 @@ describe("the review step's outlet lines", () => {
   it("shows the outlets step grouped from the provider's map", async () => {
     await renderStepped(true);
     for (const topic of TOPICS3) await clickChip(topic);
-    await press("Next: Countries");
-    await press("Skip");
+    await press("Next: Outlets");
     await open(sourcesInput());
     expect(groupName(groups()[0])).toBe("Covers your topics");
   });

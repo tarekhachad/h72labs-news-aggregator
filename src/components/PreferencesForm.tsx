@@ -62,7 +62,7 @@ export function PreferencesForm({
   submitLabel: string;
   /** Shown under the form after a successful save, until a later save is refused. */
   savedMessage?: string;
-  /** Onboarding's four steps (needs an OnboardingStepProvider above it) instead of one page. */
+  /** Onboarding's three steps (needs an OnboardingStepProvider above it) instead of one page. */
   stepped?: boolean;
   /**
    * Which topics and countries each outlet publishes in, built on the server
@@ -133,14 +133,18 @@ export function PreferencesForm({
         countries={countries}
         sources={sources}
         coverage={coverage}
-        topicsStep={<TopicsPicker topics={topics} countries={countries} onTopicsChange={setTopics} onboarding />}
-        countriesStep={
-          <CountriesPicker
-            topics={topics}
-            countries={countries}
-            onCountriesChange={setCountries}
-            sharedCounter={false}
-          />
+        picksStep={
+          <div className="flex flex-col gap-8">
+            {/* Countries first: a single search box, so both halves of the
+                shared limit are in view on first load rather than the
+                countries sitting below the whole grid. It is described by
+                the grid's counter just below it, which stays pinned while
+                the grid scrolls. */}
+            <div className="max-w-2xl">
+              <CountriesPicker topics={topics} countries={countries} onCountriesChange={setCountries} sharedCounter />
+            </div>
+            <TopicsPicker topics={topics} countries={countries} onTopicsChange={setTopics} onboarding />
+          </div>
         }
         outletsStep={sourcesPicker}
         error={error && PROFILE_ERROR_MESSAGES[error]}

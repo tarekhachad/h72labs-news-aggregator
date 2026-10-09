@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Source, Topic } from "@/types";
 import type { SourceCoverage } from "@/lib/sourceCoverage";
 import { MIN_READING_UNITS } from "@/lib/readingUnits";
-import { REVIEW_STEP, STEPS, useOnboardingStep } from "@/components/onboarding/OnboardingStepContext";
+import { OUTLETS_STEP, PICKS_STEP, REVIEW_STEP, STEPS, useOnboardingStep } from "@/components/onboarding/OnboardingStepContext";
 import { ReviewStep } from "@/components/onboarding/ReviewStep";
 import { SaveButton } from "@/components/onboarding/SaveButton";
 import { belowMinimumReason, unitsOf } from "@/components/onboarding/picks";
@@ -13,7 +13,7 @@ const STEP_BUTTON =
   "cursor-pointer rounded-full border border-[var(--color-foreground)] px-5 py-2 text-sm font-medium outline-none hover:bg-[var(--color-foreground)] hover:text-[var(--color-background)] focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2";
 
 /**
- * Onboarding as four steps inside the one <form>: Topics, Countries,
+ * Onboarding as three steps inside the one <form>: Topics & countries,
  * Outlets, Review. A step is only shown or hidden, never unmounted, so every
  * picker's hidden inputs submit from any step and the save action reads the
  * same fields as the single-page form. Steps switch at once, with no fade,
@@ -28,8 +28,7 @@ export function OnboardingSteps({
   countries,
   sources,
   coverage,
-  topicsStep,
-  countriesStep,
+  picksStep,
   outletsStep,
   error,
   submitLabel,
@@ -40,8 +39,8 @@ export function OnboardingSteps({
   sources: readonly Source[];
   /** Which outlets cover what, for the review step; null without a SourceCoverageProvider. */
   coverage: SourceCoverage | null;
-  topicsStep: React.ReactNode;
-  countriesStep: React.ReactNode;
+  /** The topic grid and the countries picker, which share the 10-pick limit. */
+  picksStep: React.ReactNode;
   outletsStep: React.ReactNode;
   /** The refused save's message, shown on Review. */
   error: string | null;
@@ -67,13 +66,13 @@ export function OnboardingSteps({
     goTo(to);
   }
 
-  function nextFromTopics() {
+  function nextFromPicks() {
     if (belowMin) {
       setTriedNext(true);
       return;
     }
     setTriedNext(false);
-    move(1);
+    move(OUTLETS_STEP);
   }
 
   function holdEnter(event: React.KeyboardEvent<HTMLFormElement>) {
@@ -105,42 +104,32 @@ export function OnboardingSteps({
     >
       <StepIndex step={step} visited={visited} onJump={move} />
 
-      <section hidden={step !== 0} aria-label={STEPS[0].name} className="flex flex-col gap-6">
-        {heading(0, "Pick your topics")}
-        {topicsStep}
+      <section hidden={step !== PICKS_STEP} aria-label={STEPS[PICKS_STEP].name} className="flex flex-col gap-6">
+        {heading(PICKS_STEP, "Pick your topics and countries")}
+        <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+          {`Pick ${MIN_READING_UNITS} to 10 in all: each topic and each country counts as one. Countries are optional; a country gets its own section, read from that country's own outlets.`}
+        </p>
+        {picksStep}
         <div className="flex flex-col items-end gap-2">
           {triedNext && belowMin && (
             <p role="alert" className="text-sm" style={{ color: "var(--color-destructive)" }}>
               {belowMinimumReason(units, MIN_READING_UNITS, "continue")}
             </p>
           )}
-          <button type="button" onClick={nextFromTopics} className={STEP_BUTTON}>
-            Next: Countries
+          <button type="button" onClick={nextFromPicks} className={STEP_BUTTON}>
+            Next: Outlets
           </button>
         </div>
       </section>
 
-      <section hidden={step !== 1} aria-label={STEPS[1].name} className="flex max-w-2xl flex-col gap-6">
-        {heading(1, "Add countries (optional)")}
-        <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-          A country gets its own section, read from that country&apos;s own outlets. Skip this to read only your topics.
-        </p>
-        {countriesStep}
-        <StepButtons
-          onBack={() => move(0)}
-          onNext={() => move(2)}
-          nextLabel={countries.length > 0 ? "Next: Outlets" : "Skip"}
-        />
-      </section>
-
-      <section hidden={step !== 2} aria-label={STEPS[2].name} className="flex max-w-2xl flex-col gap-6">
-        {heading(2, "Prefer outlets (optional)")}
+      <section hidden={step !== OUTLETS_STEP} aria-label={STEPS[OUTLETS_STEP].name} className="flex max-w-2xl flex-col gap-6">
+        {heading(OUTLETS_STEP, "Prefer outlets (optional)")}
         <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
           Outlets you pick lead a story when they cover it. Skip this to read every outlet for your topics.
         </p>
         {outletsStep}
         <StepButtons
-          onBack={() => move(1)}
+          onBack={() => move(PICKS_STEP)}
           onNext={() => move(REVIEW_STEP)}
           nextLabel={sources.length > 0 ? "Next: Review" : "Skip"}
         />
@@ -155,7 +144,7 @@ export function OnboardingSteps({
           </p>
         )}
         <div className="flex items-start justify-between gap-4">
-          <button type="button" onClick={() => move(2)} className={STEP_BUTTON}>
+          <button type="button" onClick={() => move(OUTLETS_STEP)} className={STEP_BUTTON}>
             Back
           </button>
           <SaveButton blockedReason={belowMin ? belowMinimumReason(units, MIN_READING_UNITS, "save") : null}>
@@ -181,7 +170,7 @@ function StepButtons({ onBack, onNext, nextLabel }: { onBack: () => void; onNext
 }
 
 /**
- * The steps as a newspaper section index, "A · Topics — B · Countries — …",
+ * The steps as a newspaper section index, "A · Topics & countries — B · …",
  * over a 1 px rule. The current step is in ink; a step already reached is a
  * button back to it; a step not reached yet is plain text.
  */
