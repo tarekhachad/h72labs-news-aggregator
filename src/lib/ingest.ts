@@ -127,10 +127,10 @@ export function planUnitFeeds(
   });
 
   const plan: PlannedFeed[] = [];
-  // Some outlets file one feed under both a topic and a country (Morocco the
-  // topic and Morocco the country share six). An earlier unit already reads
-  // it, so a later unit gives the slot to its next feed instead. Compared by
-  // feedKey, because the two lists can spell one feed differently.
+  // Some outlets file one feed under both a topic and a country (French
+  // Politics and France share two). An earlier unit already reads it, so a
+  // later unit gives the slot to its next feed instead. Compared by feedKey,
+  // because the two lists can spell one feed differently.
   const planned = new Set<string>();
   for (const { topic, subtopic } of distinct.slice(0, MAX_READING_UNITS)) {
     const country = topic === COUNTRIES_TOPIC && subtopic ? subtopic : null;

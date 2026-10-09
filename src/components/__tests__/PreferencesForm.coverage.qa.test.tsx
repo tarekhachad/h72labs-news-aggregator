@@ -9,7 +9,7 @@ import { COUNTRY_REGIONS } from "@/config/countryRegions";
 import { buildSourceCoverage, groupSourcesByCoverage } from "@/lib/sourceCoverage";
 import { termMatches, wordsOf } from "@/components/onboarding/TopicGrid";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
-import { TOPIC_DESCRIPTIONS } from "@/config/topicDescriptions";
+import { TOPIC_DESCRIPTIONS, TOPIC_SEARCH_TERMS } from "@/config/topicDescriptions";
 import type { PreferencesState } from "@/lib/profileErrors";
 
 // QA round 1: the real catalog through the real form, for what the
@@ -331,7 +331,12 @@ describe("stepped onboarding with the provider", () => {
 
 describe("topic search against the real topic text", () => {
   const topics = TOPIC_GROUPS.flatMap((g) => g.topics);
-  const words = new Map(topics.map((t) => [t, wordsOf(`${t} ${TOPIC_DESCRIPTIONS[t as keyof typeof TOPIC_DESCRIPTIONS] ?? ""}`)]));
+  const words = new Map(
+    topics.map((t) => {
+      const key = t as keyof typeof TOPIC_DESCRIPTIONS;
+      return [t, wordsOf(`${t} ${TOPIC_DESCRIPTIONS[key] ?? ""} ${TOPIC_SEARCH_TERMS[key] ?? ""}`)];
+    })
+  );
   const hits = (q: string) => topics.filter((t) => wordsOf(q).every((term) => words.get(t)!.some((w) => termMatches(w, term))));
 
   it("finds what the brief says it finds, and not what it says it must not", () => {
@@ -339,7 +344,7 @@ describe("topic search against the real topic text", () => {
     expect(hits("ai")).toEqual(expect.arrayContaining(["Tech/AI", "Travel"]));
     expect(hits("ai")).not.toContain("Retail");
     expect(hits("ai")).not.toContain("Religion");
-    expect(hits("morocco")).toContain("Football");
+    expect(hits("morocco")).toEqual(["Morocco Politics", "Morocco Finance"]);
   });
 
   it("every topic is found by its own full name, typed in lower case", () => {

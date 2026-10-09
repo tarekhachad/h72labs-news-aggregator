@@ -328,8 +328,8 @@ async function loadFeeds(): Promise<FeedToCheck[]> {
 
 /**
  * Every feed the app can read: each topic's, then each country's, labelled
- * "Countries/<country>" so a country named like a topic (Morocco) stays
- * distinguishable in the report.
+ * "Countries/<country>" so a country can never be mistaken for a topic of
+ * the same name in the report.
  */
 export function catalogFeeds(): FeedToCheck[] {
   const flatten = (grid: Readonly<Record<string, Readonly<Record<string, string | undefined>>>>, label: (key: string) => string) =>

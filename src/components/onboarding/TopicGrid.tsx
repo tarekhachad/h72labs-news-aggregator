@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { Search } from "lucide-react";
 import type { Topic } from "@/types";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
-import { TOPIC_DESCRIPTIONS } from "@/config/topicDescriptions";
+import { TOPIC_DESCRIPTIONS, TOPIC_SEARCH_TERMS } from "@/config/topicDescriptions";
 import { counterText } from "@/components/ui/multi-select";
 
 /** Lower case with accents dropped, so "elysee" finds "Élysée". */
@@ -18,10 +18,10 @@ export function wordsOf(text: string): string[] {
 }
 
 const TOPIC_WORDS = new Map(
-  TOPIC_GROUPS.flatMap((group) => group.topics).map((topic) => [
-    topic,
-    wordsOf(`${topic} ${TOPIC_DESCRIPTIONS[topic as keyof typeof TOPIC_DESCRIPTIONS] ?? ""}`),
-  ])
+  TOPIC_GROUPS.flatMap((group) => group.topics).map((topic) => {
+    const key = topic as keyof typeof TOPIC_DESCRIPTIONS;
+    return [topic, wordsOf(`${topic} ${TOPIC_DESCRIPTIONS[key] ?? ""} ${TOPIC_SEARCH_TERMS[key] ?? ""}`)];
+  })
 );
 
 const STEM_MIN = 5;
