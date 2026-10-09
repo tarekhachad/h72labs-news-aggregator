@@ -12,15 +12,43 @@ function fold(text: string): string {
   return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
 
+/** Folded text split into words: letters and digits, so "Tech/AI" is "tech" and "ai". */
+export function wordsOf(text: string): string[] {
+  return fold(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+const TOPIC_WORDS = new Map(
+  TOPIC_GROUPS.flatMap((group) => group.topics).map((topic) => [
+    topic,
+    wordsOf(`${topic} ${TOPIC_DESCRIPTIONS[topic as keyof typeof TOPIC_DESCRIPTIONS] ?? ""}`),
+  ])
+);
+
+const STEM_MIN = 5;
+
+/**
+ * A search term matches a word it begins. A term longer than STEM_MIN letters
+ * also matches a word beginning with its stem, the term less up to two final
+ * letters but never shorter than STEM_MIN, so "morocco" finds "Moroccan" and
+ * "politics" "political". Matching only at a word's start keeps a short term
+ * from matching inside words ("ai" finds "AI" and "airlines", not "retail"),
+ * and a five-letter stem is too specific to flood the grid.
+ */
+export function termMatches(word: string, term: string): boolean {
+  if (word.startsWith(term)) return true;
+  return term.length > STEM_MIN && word.startsWith(term.slice(0, Math.max(STEM_MIN, term.length - 2)));
+}
+
 function matches(topic: Topic, terms: string[]): boolean {
   if (terms.length === 0) return true;
-  const haystack = fold(`${topic} ${TOPIC_DESCRIPTIONS[topic as keyof typeof TOPIC_DESCRIPTIONS] ?? ""}`);
-  return terms.every((term) => haystack.includes(term));
+  const words = TOPIC_WORDS.get(topic) ?? wordsOf(topic);
+  return terms.every((term) => words.some((word) => termMatches(word, term)));
 }
 
 /**
  * Every pickable topic as a toggle chip under the catalog's six groups, with
- * a search box that filters the grid in place (names and descriptions).
+ * a search box that filters the grid in place, matching the start of words
+ * in names and descriptions (termMatches).
  *
  * Controlled: the picks live in the parent's React state and submit as one
  * hidden <input name={name}> each, so formData.getAll(name) reads them and
@@ -74,7 +102,7 @@ export function TopicGrid({
   const counterId = `${id}-count`;
   const searchId = `${id}-search`;
 
-  const terms = fold(query).split(/\s+/).filter(Boolean);
+  const terms = wordsOf(query);
   const groups = TOPIC_GROUPS.map((group) => ({
     ...group,
     shown: group.topics.filter((topic) => matches(topic, terms)),

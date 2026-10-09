@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TOPICS, type Topic } from "@/types";
 import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { countriesByRegion } from "@/config/countryRegions";
 import { PreferencesForm } from "@/components/PreferencesForm";
 
 // Each country shows its SVG flag before its name, in the list and in its
@@ -81,7 +82,9 @@ describe("country flags", () => {
     await renderForm();
     await open(countriesInput());
     const rows = options();
-    expect(rows.map((r) => r.textContent)).toEqual([...COUNTRIES]);
+    // Every offered country, listed region by region.
+    expect(rows.map((r) => r.textContent)).toEqual(countriesByRegion().flatMap((g) => g.items));
+    expect([...rows.map((r) => r.textContent)].sort()).toEqual([...COUNTRIES].sort());
     for (const row of rows) expectDecorativeFlagBeforeName(row, row.textContent!);
   });
 

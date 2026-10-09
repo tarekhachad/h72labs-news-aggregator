@@ -4,7 +4,7 @@ import type { Topic } from "@/types";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { TopicGrid } from "@/components/onboarding/TopicGrid";
 import { unitsOf } from "@/components/onboarding/picks";
-import { COUNTRIES } from "@/config/countries";
+import { countriesByRegion } from "@/config/countryRegions";
 import { countryCode, type CountryCode } from "@/config/countryCodes";
 import { MAX_READING_UNITS, MIN_READING_UNITS } from "@/lib/readingUnits";
 // One named import per flag, so the bundle carries these 99 and not the
@@ -49,6 +49,8 @@ function countryFlag(country: string) {
     />
   );
 }
+
+const COUNTRY_GROUPS = countriesByRegion();
 
 /** The noun the counters and notices use: countries count once any is picked. */
 function unitNoun(countries: readonly string[]): string {
@@ -109,7 +111,7 @@ export function CountriesPicker({
       name="countries"
       label="Countries (optional)"
       hint={`Each country counts as one of your ${MAX_READING_UNITS}.`}
-      items={COUNTRIES}
+      items={COUNTRY_GROUPS}
       defaultValue={countries}
       max={MAX_READING_UNITS}
       noun={unitNoun(countries)}

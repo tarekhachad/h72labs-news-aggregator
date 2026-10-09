@@ -134,6 +134,34 @@ function ComboboxItem({
   )
 }
 
+function ComboboxGroup({ className, ...props }: ComboboxPrimitive.Group.Props) {
+  return (
+    <ComboboxPrimitive.Group
+      data-slot="combobox-group"
+      className={cn("pb-1 not-first:mt-1", className)}
+      {...props}
+    />
+  )
+}
+
+function ComboboxGroupLabel({
+  className,
+  ...props
+}: ComboboxPrimitive.GroupLabel.Props) {
+  return (
+    <ComboboxPrimitive.GroupLabel
+      data-slot="combobox-group-label"
+      className={cn(
+        "border-t border-[var(--color-rule)] px-2 pt-1.5 pb-1 text-xs font-semibold tracking-[0.12em] text-foreground uppercase",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+const ComboboxCollection = ComboboxPrimitive.Collection
+
 // Stays mounted even with nothing to say: it is a live region, and screen
 // readers only announce changes to one that was already in the DOM.
 function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
@@ -157,5 +185,8 @@ export {
   ComboboxContent,
   ComboboxList,
   ComboboxItem,
+  ComboboxGroup,
+  ComboboxGroupLabel,
+  ComboboxCollection,
   ComboboxEmpty,
 }

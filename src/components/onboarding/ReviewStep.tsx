@@ -4,20 +4,25 @@ import type { Source, Topic } from "@/types";
 import { TOPIC_GROUPS } from "@/config/topicGroups";
 import { MAX_READING_UNITS } from "@/lib/readingUnits";
 import { picksPhrase, unitsOf } from "@/components/onboarding/picks";
+import { coverageSentence, type SourceCoverage } from "@/lib/sourceCoverage";
 
 /**
  * "Your edition will read…": the picks the save will send, each line with an
- * Edit link back to its step. Topics are grouped as the grid groups them.
+ * Edit link back to its step. Topics are grouped as the grid groups them;
+ * each picked outlet says how many of the reader's topics and countries it
+ * covers.
  */
 export function ReviewStep({
   topics,
   countries,
   sources,
+  coverage,
   onEdit,
 }: {
   topics: readonly Topic[];
   countries: readonly string[];
   sources: readonly Source[];
+  coverage: SourceCoverage | null;
   onEdit: (step: number) => void;
 }) {
   const picked = new Set(topics);
@@ -54,7 +59,17 @@ export function ReviewStep({
           )}
         </ReviewRow>
         <ReviewRow label="Outlets" step={2} onEdit={onEdit}>
-          {sources.length === 0 ? "Every outlet for your topics" : sources.join(", ")}
+          {sources.length === 0 ? (
+            "Every outlet for your topics"
+          ) : coverage === null ? (
+            sources.join(", ")
+          ) : (
+            <ul className="flex flex-col gap-1" data-testid="review-outlets">
+              {sources.map((source) => (
+                <li key={source}>{coverageSentence(coverage, source, topics, countries)}</li>
+              ))}
+            </ul>
+          )}
         </ReviewRow>
       </dl>
     </div>

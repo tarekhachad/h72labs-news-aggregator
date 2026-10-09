@@ -11,7 +11,7 @@ import { TOPICS, type Topic } from "@/types";
 
 vi.mock("@/config/countries", async (importActual) => ({
   ...(await importActual<typeof import("@/config/countries")>()),
-  COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Chad", "Mali", "Togo", "Niger"],
+  COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Tanzania", "Mali", "Zambia", "Zimbabwe"],
 }));
 
 const { COUNTRIES_TOPIC } = await import("@/config/countries");
@@ -267,11 +267,11 @@ describe("shared counter and limit", () => {
   });
 
   it("10 countries alone fill the limit, and every topic chip is then disabled", async () => {
-    const ten = ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Chad", "Mali", "Togo"];
+    const ten = ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Tanzania", "Mali", "Zambia"];
     await renderForm({ countries: ten, topics: [COUNTRIES_TOPIC] });
     expect(counter()).toBe(AT_LIMIT);
     await open(countriesInput());
-    expect(optionEl("Niger")!.getAttribute("aria-disabled")).toBe("true");
+    expect(optionEl("Zimbabwe")!.getAttribute("aria-disabled")).toBe("true");
     await key(countriesInput(), "Escape");
     expect(chips().every((c) => c.getAttribute("aria-disabled") === "true")).toBe(true);
   });
@@ -393,7 +393,7 @@ describe("round trip through the real form", () => {
   it("a profile at the limit (7 topics + 3 countries) round-trips unchanged", async () => {
     const db = fakeDb({
       topics: [...plain.slice(0, 7), COUNTRIES_TOPIC],
-      subtopics: ["Mali", "Kenya", "Chad"].map((subtopic) => ({ topic: COUNTRIES_TOPIC, subtopic })),
+      subtopics: ["Mali", "Kenya", "Tanzania"].map((subtopic) => ({ topic: COUNTRIES_TOPIC, subtopic })),
     });
     const before = db.rows();
     const { error } = await roundTrip(db);

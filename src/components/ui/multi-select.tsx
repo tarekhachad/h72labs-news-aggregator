@@ -1,18 +1,32 @@
 "use client"
 
 import * as React from "react"
-import type { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox"
+import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox"
 
 import {
   Combobox,
   ComboboxChip,
   ComboboxChips,
   ComboboxChipsInput,
+  ComboboxCollection,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox"
+
+/** A labelled run of items in a grouped list. Consecutive groups with the same `section` sit under one heading, shown over the first of them still in the list. */
+export interface ItemGroup<T extends string> {
+  label: string
+  section?: string
+  items: readonly T[]
+}
+
+function isGrouped<T extends string>(items: readonly T[] | readonly ItemGroup<T>[]): items is readonly ItemGroup<T>[] {
+  return items.length > 0 && typeof items[0] === "object"
+}
 
 /**
  * A searchable multi-select that submits with a plain <form>: Base UI's
@@ -24,9 +38,14 @@ import {
  * instead of "n of max"; nothing is blocked. A default selection over `max` is kept as given,
  * with a notice asking the reader to trim it; the server enforces the limit.
  *
+ * `items` is either a flat list or a list of groups. Grouped, each group
+ * shows under its label; the search filters inside every group and hides a
+ * group left empty. An item belongs to one group only.
+ *
  * `itemIcon` draws a decoration before an item's name in its row and its
  * chip. It is hidden from screen readers, and the search still matches the
- * name alone.
+ * name alone. `itemDetail` adds a muted note after the name in the row only,
+ * e.g. "6 of your topics"; it is read with the row but not searched.
  *
  * Two pickers can share one limit: each passes `countOf`, which counts both
  * pickers' picks from its own, and the second passes `counterId` to be
@@ -47,13 +66,14 @@ export function MultiSelect<T extends string>({
   onValueChange,
   counterId,
   itemIcon,
+  itemDetail,
 }: {
   id: string
   name: string
   label: string
   /** Shown under the label and read with the input, e.g. "Pick 3 to 10." */
   hint: string
-  items: readonly T[]
+  items: readonly T[] | readonly ItemGroup<T>[]
   defaultValue?: readonly T[]
   min?: number
   max?: number
@@ -68,6 +88,8 @@ export function MultiSelect<T extends string>({
   counterId?: string
   /** A decorative mark before each item's name, e.g. a country's flag; it must hide itself from screen readers. */
   itemIcon?: (item: T) => React.ReactNode
+  /** A short muted note after an item's name in the list, or null for none. */
+  itemDetail?: (item: T) => string | null
 }) {
   const [value, setValue] = React.useState<T[]>(() => [...defaultValue])
   const chipsRef = React.useRef<HTMLDivElement>(null)
@@ -110,6 +132,18 @@ export function MultiSelect<T extends string>({
   // highlighted item.
   function preventSubmitWhileSearching(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter" && event.currentTarget.value !== "") event.preventDefault()
+  }
+
+  function renderItem(item: T) {
+    const detail = itemDetail?.(item)
+    return (
+      <ComboboxItem key={item} value={item} disabled={atMax && !value.includes(item)}>
+        {itemIcon?.(item)}
+        {item}
+        {/* Its leading space is dropped on screen (the row's gap spaces it) but kept in the row's accessible name. */}
+        {detail && <span className="-ml-1 text-muted-foreground">{` · ${detail}`}</span>}
+      </ComboboxItem>
+    )
   }
 
   const hintId = `${id}-hint`
@@ -162,16 +196,14 @@ export function MultiSelect<T extends string>({
         <ComboboxContent anchor={chipsRef}>
           <ComboboxEmpty>No match.</ComboboxEmpty>
           <ComboboxList aria-label={label}>
-            {(item: T) => (
-              <ComboboxItem
-                key={item}
-                value={item}
-                disabled={atMax && !value.includes(item)}
-              >
-                {itemIcon?.(item)}
-                {item}
-              </ComboboxItem>
-            )}
+            {isGrouped(items)
+              ? (group: ItemGroup<T>, index: number) => (
+                  <ComboboxGroup key={group.label} items={group.items}>
+                    <GroupHeading group={group} index={index} />
+                    <ComboboxCollection>{renderItem}</ComboboxCollection>
+                  </ComboboxGroup>
+                )
+              : renderItem}
           </ComboboxList>
         </ComboboxContent>
       </Combobox>
@@ -182,6 +214,30 @@ export function MultiSelect<T extends string>({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * A group's label, with its section's heading over the first group of that
+ * section the search has left in the list.
+ */
+function GroupHeading<T extends string>({ group, index }: { group: ItemGroup<T>; index: number }) {
+  const shown = ComboboxPrimitive.useFilteredItems<ItemGroup<T>>()
+  const opensSection = group.section !== undefined && shown[index - 1]?.section !== group.section
+  return (
+    <ComboboxGroupLabel>
+      {opensSection && (
+        <span
+          data-slot="combobox-section"
+          className="-mx-2 mb-1.5 block border-b border-[var(--color-rule)] px-2 pb-1 font-heading text-[13px] font-semibold tracking-normal normal-case"
+        >
+          {group.section}
+        </span>
+      )}
+      {/* Keeps the heading and the label two words in the group's accessible name; dropped on screen at the line's start. */}
+      {opensSection && " "}
+      {group.label}
+    </ComboboxGroupLabel>
   )
 }
 

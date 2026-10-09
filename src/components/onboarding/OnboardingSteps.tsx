@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Source, Topic } from "@/types";
+import type { SourceCoverage } from "@/lib/sourceCoverage";
 import { MIN_READING_UNITS } from "@/lib/readingUnits";
 import { REVIEW_STEP, STEPS, useOnboardingStep } from "@/components/onboarding/OnboardingStepContext";
 import { ReviewStep } from "@/components/onboarding/ReviewStep";
@@ -26,6 +27,7 @@ export function OnboardingSteps({
   topics,
   countries,
   sources,
+  coverage,
   topicsStep,
   countriesStep,
   outletsStep,
@@ -36,6 +38,8 @@ export function OnboardingSteps({
   topics: readonly Topic[];
   countries: readonly string[];
   sources: readonly Source[];
+  /** Which outlets cover what, for the review step; null without a SourceCoverageProvider. */
+  coverage: SourceCoverage | null;
   topicsStep: React.ReactNode;
   countriesStep: React.ReactNode;
   outletsStep: React.ReactNode;
@@ -144,7 +148,7 @@ export function OnboardingSteps({
 
       <section hidden={step !== REVIEW_STEP} aria-label={STEPS[REVIEW_STEP].name} className="flex max-w-2xl flex-col gap-6">
         {heading(REVIEW_STEP, "Your edition will read…")}
-        <ReviewStep topics={topics} countries={countries} sources={sources} onEdit={move} />
+        <ReviewStep topics={topics} countries={countries} sources={sources} coverage={coverage} onEdit={move} />
         {error !== null && (
           <p role="alert" className="text-center text-sm" style={{ color: "var(--color-destructive)" }}>
             {error}

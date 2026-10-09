@@ -158,6 +158,35 @@ describe("/onboarding", () => {
     expect(container.textContent).toContain("Step 4 of 4");
   });
 
+  it("hands the form the outlets' coverage from the real catalog, with no feed URL in it", async () => {
+    const { SourceCoverageProvider } = await import("@/components/PreferencesForm");
+    const render = OnboardingPage as unknown as (p: unknown) => Promise<ReactElement<{ children: ReactElement[] }>>;
+    const tree = await render({});
+    const provider = tree.props.children.find((child) => child.type === SourceCoverageProvider) as
+      | ReactElement<{ coverage: Record<string, { topics: string[]; countries: string[] }> }>
+      | undefined;
+    expect(provider).toBeDefined();
+    const json = JSON.stringify(provider!.props);
+    expect(json).not.toMatch(/https?:|\/\//i);
+    expect(provider!.props.coverage.BBC.topics).toContain("Tech/AI");
+  });
+
+  it("sorts the outlets step by what each outlet covers for the topics picked", async () => {
+    await renderPage();
+    for (const topic of plain.slice(0, 3)) await clickChip(topic);
+    await press("Next: Countries");
+    await press("Skip");
+    const input = document.getElementById("preferences-sources") as HTMLInputElement;
+    await act(async () => input.focus());
+    await key(input, "ArrowDown");
+    await flush();
+    const firstGroup = document.querySelector<HTMLElement>('[role="listbox"] [role="group"]')!;
+    expect(document.getElementById(firstGroup.getAttribute("aria-labelledby")!)!.textContent).toBe(
+      "Covers your topics"
+    );
+    expect(firstGroup.querySelector('[role="option"]')!.textContent).toMatch(/ · \d+ of your topics$/);
+  });
+
   it("shows nothing from an old or crafted ?error= link", async () => {
     await renderPage({ searchParams: Promise.resolve({ error: "Your account is locked. Call 555-0100" }) });
     expect(container.textContent).not.toContain("555-0100");

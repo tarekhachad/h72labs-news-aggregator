@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { PreferencesForm } from "@/components/PreferencesForm";
+import { FEEDS } from "@/config/feeds";
+import { COUNTRY_FEEDS } from "@/config/countries";
+import { buildSourceCoverage } from "@/lib/sourceCoverage";
 import { SubmitButton } from "@/components/SubmitButton";
 import { PasswordInput } from "@/components/PasswordInput";
 import { updatePreferences, changePassword } from "./actions";
@@ -15,6 +18,9 @@ const PASSWORD_FIELD_STYLE = {
   background: "var(--color-card)",
   color: "var(--color-card-foreground)",
 } as const;
+
+// Built here, on the server: the form gets outlet, topic and country names, never a feed URL.
+const SOURCE_COVERAGE = buildSourceCoverage(FEEDS, COUNTRY_FEEDS);
 
 export default async function ProfilePage({
   searchParams,
@@ -57,6 +63,7 @@ export default async function ProfilePage({
           defaultTopics={topics}
           defaultCountries={countries}
           defaultSources={preferredSources}
+          sourceCoverage={SOURCE_COVERAGE}
           submitLabel="Save preferences"
           savedMessage={prefsSaved ? "Preferences saved." : undefined}
         />

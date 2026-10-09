@@ -6,7 +6,7 @@ import { TOPICS, type Topic } from "@/types";
 
 vi.mock("@/config/countries", async (importActual) => ({
   ...(await importActual<typeof import("@/config/countries")>()),
-  COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Chad", "Mali", "Togo", "Niger"],
+  COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Tanzania", "Mali", "Zambia", "Zimbabwe"],
 }));
 
 const { COUNTRIES_TOPIC } = await import("@/config/countries");

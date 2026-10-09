@@ -3,7 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/profile";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
 import { OnboardingView } from "@/components/onboarding/OnboardingView";
+import { SourceCoverageProvider } from "@/components/PreferencesForm";
+import { FEEDS } from "@/config/feeds";
+import { COUNTRY_FEEDS } from "@/config/countries";
+import { buildSourceCoverage } from "@/lib/sourceCoverage";
 import { saveProfile } from "./actions";
+
+// Built here, on the server: the form gets outlet, topic and country names, never a feed URL.
+const SOURCE_COVERAGE = buildSourceCoverage(FEEDS, COUNTRY_FEEDS);
 
 export default async function OnboardingPage() {
   const supabase = await createClient();
@@ -28,7 +35,9 @@ export default async function OnboardingPage() {
   return (
     <>
       <TimeZoneSync storedTimeZone={timeZone} />
-      <OnboardingView action={saveProfile} />
+      <SourceCoverageProvider coverage={SOURCE_COVERAGE}>
+        <OnboardingView action={saveProfile} />
+      </SourceCoverageProvider>
     </>
   );
 }
