@@ -16,9 +16,11 @@ import {
   MAX_CONCURRENT_PAGES,
   MAX_HTML_BYTES,
   MAX_TEXT_CHARS,
+  MIN_ROUND_TIME_MS,
   resetExtractStateForTests,
   robotsAllows,
 } from "@/lib/extract";
+import { SLOW_CPU_SLACK_MS } from "./helpers/parseTiming";
 
 const FIXTURES = path.join(__dirname, "fixtures/extract");
 const ARTICLE = readFileSync(path.join(FIXTURES, "article.html"), "utf8");
@@ -298,19 +300,29 @@ describe("extractArticles", () => {
   });
 
   describe("the deadline", () => {
+    const WARM_UP_MS = 5_000;
     it("answers at the deadline even when a server never responds", async () => {
       serve({ "https://slow.example/a": hang, "https://news.example/b": html(ARTICLE) });
+      // The good page must finish before the deadline, so the parser thread is
+      // started first: a cold start alone takes 120-250 ms on an idle laptop
+      // and longer on a busy CI runner. Its parse then gets the slow-CPU slack.
+      const [warm] = await extractArticles(["https://news.example/b"], { deadline: soon(WARM_UP_MS) });
+      expect(warm.ok).toBe(true);
+      const budget = SLOW_CPU_SLACK_MS;
       const started = Date.now();
       const results = await extractArticles(["https://slow.example/a", "https://news.example/b"], {
-        deadline: soon(300),
+        deadline: soon(budget),
       });
       const took = Date.now() - started;
       expect(results.map((r) => (r.ok ? "ok" : r.reason))).toEqual(["timeout", "ok"]);
-      expect(took).toBeGreaterThanOrEqual(250);
-      // Far under the 8 s page timeout, so the deadline is what ended it, with
-      // room for a loaded CI runner.
-      expect(took).toBeLessThan(2_500);
-    });
+      // It waited for the deadline (a timer may fire a little before Date.now()
+      // reaches it), and was far under the 8 s page timeout.
+      expect(took).toBeGreaterThanOrEqual(budget - MIN_ROUND_TIME_MS);
+      expect(took).toBeLessThan(budget + SLOW_CPU_SLACK_MS);
+      // Timeout: the warm-up's deadline plus one slack, and the timed call's
+      // budget plus one slack, so raising EXTRACT_SLOW_CPU_SLACK_MS on a slow
+      // machine can't push the test past vitest's 5 s default.
+    }, WARM_UP_MS + 3 * SLOW_CPU_SLACK_MS);
 
     it("answers at the deadline even when a server ignores the abort", async () => {
       serve({ "https://deaf.example/a": () => new Promise<Response>(() => {}) });
