@@ -146,10 +146,13 @@ export function FrontPage({
 
       {/* The run's one live region, mounted (empty) before any run starts:
           screen readers tend not to announce a region that appears with its
-          text already in it. The loaders show the same sentence visually. */}
+          text already in it. The loaders show the same sentence visually.
+          A failed run leaves its error here, the same words shown visibly
+          below (those carry no role, so it is read once); the next run's
+          start clears it. */}
       {interactive && (
         <p role="status" aria-live="polite" className="sr-only" data-testid="edition-status">
-          {loading ? runningStageLabel(stageEvent) : ""}
+          {loading ? runningStageLabel(stageEvent) : (error ?? "")}
         </p>
       )}
 

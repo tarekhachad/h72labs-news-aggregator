@@ -174,23 +174,41 @@ describe("the live region across a run", () => {
     expect(status()).toBe(region);
   });
 
-  it("empties on a failed run", async () => {
+  it("announces a failed run's error in the same region, once", async () => {
     await show({ digest: null });
+    const region = status();
     await click(buttonNamed("Give me today's news")!);
     streams[0].send({ stage: "error", message: "boom" });
     streams[0].close();
     await flush();
     expect(container.textContent).toContain("boom");
-    expectOneRegion("");
+    expectOneRegion("boom");
+    expect(status()).toBe(region);
   });
 
-  it("empties when the connection drops without a terminal event", async () => {
+  it("announces a dropped connection's error when the run ends without a terminal event", async () => {
     await show({ digest: digestFor("2026-10-08", [makeCard("c1", { frontPageRank: 1 })]) });
     await click(buttonNamed("Complete today's news")!);
     streams[0].send({ stage: "ingesting" });
     streams[0].close();
     await flush();
     expect(container.textContent).toContain("Connection to the server was lost");
+    expectOneRegion("Connection to the server was lost before the digest finished.");
+  });
+
+  it("a retry after a failed run replaces the error with the new run's stage, then empties on success", async () => {
+    await show({ digest: digestFor("2026-10-08", [makeCard("c1", { frontPageRank: 1 })]) });
+    await click(buttonNamed("Complete today's news")!);
+    streams[0].send({ stage: "error", message: "boom" });
+    streams[0].close();
+    await flush();
+    expectOneRegion("boom");
+    await click(buttonNamed("Complete today's news")!);
+    expect(status()?.textContent).not.toContain("boom");
+    expect(status()?.textContent).not.toBe("");
+    streams[1].send({ stage: "done", cards: [], rankUpdates: [] });
+    streams[1].close();
+    await flush();
     expectOneRegion("");
   });
 
