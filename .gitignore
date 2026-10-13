@@ -20,7 +20,7 @@
 # That call is withdrawn — the whole of `.claude/` is now ignored, along with
 # `CLAUDE.md`, `notes-logs/` and `.agents/`, matching what the project template
 # and this project's own CLAUDE.md have always claimed the remote carries.
-# The agent definitions live in the vault at Projects/(PROJECT TEMPLATE)/ and
+# The agent definitions live in ~/dev/H72 Labs/_project-template/ and
 # are copied per project, so git was never their home or their backup.
 .claude/
 skills-lock.json

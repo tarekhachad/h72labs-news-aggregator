@@ -6,7 +6,7 @@ import type { Card, Topic } from "@/types";
 import { NewsCard } from "@/components/newspaper/NewsCard";
 import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
 import { FocusModeProvider } from "@/components/newspaper/FocusModeContext";
-import { CardItem } from "@/components/CardItem";
+import { SavedList } from "@/app/(paper)/saved/SavedList";
 import { cardTopicLabel } from "@/components/cardTopicLabel";
 
 // Wherever a card shows its topic, a Countries card shows its country too.
@@ -102,7 +102,7 @@ describe.each(CASES)("$name", ({ card, label }) => {
   });
 
   it("shows its label on a saved card", async () => {
-    await act(async () => root.render(<CardItem card={card} />));
+    await act(async () => root.render(<SavedList initialCards={[{ ...card, bookmarked: true, date: "2026-10-01" }]} />));
     expect(badges()).toContain(label);
   });
 });

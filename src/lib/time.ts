@@ -1,4 +1,4 @@
-/** Shared by CardItem and NewsCard so every card reads recency on the same relative-time scale. */
+/** How long ago a card was published, on one short scale ("5m ago", "3h ago", "2d ago"). */
 export function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diffMs / 60_000);

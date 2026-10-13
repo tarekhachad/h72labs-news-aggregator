@@ -10,6 +10,7 @@ import type { GridTier } from "@/lib/gridTiers";
 import type { GridPosition } from "@/lib/packGrid";
 import { cn } from "@/lib/utils";
 import { FocusOverlay } from "@/components/newspaper/FocusOverlay";
+import { ConfirmDialog } from "@/components/newspaper/ConfirmDialog";
 import { useFocusMode } from "@/components/newspaper/FocusModeContext";
 import { labelColor } from "@/lib/labelColor";
 import { useDynamicLineClamp } from "@/hooks/useDynamicLineClamp";
@@ -83,6 +84,9 @@ export function NewsCard({
   animateEntrance = false,
   entranceDelay = 0,
   onEntrancePlayed,
+  dateNote,
+  confirmUnsave = false,
+  onBookmarkChange,
 }: {
   card: Card;
   tier: GridTier;
@@ -104,6 +108,12 @@ export function NewsCard({
   entranceDelay?: number;
   /** Called once this card's entrance animation finishes, so the owner can retire it and never play it again (see DigestGenerationContext's pendingEntrances). */
   onEntrancePlayed?: (cardId: string) => void;
+  /** Shown in place of the relative publish time, e.g. "From Oct 12, 2026" on the Saved page, where the card's day matters more than its age. Must be locale-fixed text: this renders on the server too. */
+  dateNote?: string;
+  /** Un-saving asks first, in a ConfirmDialog, and waits for the server instead of flipping optimistically. Saving never asks. */
+  confirmUnsave?: boolean;
+  /** Called after the server accepted a save or un-save. */
+  onBookmarkChange?: (cardId: string, bookmarked: boolean) => void;
 }) {
   const [flipped, setFlipped] = useState(false);
   // The full-report fetch is owned entirely here, not in FocusOverlay —
@@ -141,6 +151,10 @@ export function NewsCard({
   // batching lands both in the same render — the pop is live from the
   // first real click onward, never on mount.
   const [hasToggledBookmark, setHasToggledBookmark] = useState(false);
+  const [confirmingUnsave, setConfirmingUnsave] = useState(false);
+  const [unsaveError, setUnsaveError] = useState<string | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const prevConfirmingUnsave = useRef(confirmingUnsave);
   const prefersReducedMotion = useReducedMotion();
   const sourcesButtonRef = useRef<HTMLButtonElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
@@ -255,26 +269,74 @@ export function NewsCard({
     }
   }
 
-  async function handleBookmarkToggle(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (bookmarkPending) return;
-    const next = !bookmarked;
-    setHasToggledBookmark(true);
-    setBookmarkPending(true);
-    setBookmarked(next); // Optimistic — reverted below on failure.
+  async function sendBookmark(next: boolean): Promise<boolean> {
     try {
       const res = await fetch("/api/bookmarks", {
         method: next ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cardId: card.id }),
       });
-      if (!res.ok) throw new Error();
+      return res.ok;
     } catch {
-      setBookmarked(!next);
-    } finally {
-      setBookmarkPending(false);
+      return false;
     }
   }
+
+  async function handleBookmarkToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (bookmarkPending) return;
+    if (bookmarked && confirmUnsave) {
+      setUnsaveError(null);
+      setConfirmingUnsave(true);
+      return;
+    }
+    const next = !bookmarked;
+    setHasToggledBookmark(true);
+    setBookmarkPending(true);
+    setBookmarked(next); // Optimistic — reverted below on failure.
+    const ok = await sendBookmark(next);
+    if (!ok) setBookmarked(!next);
+    setBookmarkPending(false);
+    if (ok) onBookmarkChange?.(card.id, next);
+  }
+
+  // Not optimistic: the dialog is already showing "this is happening", and
+  // a failure has to keep the dialog open with its message rather than
+  // flash the card back to saved behind it.
+  async function handleConfirmUnsave() {
+    if (bookmarkPending) return;
+    setBookmarkPending(true);
+    setUnsaveError(null);
+    const ok = await sendBookmark(false);
+    setBookmarkPending(false);
+    if (!ok) {
+      setUnsaveError("Couldn't remove it. Check your connection and try again.");
+      return;
+    }
+    setHasToggledBookmark(true);
+    setBookmarked(false);
+    setConfirmingUnsave(false);
+    onBookmarkChange?.(card.id, false);
+  }
+
+  function handleCancelUnsave() {
+    if (bookmarkPending) return;
+    setUnsaveError(null);
+    setConfirmingUnsave(false);
+  }
+
+  // The dialog moves focus to its own Cancel button and, on close, leaves it
+  // on <body>. Hand it back to Save, the control that opened it. An effect
+  // rather than a call in the cancel handler: Save is inert until the
+  // dialog's sweep is undone in its unmount commit, and focus() on an inert
+  // element does nothing. After a confirmed removal the Saved page unmounts
+  // this card, so there is nothing to return to.
+  useEffect(() => {
+    if (prevConfirmingUnsave.current && !confirmingUnsave) {
+      saveButtonRef.current?.focus();
+    }
+    prevConfirmingUnsave.current = confirmingUnsave;
+  }, [confirmingUnsave]);
 
   function handleFlip(e: React.MouseEvent) {
     e.stopPropagation();
@@ -479,7 +541,7 @@ export function NewsCard({
                   className="shrink-0 text-xs"
                   style={{ color: "var(--color-muted-foreground)" }}
                 >
-                  {formatRelativeTime(card.publishedAt)}
+                  {dateNote ?? formatRelativeTime(card.publishedAt)}
                 </span>
               </div>
 
@@ -517,6 +579,7 @@ export function NewsCard({
 
               <div ref={footerRef} className="mt-auto flex items-center gap-4 pt-3">
                 <button
+                  ref={saveButtonRef}
                   type="button"
                   onClick={handleBookmarkToggle}
                   onKeyDown={stopEnterSpacePropagation}
@@ -615,6 +678,25 @@ export function NewsCard({
             loadingReport={loadingReport}
             reportError={reportError}
             onGenerateReport={handleGenerateReport}
+          />,
+          document.body
+        )}
+
+      {/* A sibling of the card, not a child: React events bubble through
+          portals along the component tree, so a click inside the dialog
+          rendered within the card's motion.div would also reach the card's
+          onClick and open focus mode. */}
+      {confirmingUnsave &&
+        createPortal(
+          <ConfirmDialog
+            title="Remove from Saved?"
+            description="It leaves your Saved page. You can save it again from that day's paper."
+            confirmLabel="Remove"
+            destructive
+            pending={bookmarkPending}
+            error={unsaveError}
+            onConfirm={handleConfirmUnsave}
+            onCancel={handleCancelUnsave}
           />,
           document.body
         )}
