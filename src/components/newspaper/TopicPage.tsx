@@ -1,3 +1,4 @@
+import { Suspense, type ReactNode } from "react";
 import { LayoutGroup } from "motion/react";
 import type { Card, Source, Topic } from "@/types";
 import { TopicNav } from "@/components/newspaper/TopicNav";
@@ -74,6 +75,7 @@ export function TopicPage({
   basePath = "",
   digestExistsToday = true,
   country,
+  panel,
 }: {
   cards: Card[];
   topic: Topic;
@@ -86,6 +88,13 @@ export function TopicPage({
   digestExistsToday?: boolean;
   /** The Countries page's `?country=` slug; ignored on every other topic. */
   country?: string;
+  /**
+   * The topic's panel band (src/components/newspaper/panels/), shown between
+   * the heading and the cards; only today's topic route passes one. It sits
+   * in its own Suspense boundary with no fallback, so a panel waiting on
+   * outside data streams in after the cards instead of holding them back.
+   */
+  panel?: ReactNode;
 }) {
   const filter = topic === COUNTRIES_TOPIC ? filterCountryCards(cards, country) : null;
   const ordered = orderBySeverity(filter?.shown ?? cards, preferredSources);
@@ -115,6 +124,8 @@ export function TopicPage({
           pageHref={`${basePath}/topic/${topicToSlug(topic)}`}
         />
       )}
+
+      {panel !== undefined && <Suspense fallback={null}>{panel}</Suspense>}
 
       <div className="px-6 pb-10 md:px-10">
         {ordered.length === 0 ? (

@@ -5,6 +5,8 @@ import { getCardsForTopicOnDate, digestExistsForDate, todayDateString } from "@/
 import { slugToTopic } from "@/lib/topicSlug";
 import { TopicPage } from "@/components/newspaper/TopicPage";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
+import { CountryFactsPanel } from "@/components/newspaper/panels/CountryFactsPanel";
+import { filteredCountry } from "@/lib/panels/filteredCountry";
 
 export default async function TopicRoutePage({
   params,
@@ -51,7 +53,10 @@ export default async function TopicRoutePage({
     digestExistsForDate(supabase, user.id, today).catch(() => true),
   ]);
 
-  const country = (await searchParams)?.country;
+  const countryParam = (await searchParams)?.country;
+  const country = typeof countryParam === "string" ? countryParam : undefined;
+  // Today's page only: history topic pages show no panel.
+  const factsCountry = filteredCountry(topic, cards, country);
 
   return (
     <>
@@ -61,8 +66,9 @@ export default async function TopicRoutePage({
         topic={topic}
         userTopics={topics}
         preferredSources={preferredSources}
-        country={typeof country === "string" ? country : undefined}
+        country={country}
         digestExistsToday={digestExistsToday}
+        panel={factsCountry ? <CountryFactsPanel country={factsCountry} /> : undefined}
       />
     </>
   );
