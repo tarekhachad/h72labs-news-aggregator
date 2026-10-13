@@ -8,7 +8,11 @@
  * h72labs.com domain is enough.
  */
 
-export const EMAIL_FROM = "H72 Labs News <no-reply@h72labs.com>";
+import { PRODUCT_NAME } from "@/config/brand";
+
+// The display name stays plain ASCII: a non-ASCII character there needs
+// RFC 2047 encoding, which not every sender path applies.
+export const EMAIL_FROM = `${PRODUCT_NAME} by H72 Labs <no-reply@h72labs.com>`;
 
 const RESEND_URL = "https://api.resend.com/emails";
 const SEND_TIMEOUT_MS = 8000;

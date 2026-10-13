@@ -4,6 +4,8 @@ The copy Supabase sends for signup confirmation and password recovery. Supabase 
 
 These are **external-facing text**: the confirmation email is the first thing an invitee ever sees from H72 Labs, so the vault root's *Writing Style — External-Facing Content* rules apply. Run `external-writing-check` before changing a word of them.
 
+**Sender**, set in the dashboard (Authentication → Emails → SMTP Settings): name `Your Daily Brief by H72 Labs`, address `no-reply@h72labs.com`. It matches the app's own sender, `EMAIL_FROM` in `src/lib/email.ts`, so every email a reader gets comes from the same name. Keep the name plain ASCII: a character like `·` needs header encoding that not every sending path applies.
+
 The provider (Resend, chosen 2026-09-22) is not referenced anywhere in the templates or the app. A provider switch changes SMTP credentials in the Supabase dashboard and DNS records, and leaves this file untouched.
 
 ## The link
@@ -23,7 +25,7 @@ Confirm your email to finish signing up
 Body:
 
 ```html
-<p>You created an account on H72 Labs News, a daily news digest that takes each story from several sources and writes it up as one card.</p>
+<p>You created an account on Your Daily Brief, H72 Labs' daily news digest that takes each story from several sources and writes it up as one card.</p>
 
 <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/onboarding">Confirm my email</a></p>
 
@@ -37,13 +39,13 @@ Body:
 Subject:
 
 ```text
-Reset your H72 Labs News password
+Reset your password for Your Daily Brief
 ```
 
 Body:
 
 ```html
-<p>Someone asked to reset the password for {{ .Email }} on H72 Labs News.</p>
+<p>Someone asked to reset the password for {{ .Email }} on Your Daily Brief.</p>
 
 <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password">Set a new password</a></p>
 
@@ -54,14 +56,14 @@ Body:
 
 ## Invite requests
 
-These three are not Supabase's: the app sends them through Resend's HTTP API, as plain text, from `H72 Labs News <no-reply@h72labs.com>`. The canonical text is in code, `src/lib/inviteEmails.ts`, because each one is built per send; this section is the readable copy. Change both together. `{name}`, `{link}` and `{to}` are filled in at send time.
+These three are not Supabase's: the app sends them through Resend's HTTP API, as plain text, from `Your Daily Brief by H72 Labs <no-reply@h72labs.com>`. The product's name comes from `PRODUCT_NAME` in `src/config/brand.ts`. The canonical text is in code, `src/lib/inviteEmails.ts`, because each one is built per send; this section is the readable copy. Change both together. `{name}`, `{link}` and `{to}` are filled in at send time.
 
-**Invite (on approve).** Subject: `Your invite to H72 Labs News`.
+**Invite (on approve).** Subject: `Your Daily Brief: your invite`.
 
 ```text
 Hi {name},
 
-Thanks for asking to try H72 Labs News. Here's your invite link:
+Thanks for asking to try Your Daily Brief. Here's your invite link:
 
 {link}
 
@@ -71,12 +73,12 @@ Tarek
 H72 Labs
 ```
 
-**Decline (only when the box is ticked).** Subject: `Your request to try H72 Labs News`. It carries none of the requester's words, not even the name: anyone can put a stranger's address on a request.
+**Decline (only when the box is ticked).** Subject: `Your Daily Brief: your request`. It carries none of the requester's words, not even the name: anyone can put a stranger's address on a request.
 
 ```text
 Hi,
 
-Thanks for asking to try H72 Labs News. It's a small invite-only test for now, and I can't add more readers at this stage. You're welcome to ask again later.
+Thanks for asking to try Your Daily Brief. It's a small invite-only test for now, and I can't add more readers at this stage. You're welcome to ask again later.
 
 Tarek
 H72 Labs

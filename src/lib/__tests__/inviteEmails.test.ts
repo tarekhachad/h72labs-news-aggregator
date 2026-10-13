@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EMAIL_FROM, sendEmail } from "@/lib/email";
 import { approvalEmail, declineEmail, newRequestEmail } from "@/lib/inviteEmails";
 import { INVITE_TTL_DAYS } from "@/lib/invite";
+import { PRODUCT_NAME } from "@/config/brand";
 
 const request = {
   name: "Mallory",
@@ -71,5 +72,23 @@ describe("sendEmail", () => {
       throw new Error("down");
     });
     expect(await sendEmail(email, throws, "k")).toEqual({ ok: false, reason: "network" });
+  });
+});
+
+describe("the product's name in emails", () => {
+  it("names the product in the sender and in both requester emails", () => {
+    expect(EMAIL_FROM).toBe(`${PRODUCT_NAME} by H72 Labs <no-reply@h72labs.com>`);
+    const approval = approvalEmail("ann@example.com", "Ann", "https://news.h72labs.com/signup?invite=x");
+    const decline = declineEmail("ann@example.com");
+    expect(approval.subject).toBe(`${PRODUCT_NAME}: your invite`);
+    expect(decline.subject).toBe(`${PRODUCT_NAME}: your request`);
+    expect(approval.text).toContain(`Thanks for asking to try ${PRODUCT_NAME}.`);
+    expect(decline.text).toContain(`Thanks for asking to try ${PRODUCT_NAME}.`);
+    expect(`${approval.subject}${approval.text}${decline.subject}${decline.text}`).not.toContain("H72 Labs News");
+  });
+
+  // A non-ASCII display name needs RFC 2047 encoding, which not every sender path applies.
+  it("keeps the sender's display name plain ASCII", () => {
+    expect(EMAIL_FROM).toMatch(/^[\x20-\x7e]+$/);
   });
 });

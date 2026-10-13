@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Newsreader, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { PRODUCT_NAME } from "@/config/brand";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -16,7 +17,7 @@ const sourceSerif4 = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "Personalized News Aggregator",
+  title: PRODUCT_NAME,
   description: "Your daily briefing, synthesized from multiple sources.",
 };
 

@@ -9,6 +9,7 @@
  * then deliver their text to that stranger.
  */
 
+import { PRODUCT_NAME } from "@/config/brand";
 import { INVITE_TTL_DAYS } from "./invite";
 import type { OutgoingEmail } from "./email";
 import type { InviteRequestFields } from "./inviteRequest";
@@ -16,11 +17,11 @@ import type { InviteRequestFields } from "./inviteRequest";
 export function approvalEmail(to: string, name: string, link: string): OutgoingEmail {
   return {
     to,
-    subject: "Your invite to H72 Labs News",
+    subject: `${PRODUCT_NAME}: your invite`,
     text: [
       `Hi ${name},`,
       "",
-      "Thanks for asking to try H72 Labs News. Here's your invite link:",
+      `Thanks for asking to try ${PRODUCT_NAME}. Here's your invite link:`,
       "",
       link,
       "",
@@ -35,11 +36,11 @@ export function approvalEmail(to: string, name: string, link: string): OutgoingE
 export function declineEmail(to: string): OutgoingEmail {
   return {
     to,
-    subject: "Your request to try H72 Labs News",
+    subject: `${PRODUCT_NAME}: your request`,
     text: [
       "Hi,",
       "",
-      "Thanks for asking to try H72 Labs News. It's a small invite-only test for now, and I can't add more readers at this stage. You're welcome to ask again later.",
+      `Thanks for asking to try ${PRODUCT_NAME}. It's a small invite-only test for now, and I can't add more readers at this stage. You're welcome to ask again later.`,
       "",
       "Tarek",
       "H72 Labs",
