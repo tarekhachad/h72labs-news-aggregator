@@ -63,7 +63,9 @@ beforeEach(() => {
   root = createRoot(container);
   mocks.rpc.mockReset();
   mocks.getUser.mockReset().mockResolvedValue({ data: { user: { id: "admin-1" } } });
-  mocks.getUserTimeZone.mockReset().mockResolvedValue("Africa/Casablanca");
+  // Tokyo has had one fixed offset (UTC+9) for decades, so the expected date
+  // does not depend on which tz database the machine running the test has.
+  mocks.getUserTimeZone.mockReset().mockResolvedValue("Asia/Tokyo");
   mocks.createClient.mockReset().mockImplementation(async () => ({ rpc: mocks.rpc, auth: { getUser: mocks.getUser } }));
 });
 
@@ -117,7 +119,7 @@ describe("/admin/requests", () => {
       expect.stringContaining("Older"),
     ]);
     expect(container.textContent).toContain("1 pending.");
-    // 23:30 UTC on Oct 12 is 00:30 on Oct 13 in Casablanca (UTC+1).
+    // 23:30 UTC on Oct 12 is 08:30 on Oct 13 in Tokyo (UTC+9).
     expect(container.textContent).toContain("Oct 13, 2026");
   });
 
