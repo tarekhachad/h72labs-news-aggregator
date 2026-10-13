@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, use, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { Menu, Bookmark, History, Settings, LogOut } from "lucide-react";
+import { Menu, Bookmark, History, Settings, LogOut, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -24,7 +24,11 @@ import { signOutAction } from "@/app/auth/actions";
  * page never resizes, so grid box-sizing never has to account for a
  * variable content width.
  */
-export function Sidebar() {
+/**
+ * `pendingRequests` resolves to a count for an admin and null for everyone
+ * else (see pending_invite_request_count), so only an admin sees the link.
+ */
+export function Sidebar({ pendingRequests }: { pendingRequests?: Promise<number | null> }) {
   // The Sheet is controlled solely so signing out can close it before the
   // confirmation appears. Everything else in here still closes it the
   // declarative way, via SheetClose.
@@ -69,8 +73,13 @@ export function Sidebar() {
     <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
       <SheetTrigger
         render={
-          <Button variant="ghost" size="icon" aria-label="Open menu" className="cursor-pointer">
+          <Button variant="ghost" size="icon" aria-label="Open menu" className="relative cursor-pointer">
             <Menu />
+            {pendingRequests && (
+              <Suspense fallback={null}>
+                <PendingDot count={pendingRequests} />
+              </Suspense>
+            )}
           </Button>
         }
       />
@@ -127,6 +136,11 @@ export function Sidebar() {
           >
             <Settings className="size-4" /> Settings
           </SheetClose>
+          {pendingRequests && (
+            <Suspense fallback={null}>
+              <AdminLink count={pendingRequests} />
+            </Suspense>
+          )}
           {/* Not a SheetClose, and no longer a form that submits straight
               to signOutAction (Phase 8.2): this closes the sheet AND opens
               the confirmation, and the confirmation is what invokes the
@@ -177,5 +191,45 @@ export function Sidebar() {
           document.body
         )}
     </Sheet>
+  );
+}
+
+function AdminLink({ count }: { count: Promise<number | null> }) {
+  const pending = use(count);
+  if (pending === null) return null;
+  return (
+    <SheetClose
+      nativeButton={false}
+      render={
+        <Link
+          href="/admin/requests"
+          className="flex items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-[var(--color-muted)]"
+        />
+      }
+    >
+      <Inbox className="size-4" /> Invite requests
+      {pending > 0 && (
+        <span
+          className="ml-auto rounded-full px-2 text-xs font-medium"
+          style={{ background: "var(--color-primary)", color: "var(--color-on-primary)" }}
+        >
+          {pending}
+        </span>
+      )}
+    </SheetClose>
+  );
+}
+
+/** Decorative: the count itself is read out on the link inside the menu. */
+function PendingDot({ count }: { count: Promise<number | null> }) {
+  const pending = use(count);
+  if (!pending) return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="pending-requests-dot"
+      className="absolute top-1.5 right-1.5 size-2 rounded-full"
+      style={{ background: "var(--color-primary)" }}
+    />
   );
 }

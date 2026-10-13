@@ -36,7 +36,7 @@ function getBackTarget(pathname: string): string | null {
  * no topics/basePath data to do the right thing. The hamburger (Sidebar)
  * is present on every page.
  */
-export function Masthead() {
+export function Masthead({ pendingRequests }: { pendingRequests?: Promise<number | null> }) {
   const { navigate } = usePageTransitionActions();
   const pathname = usePathname();
   const backTarget = getBackTarget(pathname);
@@ -76,7 +76,7 @@ export function Masthead() {
       style={{ borderColor: "var(--color-rule)", background: "var(--color-background)" }}
     >
       <div className="flex items-center justify-self-start">
-        <Sidebar />
+        <Sidebar pendingRequests={pendingRequests} />
         {backTarget && (
           <Link
             href={backTarget}

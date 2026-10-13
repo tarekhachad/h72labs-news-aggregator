@@ -69,7 +69,10 @@ export default async function SignupPage({
           </form>
         ) : (
           <p className="text-center text-sm">
-            {errorMessage ?? SIGNUP_ERROR_MESSAGES.invite_required}
+            {errorMessage ?? SIGNUP_ERROR_MESSAGES.invite_required}{" "}
+            <a href="/request-invite" className="underline">
+              Request an invite.
+            </a>
           </p>
         )}
         <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>

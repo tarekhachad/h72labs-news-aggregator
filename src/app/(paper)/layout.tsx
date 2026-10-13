@@ -3,6 +3,17 @@ import { PageTransitionProvider } from "@/components/newspaper/PageTransitionCon
 import { PageTransition } from "@/components/newspaper/PageTransition";
 import { PageTransitionInertBoundary } from "@/components/newspaper/PageTransitionInertBoundary";
 import { DigestGenerationProvider } from "@/components/newspaper/DigestGenerationContext";
+import { createClient } from "@/lib/supabase/server";
+import { loadPendingRequestCount } from "@/lib/adminRequests";
+
+/** Never rejects: a failed lookup hides the admin link, nothing more. */
+async function pendingInviteRequests(): Promise<number | null> {
+  try {
+    return await loadPendingRequestCount(await createClient());
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Shared shell for every newspaper page (front page, topic pages, dated
@@ -16,9 +27,12 @@ import { DigestGenerationProvider } from "@/components/newspaper/DigestGeneratio
  * per route and a shared layout has no per-child slot for it.
  */
 export default function PaperLayout({ children }: { children: React.ReactNode }) {
+  // Not awaited: the sidebar resolves it inside a Suspense boundary, so no
+  // page waits on the admin badge, and for every reader but Tarek it is null.
+  const pendingRequests = pendingInviteRequests();
   return (
     <PageTransitionProvider>
-      <PageTransitionInertBoundary masthead={<Masthead />}>
+      <PageTransitionInertBoundary masthead={<Masthead pendingRequests={pendingRequests} />}>
         <DigestGenerationProvider>{children}</DigestGenerationProvider>
       </PageTransitionInertBoundary>
       <PageTransition />

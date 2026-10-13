@@ -10,6 +10,7 @@ Real user accounts exist from v1 (you plus, soon, a handful of friends testing),
 - **Preferences:** selected topics of interest, selected preferred news sources.
 - **Timezone:** the IANA timezone name the reader's browser reports (e.g. `Africa/Casablanca`), stored so "today's" digest is their own calendar day. It's rewritten whenever the device reports a different zone, so it reflects roughly where the device was last used. No location beyond that is collected, and the row is deleted with the account.
 - **Usage data:** generated digests/cards (tied to the user they were generated for), bookmarks.
+- **Invite requests (from visitors without an account):** name, email, how they heard about the app, what they'd like to read, a short note, an optional link, and whether the email already had an account. To cap requests per visitor, the server stores a keyed hash of the visitor's IP address, never the address itself. Only Tarek's account can read requests, through the admin page. They're kept after a decision so a repeat request shows the earlier one; delete a row by hand if someone asks.
 
 No sensitive personal data beyond an email address is collected in v1. No payment info (nothing is monetized yet).
 
@@ -19,7 +20,7 @@ All of it sits in Supabase (Postgres + Auth), a managed provider — not self-ho
 
 ## What's not done with it
 
-- Nothing is sold or shared with third parties.
+- Nothing is sold or shared with third parties. Two services process data only to do their one job: Cloudflare Turnstile sees a visitor's IP address and browser signals when it checks the invite-request form for bots, and Resend receives an email address and the message when the app sends an invite, a decline or a new-request notice.
 - News source content (articles pulled via RSS/GNews) is used only to generate a user's own digest — not redistributed or resold.
 - No tracking/analytics beyond what's needed to see whether the product is actually being used (return visits) — see the instrumentation step in `(C) ROADMAP.md` Phase 5.
 

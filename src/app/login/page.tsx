@@ -61,7 +61,10 @@ export default async function LoginPage({
         </p>
         {/* Signup is invite-only, so a link to /signup would only reach the refusal. */}
         <p className="text-center text-sm" style={{ color: "var(--color-muted-foreground)" }}>
-          Have an invite? Use the link in your invite email.
+          Have an invite? Use the link in your invite email.{" "}
+          <a href="/request-invite" className="underline">
+            No invite yet? Request one.
+          </a>
         </p>
       </main>
     </div>

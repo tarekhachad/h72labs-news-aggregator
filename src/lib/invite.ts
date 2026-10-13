@@ -61,6 +61,13 @@ export function wellFormedEmail(value: unknown): string | null {
   return parsed.success ? parsed.data.toLowerCase() : null;
 }
 
+export const DEFAULT_INVITE_BASE_URL = "https://news.h72labs.com";
+
+/** Where invite links and the admin page's address point. */
+export function inviteBaseUrl(): string {
+  return process.env.INVITE_BASE_URL || DEFAULT_INVITE_BASE_URL;
+}
+
 export function inviteExpiry(now: Date): Date {
   return new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 }

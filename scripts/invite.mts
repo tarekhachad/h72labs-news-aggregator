@@ -16,11 +16,10 @@ import {
   buildInviteLink,
   generateInviteToken,
   hashInviteToken,
+  inviteBaseUrl,
   inviteExpiry,
   parseInviteArgs,
 } from "../src/lib/invite.ts";
-
-const DEFAULT_BASE_URL = "https://news.h72labs.com";
 
 async function main(): Promise<void> {
   const parsed = parseInviteArgs(process.argv.slice(2));
@@ -37,7 +36,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const baseUrl = process.env.INVITE_BASE_URL || DEFAULT_BASE_URL;
+  const baseUrl = inviteBaseUrl();
 
   const token = generateInviteToken();
   const expiresAt = inviteExpiry(new Date());

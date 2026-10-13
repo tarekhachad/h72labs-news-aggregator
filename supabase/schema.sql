@@ -1617,3 +1617,288 @@ where s.topic = 'Countries'
 on conflict (user_id, topic, subtopic) do update
   set read_at = greatest(public.unit_read_cursors.read_at, excluded.read_at);
 commit;
+
+-- V2.7 migration: invite requests. MUST be run by hand, BEFORE the deploy
+-- that ships /request-invite and /admin/requests.
+--
+-- A visitor without an invite asks for one on /request-invite; Tarek approves
+-- or declines on /admin/requests. Approving mints a row in public.invites,
+-- the same row `npm run invite` writes, and the app emails the link. The
+-- secret key that mints invites from the laptop stays off the deployed app:
+-- everything here runs through security definer functions that check who is
+-- calling.
+--
+-- Who may do what:
+-- - Submitting a request: anyone, but only through the app's server. The
+--   form's server action checks Turnstile, then calls submit_invite_request
+--   with INVITE_REQUEST_SECRET. Without that key the function refuses, so a
+--   direct call with the publishable key cannot skip the bot check. Only the
+--   key's sha256 is stored, in invite_request_config.
+-- - Listing, approving and declining: only a user listed in app_admins
+--   (Tarek). The tables themselves have no policies and no grants, so no
+--   session reads or writes them except through these functions.
+--
+-- The raw invite token never reaches the database: the server generates it,
+-- passes only its sha256 to approve_invite_request, and puts the raw token
+-- in the email. A read of either table cannot rebuild a link.
+--
+-- Caps, checked under a lock on the config row so two submissions cannot
+-- both pass the same count: `daily_cap` requests in 24 hours from everyone,
+-- `per_source_daily_cap` from one source (an HMAC of the visitor's IP, made
+-- by the server, so no raw IP is stored), and one pending request per email.
+-- A repeat while one is pending changes nothing and gets the same thank-you.
+--
+-- After this block, by hand and not in this file (the values are private):
+--   insert into public.app_admins (user_id)
+--     select id from auth.users where email = '<Tarek''s address>';
+--   insert into public.invite_request_config (server_key_hash)
+--     values ('<sha256 hex of INVITE_REQUEST_SECRET>');
+--
+-- Safe to re-run: `if not exists`, `create or replace`, and every grant is
+-- restated.
+create table if not exists public.app_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.app_admins enable row level security;
+revoke all on table public.app_admins from anon, authenticated;
+
+create table if not exists public.invite_request_config (
+  id smallint primary key default 1 check (id = 1),
+  server_key_hash text not null check (server_key_hash ~ '^[0-9a-f]{64}$'),
+  daily_cap integer not null default 20 check (daily_cap >= 0),
+  per_source_daily_cap integer not null default 3 check (per_source_daily_cap >= 0)
+);
+
+alter table public.invite_request_config enable row level security;
+revoke all on table public.invite_request_config from anon, authenticated;
+
+create table if not exists public.invite_requests (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  name text not null check (char_length(btrim(name)) between 1 and 100),
+  -- Lowercased like public.invites.email, which approval copies it into.
+  email text not null check (email = lower(email) and char_length(email) between 3 and 254),
+  referral text not null check (char_length(btrim(referral)) between 1 and 300),
+  interests text not null check (char_length(btrim(interests)) between 1 and 500),
+  note text not null check (char_length(btrim(note)) between 1 and 1000),
+  link text check (link is null or char_length(link) <= 300),
+  source_hash text check (source_hash is null or source_hash ~ '^[0-9a-f]{64}$'),
+  -- Whether the email had an account when the request came in.
+  had_account boolean not null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'declined')),
+  decided_at timestamptz,
+  decided_by uuid references auth.users(id) on delete set null,
+  invite_id uuid references public.invites(id) on delete set null,
+  check ((status = 'pending') = (decided_at is null))
+);
+
+create unique index if not exists invite_requests_one_pending_per_email
+  on public.invite_requests (email) where status = 'pending';
+create index if not exists invite_requests_created_at
+  on public.invite_requests (created_at);
+
+alter table public.invite_requests enable row level security;
+revoke all on table public.invite_requests from anon, authenticated;
+
+-- Returns 'created', 'duplicate' (a request from this email is pending;
+-- nothing written), 'closed' (the 24-hour cap is reached) or 'rate_limited'
+-- (this source's cap is reached). The caps are checked before the duplicate,
+-- so while the form is closed its answer does not depend on the email.
+create or replace function public.submit_invite_request(
+  p_server_key text,
+  p_source_hash text,
+  p_name text,
+  p_email text,
+  p_referral text,
+  p_interests text,
+  p_note text,
+  p_link text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cfg public.invite_request_config;
+  v_email text := lower(btrim(p_email));
+begin
+  select * into v_cfg from public.invite_request_config where id = 1 for update;
+  if not found
+     or p_server_key is null
+     or encode(sha256(convert_to(p_server_key, 'UTF8')), 'hex') <> v_cfg.server_key_hash then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  if (select count(*) from public.invite_requests
+      where created_at > now() - interval '24 hours') >= v_cfg.daily_cap then
+    return 'closed';
+  end if;
+
+  if p_source_hash is not null
+     and (select count(*) from public.invite_requests
+          where source_hash = p_source_hash
+            and created_at > now() - interval '24 hours') >= v_cfg.per_source_daily_cap then
+    return 'rate_limited';
+  end if;
+
+  if exists (select 1 from public.invite_requests where email = v_email and status = 'pending') then
+    return 'duplicate';
+  end if;
+
+  insert into public.invite_requests
+    (name, email, referral, interests, note, link, source_hash, had_account)
+  values (
+    btrim(p_name), v_email, btrim(p_referral), btrim(p_interests), btrim(p_note),
+    nullif(btrim(p_link), ''), p_source_hash,
+    exists (select 1 from auth.users where email = v_email)
+  );
+  return 'created';
+exception
+  when unique_violation then
+    return 'duplicate';
+end;
+$$;
+
+-- Null for anyone not in app_admins, so the sidebar can call it for every
+-- reader: a number means "show the admin link with this badge".
+create or replace function public.pending_invite_request_count()
+returns integer
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case
+    when exists (select 1 from public.app_admins where user_id = auth.uid())
+    then (select count(*)::integer from public.invite_requests where status = 'pending')
+  end;
+$$;
+
+-- Pending first, then newest first, so the limit can only drop decided
+-- requests: a pending one the badge counts is always on the page.
+-- `has_account` is live (the requester may have signed up since),
+-- `earlier_requests` counts this email's requests made before this one, and
+-- the invite columns show whether an approved request's link was used.
+create or replace function public.list_invite_requests()
+returns table (
+  id uuid,
+  created_at timestamptz,
+  name text,
+  email text,
+  referral text,
+  interests text,
+  note text,
+  link text,
+  had_account boolean,
+  has_account boolean,
+  earlier_requests integer,
+  status text,
+  decided_at timestamptz,
+  invite_expires_at timestamptz,
+  invite_consumed_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from public.app_admins a where a.user_id = auth.uid()) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+
+  return query
+  select r.id, r.created_at, r.name, r.email, r.referral, r.interests, r.note, r.link,
+         r.had_account,
+         exists (select 1 from auth.users u where u.email = r.email),
+         (select count(*)::integer from public.invite_requests o
+          where o.email = r.email and o.created_at < r.created_at),
+         r.status, r.decided_at, i.expires_at, i.consumed_at
+  from public.invite_requests r
+  left join public.invites i on i.id = r.invite_id
+  order by (r.status = 'pending') desc, r.created_at desc
+  limit 200;
+end;
+$$;
+
+-- p_token_hash is sha256 hex of a token the server generated
+-- (hashInviteToken in src/lib/invite.ts). The expiry matches INVITE_TTL_DAYS.
+-- Refuses an email that already has an account: the hook would let the
+-- token through, and Auth would then reject the signup as a duplicate.
+create or replace function public.approve_invite_request(p_id uuid, p_token_hash text)
+returns table (email text, name text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.invite_requests;
+  v_invite_id uuid;
+  v_expires timestamptz := now() + interval '7 days';
+begin
+  if not exists (select 1 from public.app_admins a where a.user_id = auth.uid()) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'bad_token_hash' using errcode = '22023';
+  end if;
+
+  select * into v_req from public.invite_requests r where r.id = p_id for update;
+  if not found or v_req.status <> 'pending' then
+    raise exception 'not_pending' using errcode = 'P0002';
+  end if;
+  if exists (select 1 from auth.users u where u.email = v_req.email) then
+    raise exception 'has_account' using errcode = 'P0001';
+  end if;
+
+  insert into public.invites (token_hash, email, label, expires_at)
+  values (p_token_hash, v_req.email, 'Request: ' || v_req.name, v_expires)
+  returning id into v_invite_id;
+
+  update public.invite_requests r
+  set status = 'approved', decided_at = now(), decided_by = auth.uid(), invite_id = v_invite_id
+  where r.id = p_id;
+
+  return query select v_req.email, v_req.name, v_expires;
+end;
+$$;
+
+create or replace function public.decline_invite_request(p_id uuid)
+returns table (email text, name text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.invite_requests;
+begin
+  if not exists (select 1 from public.app_admins a where a.user_id = auth.uid()) then
+    raise exception 'not_admin' using errcode = '42501';
+  end if;
+
+  update public.invite_requests r
+  set status = 'declined', decided_at = now(), decided_by = auth.uid()
+  where r.id = p_id and r.status = 'pending'
+  returning r.* into v_req;
+  if not found then
+    raise exception 'not_pending' using errcode = 'P0002';
+  end if;
+
+  return query select v_req.email, v_req.name;
+end;
+$$;
+
+revoke execute on function public.submit_invite_request(text, text, text, text, text, text, text, text) from public;
+grant execute on function public.submit_invite_request(text, text, text, text, text, text, text, text) to anon, authenticated;
+
+revoke execute on function public.pending_invite_request_count() from public, anon;
+grant execute on function public.pending_invite_request_count() to authenticated;
+revoke execute on function public.list_invite_requests() from public, anon;
+grant execute on function public.list_invite_requests() to authenticated;
+revoke execute on function public.approve_invite_request(uuid, text) from public, anon;
+grant execute on function public.approve_invite_request(uuid, text) to authenticated;
+revoke execute on function public.decline_invite_request(uuid) from public, anon;
+grant execute on function public.decline_invite_request(uuid) to authenticated;

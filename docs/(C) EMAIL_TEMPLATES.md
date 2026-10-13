@@ -52,6 +52,38 @@ Body:
 <p>If this wasn't you, ignore this email and your password stays as it is.</p>
 ```
 
+## Invite requests
+
+These three are not Supabase's: the app sends them through Resend's HTTP API, as plain text, from `H72 Labs News <no-reply@h72labs.com>`. The canonical text is in code, `src/lib/inviteEmails.ts`, because each one is built per send; this section is the readable copy. Change both together. `{name}`, `{link}` and `{to}` are filled in at send time.
+
+**Invite (on approve).** Subject: `Your invite to H72 Labs News`.
+
+```text
+Hi {name},
+
+Thanks for asking to try H72 Labs News. Here's your invite link:
+
+{link}
+
+It works once, for {to}, and expires in 7 days. After you sign up, you pick the topics and countries you want to follow, and the app writes the day's stories on them as short cards, each one drawn from several outlets' reporting.
+
+Tarek
+H72 Labs
+```
+
+**Decline (only when the box is ticked).** Subject: `Your request to try H72 Labs News`. It carries none of the requester's words, not even the name: anyone can put a stranger's address on a request.
+
+```text
+Hi,
+
+Thanks for asking to try H72 Labs News. It's a small invite-only test for now, and I can't add more readers at this stage. You're welcome to ask again later.
+
+Tarek
+H72 Labs
+```
+
+**New request (to Tarek, internal).** Lists the request's fields and links to `/admin/requests`. Not external-facing.
+
 ## The hour
 
 Both templates tell the reader the link lasts an hour. That number is a dashboard setting (Authentication → Emails → Email OTP Expiration), not something the code controls, so changing the setting means changing this copy in the same sitting. A link that dies before the email says it will is the kind of thing a tester reports as "the app is broken".
