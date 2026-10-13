@@ -8,7 +8,7 @@ import { CountriesPicker, TopicPickers, TopicsPicker } from "@/components/TopicP
 import { OnboardingSteps } from "@/components/onboarding/OnboardingSteps";
 import { SaveButton } from "@/components/onboarding/SaveButton";
 import { belowMinimumReason, unitsOf } from "@/components/onboarding/picks";
-import { COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES_TOPIC } from "@/config/countryNames";
 import { MIN_READING_UNITS } from "@/lib/readingUnits";
 import { PROFILE_ERROR_MESSAGES, isProfileErrorCode, type PreferencesState } from "@/lib/profileErrors";
 

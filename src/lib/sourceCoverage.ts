@@ -1,5 +1,5 @@
 import { SOURCES, type Source, type Topic } from "@/types";
-import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countryNames";
 
 /** The topics and countries one outlet has a feed in, in catalog order. */
 export interface OutletCoverage {

@@ -3,8 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { SOURCES, TOPICS } from "@/types";
 
 // COUNTRIES is empty until the country catalog lands.
-vi.mock("@/config/countries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Uganda", "Kenya", "Morocco", "Ghana"],
 }));
 import {

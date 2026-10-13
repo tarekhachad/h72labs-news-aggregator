@@ -81,8 +81,32 @@ export function isValidTimeZone(timeZone: string): boolean {
  */
 export function dateInTimeZone(now: Date, timeZone: string): string {
   const zone = isValidTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE;
+  return formatDate(now, correctedZone(zone, now));
+}
+
+/**
+ * The 24-hour time at `at` in `timeZone`, as HH:MM, with the same Morocco
+ * correction dateInTimeZone applies, so a time never disagrees with the
+ * app's date for the same instant.
+ *
+ * Null for a name Intl rejects, rather than dateInTimeZone's UTC fallback: a
+ * date needs some answer to file a digest under, but a UTC time shown as the
+ * reader's own would simply be wrong, so the caller leaves it out.
+ */
+export function timeInTimeZone(at: Date, timeZone: string): string | null {
+  if (!isValidTimeZone(timeZone)) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: correctedZone(timeZone, at),
+  }).format(at);
+}
+
+/** `zone` with the Morocco correction applied at `at`; probes the runtime only for a Moroccan zone. */
+function correctedZone(zone: string, at: Date): string {
   const stale = MOROCCO_ZONES.has(zone) && runtimeHasStaleMoroccoRules();
-  return formatDate(now, moroccoCorrectedZone(zone, now, stale));
+  return moroccoCorrectedZone(zone, at, stale);
 }
 
 function formatDate(now: Date, zone: string): string {

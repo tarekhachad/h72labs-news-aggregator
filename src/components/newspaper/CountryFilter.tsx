@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { countryToSlug } from "@/config/countries";
+import { countryToSlug } from "@/config/countryNames";
 
 /**
  * The Countries page's filter: "All", then one plain link per country among

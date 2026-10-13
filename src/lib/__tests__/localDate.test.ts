@@ -1,5 +1,31 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { dateInTimeZone, deviceTimeZone, isValidTimeZone, DEFAULT_TIME_ZONE } from "@/lib/localDate";
+import { dateInTimeZone, deviceTimeZone, isValidTimeZone, timeInTimeZone, DEFAULT_TIME_ZONE } from "@/lib/localDate";
+
+describe("timeInTimeZone", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("gives a zero-padded 24-hour HH:MM in the zone", () => {
+    expect(timeInTimeZone(at("2026-10-08T07:05:00Z"), "UTC")).toBe("07:05");
+    expect(timeInTimeZone(at("2026-10-08T19:05:00Z"), "UTC")).toBe("19:05");
+    expect(timeInTimeZone(at("2026-10-08T07:12:00Z"), "America/New_York")).toBe("03:12");
+    expect(timeInTimeZone(at("2026-10-08T07:12:00Z"), "Asia/Kolkata")).toBe("12:42");
+  });
+
+  it("reads midnight as 00:00, never 24:00", () => {
+    expect(timeInTimeZone(at("2026-10-08T00:00:00Z"), "UTC")).toBe("00:00");
+  });
+
+  it("applies the Morocco correction, agreeing with dateInTimeZone for the same instant", () => {
+    const late = at("2026-10-08T23:30:00Z");
+    expect(timeInTimeZone(late, "Africa/Casablanca")).toBe("23:30");
+    expect(dateInTimeZone(late, "Africa/Casablanca")).toBe("2026-10-08");
+  });
+
+  it("is null for a name Intl rejects, instead of falling back to UTC", () => {
+    expect(timeInTimeZone(at("2026-10-08T07:12:00Z"), "Not/AZone")).toBeNull();
+    expect(timeInTimeZone(at("2026-10-08T07:12:00Z"), "")).toBeNull();
+  });
+});
 
 describe("dateInTimeZone", () => {
   const at = (iso: string) => new Date(iso);

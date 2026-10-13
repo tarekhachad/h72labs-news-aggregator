@@ -1,4 +1,4 @@
-import { COUNTRIES } from "@/config/countries";
+import { COUNTRIES } from "@/config/countryNames";
 
 /**
  * The five regions the countries picker groups its list under, each country

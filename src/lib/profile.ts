@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
-import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countryNames";
 import { DEFAULT_TIME_ZONE } from "@/lib/localDate";
 import { MAX_READING_UNITS, MIN_READING_UNITS, countReadingUnits } from "@/lib/readingUnits";
 import type { ProfileErrorCode } from "@/lib/profileErrors";

@@ -17,9 +17,12 @@ vi.mock("rss-parser", () => ({
   },
 }));
 vi.mock("@/config/feeds", () => ({ FEEDS: mocks.feeds }));
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
+  COUNTRIES: ["X"],
+}));
 vi.mock("@/config/countries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/config/countries")>()),
-  COUNTRIES: ["X"],
   COUNTRY_FEEDS: mocks.countryFeeds,
 }));
 

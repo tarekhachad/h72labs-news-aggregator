@@ -1,5 +1,5 @@
 import type { Topic } from "@/types";
-import type { COUNTRIES_TOPIC } from "@/config/countries";
+import type { COUNTRIES_TOPIC } from "@/config/countryNames";
 
 /**
  * One hand-written line per pickable topic, shown under its name in the topic

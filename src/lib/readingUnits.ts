@@ -1,5 +1,5 @@
 import { TOPICS, type Topic } from "@/types";
-import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES, COUNTRIES_TOPIC } from "@/config/countryNames";
 
 /**
  * A reading unit is a topic, or one country the reader picked inside

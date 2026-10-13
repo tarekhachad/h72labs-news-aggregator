@@ -4,8 +4,8 @@ import { getUserProfile } from "@/lib/profile";
 
 // COUNTRIES is empty until the country catalog lands; these tests need some
 // offered countries, in a known order that is not alphabetical.
-vi.mock("@/config/countries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Uganda", "Kenya", "Morocco"],
 }));
 

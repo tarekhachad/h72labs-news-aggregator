@@ -4,8 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TOPICS, type Topic } from "@/types";
 
-vi.mock("@/config/countries", async (importActual) => ({
-  ...(await importActual<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importActual) => ({
+  ...(await importActual<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Tanzania", "Mali", "Zambia", "Zimbabwe"],
 }));
 

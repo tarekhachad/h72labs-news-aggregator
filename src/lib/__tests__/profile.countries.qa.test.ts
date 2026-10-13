@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TOPICS, type Topic } from "@/types";
 
-vi.mock("@/config/countries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Uganda", "Kenya", "Morocco", "Ghana", "Côte d'Ivoire"],
 }));
 

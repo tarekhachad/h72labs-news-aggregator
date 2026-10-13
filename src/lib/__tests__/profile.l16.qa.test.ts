@@ -3,8 +3,8 @@ import { TOPICS, type Topic } from "@/types";
 
 // QA (V2.7 L16): the server derives the Countries topic from the countries.
 
-vi.mock("@/config/countries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Uganda", "Kenya", "Morocco", "Ghana"],
 }));
 

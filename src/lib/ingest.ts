@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 import { FEEDS } from "@/config/feeds";
-import { COUNTRIES_TOPIC, COUNTRY_FEEDS } from "@/config/countries";
+import { COUNTRY_FEEDS } from "@/config/countries";
+import { COUNTRIES_TOPIC } from "@/config/countryNames";
 import { isImplausiblyFuture } from "@/lib/cursor";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 import { TOPICS, type Article, type Source, type Topic } from "@/types";

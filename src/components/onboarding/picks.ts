@@ -1,5 +1,5 @@
 import { TOPICS, type Topic } from "@/types";
-import { COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES_TOPIC } from "@/config/countryNames";
 import { countReadingUnits } from "@/lib/readingUnits";
 
 /** Every topic a reader picks directly. Countries isn't one: the server saves it exactly when a country is picked (ProfileInput in src/lib/profile.ts). */

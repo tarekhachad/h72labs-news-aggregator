@@ -8,8 +8,8 @@ import { TOPICS, type Topic } from "@/types";
 // events, real form submission. COUNTRIES is mocked (the offered list is
 // filled separately); readingUnits.ts reads the same mock.
 
-vi.mock("@/config/countries", async (importActual) => ({
-  ...(await importActual<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importActual) => ({
+  ...(await importActual<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana"],
 }));
 

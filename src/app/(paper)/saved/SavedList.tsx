@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayoutGroup } from "motion/react";
 import type { SavedCard } from "@/lib/bookmarks";
 import { NewsCard } from "@/components/newspaper/NewsCard";
@@ -32,16 +32,53 @@ const DATE_INPUT_CLASS =
 export function SavedList({ initialCards }: { initialCards: SavedCard[] }) {
   const [cards, setCards] = useState(initialCards);
   const [filter, setFilter] = useState<SavedFilter>(NO_SAVED_FILTER);
+  const rootRef = useRef<HTMLElement | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  // The shown-list position of a card just removed, until focus has moved.
+  const removedAt = useRef<number | null>(null);
 
   // Un-saving here asks first (NewsCard's confirmUnsave), so by the time
   // this runs the reader has confirmed and the server has agreed.
   function handleBookmarkChange(cardId: string, bookmarked: boolean) {
-    if (!bookmarked) setCards((prev) => prev.filter((c) => c.id !== cardId));
+    if (bookmarked) return;
+    removedAt.current = filterSavedCards(cards, filter).findIndex((c) => c.id === cardId);
+    setCards((prev) => prev.filter((c) => c.id !== cardId));
   }
+
+  // The removed card held keyboard focus (on its Save, then the dialog), and
+  // unmounting it would drop focus to <body>. Hand it to the card that took
+  // its place, or the one before it if it was last, or the page heading when
+  // no card is left showing. After render, not in the handler: the dialog's
+  // inert sweep is undone in the commit that unmounts it, and focus() on an
+  // inert element does nothing. Each grid child is one card's root, in
+  // shown order; the cards' portals render elsewhere.
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null) return;
+    removedAt.current = null;
+    const shownCards = gridRef.current?.children;
+    const target = shownCards?.[at] ?? shownCards?.[at - 1];
+    if (target instanceof HTMLElement) {
+      target.focus();
+      return;
+    }
+    const heading = rootRef.current?.closest("main")?.querySelector("h1");
+    if (!heading) return;
+    // A heading isn't focusable on its own; -1 lets a script focus it
+    // without adding it to the Tab order.
+    if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+    heading.focus();
+  }, [cards]);
 
   if (cards.length === 0) {
     return (
-      <p className="px-6 text-center text-sm md:px-10" style={MUTED}>
+      <p
+        ref={(el) => {
+          rootRef.current = el;
+        }}
+        className="px-6 text-center text-sm md:px-10"
+        style={MUTED}
+      >
         Nothing saved yet. Use &ldquo;☆ Save&rdquo; on any card to keep it here.
       </p>
     );
@@ -55,7 +92,12 @@ export function SavedList({ initialCards }: { initialCards: SavedCard[] }) {
   const rangeBackwards = filter.from !== "" && filter.to !== "" && filter.from > filter.to;
 
   return (
-    <div className="flex flex-col">
+    <div
+      ref={(el) => {
+        rootRef.current = el;
+      }}
+      className="flex flex-col"
+    >
       <div className="flex flex-col gap-4 px-6 pb-6 md:px-10">
         <nav aria-label="Filter by topic" className="flex flex-wrap gap-x-4 gap-y-2">
           {[null, ...topics].map((topic) => {
@@ -141,7 +183,7 @@ export function SavedList({ initialCards }: { initialCards: SavedCard[] }) {
           // same card's layoutId on another page.
           <LayoutGroup id="saved">
             <FocusModeProvider>
-              <div className="grid grid-cols-1 auto-rows-[380px] gap-5 md:grid-cols-2">
+              <div ref={gridRef} className="grid grid-cols-1 auto-rows-[380px] gap-5 md:grid-cols-2">
                 {shown.map((card) => (
                   <NewsCard
                     key={card.id}

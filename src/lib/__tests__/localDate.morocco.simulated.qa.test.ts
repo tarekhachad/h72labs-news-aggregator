@@ -39,6 +39,9 @@ function fakeIntl(rules: "2026a" | "2026c") {
       const zone = z && MOROCCO.has(z) ? pick(d.getTime()) : z;
       return new Real(this.locale, { ...this.opts, timeZone: zone }).formatToParts(d);
     }
+    format(d: Date) {
+      return this.formatToParts(d).map((p) => p.value).join("");
+    }
     resolvedOptions() {
       return new Real(this.locale, this.opts).resolvedOptions();
     }
@@ -62,7 +65,7 @@ function load(rules: "2026a" | "2026c") {
   const m = mk(src("localDate.ts"), (s) => {
     if (s === "@/lib/bestEffortLog") return bel;
     throw new Error("unexpected require " + s);
-  }) as { dateInTimeZone: (d: Date, z: string) => string };
+  }) as { dateInTimeZone: (d: Date, z: string) => string; timeInTimeZone: (d: Date, z: string) => string | null };
   return { m, logs };
 }
 
@@ -92,6 +95,21 @@ describe("QA (simulated tz release): the correction on any host runtime", () => 
           for (const tt of [t, t + 23 * H]) {
             const got = m.dateInTimeZone(new Date(tt), z);
             if (got !== want2026c(tt)) bad.push(`${z} ${new Date(tt).toISOString()} got=${got} want=${want2026c(tt)}`);
+          }
+        }
+      }
+      expect(bad.slice(0, 5)).toEqual([]);
+    });
+
+    it(`host with ${rules} rules: timeInTimeZone at 23:30, 00:30 and 12:00 UTC every day, both zones, matches tz 2026c`, () => {
+      const { m } = load(rules);
+      const want = (t: number) => new Date(t + (newOffsetZone(t) === "UTC" ? 0 : H)).toISOString().slice(11, 16);
+      const bad: string[] = [];
+      for (const z of MOROCCO) {
+        for (let t = Date.UTC(2025, 11, 1, 0, 30); t < Date.UTC(2029, 5, 1); t += 24 * H) {
+          for (const tt of [t, t + 11.5 * H, t + 23 * H]) {
+            const got = m.timeInTimeZone(new Date(tt), z);
+            if (got !== want(tt)) bad.push(`${z} ${new Date(tt).toISOString()} got=${got} want=${want(tt)}`);
           }
         }
       }

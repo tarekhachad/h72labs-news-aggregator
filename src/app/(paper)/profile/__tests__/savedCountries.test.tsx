@@ -30,8 +30,8 @@ vi.mock("@/app/(paper)/profile/actions", () => ({
   changePassword: vi.fn(),
 }));
 vi.mock("@/components/TimeZoneSync", () => ({ TimeZoneSync: () => null }));
-vi.mock("@/config/countries", async (importActual) => ({
-  ...(await importActual<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importActual) => ({
+  ...(await importActual<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Kenya", "Morocco", "Uganda"],
 }));
 

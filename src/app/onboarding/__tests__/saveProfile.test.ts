@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 // COUNTRIES is empty until the country catalog lands.
-vi.mock("@/config/countries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Uganda", "Kenya", "Morocco"],
 }));
 vi.mock("@/lib/supabase/server", () => ({

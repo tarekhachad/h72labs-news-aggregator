@@ -3,33 +3,15 @@
 import type { Card } from "@/types";
 import type { StageEvent } from "@/components/newspaper/DigestGenerationContext";
 import { WireTicker } from "@/components/newspaper/WireTicker";
-import { moroccoCorrectedZone } from "@/lib/localDate";
-
-const MOROCCO_ZONES = new Set(["Africa/Casablanca", "Africa/El_Aaiun"]);
-let moroccoRulesStale: boolean | undefined;
-
-/**
- * Whether this runtime still has Morocco's pre-2026c rules: the same probe
- * localDate.ts runs for dateInTimeZone (which keeps its own private), asked
- * of the runtime's rules rather than a version string because the browser
- * runs this too.
- */
-function runtimeHasStaleMoroccoRules(): boolean {
-  if (moroccoRulesStale === undefined) {
-    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca", day: "2-digit" }).format(
-      new Date(Date.UTC(2026, 8, 25, 23, 30))
-    );
-    moroccoRulesStale = day === "26";
-  }
-  return moroccoRulesStale;
-}
+import { timeInTimeZone } from "@/lib/localDate";
 
 /**
  * "54 stories · updated 07:12": the count of today's cards and the newest
  * `generatedAt` among them as a 24-hour time in the reader's time zone,
  * with the same Morocco correction the app's dates use. The time is left out
  * when no card carries a parseable stamp, so the line never shows
- * "Invalid Date".
+ * "Invalid Date", and for a zone name Intl rejects, where the count alone is
+ * still true.
  */
 export function editionSummary(cards: Card[], timeZone: string): string {
   const count = `${cards.length} ${cards.length === 1 ? "story" : "stories"}`;
@@ -39,20 +21,8 @@ export function editionSummary(cards: Card[], timeZone: string): string {
     if (Number.isFinite(t) && t > latest) latest = t;
   }
   if (!Number.isFinite(latest)) return count;
-  let time: string;
-  try {
-    const stale = MOROCCO_ZONES.has(timeZone) && runtimeHasStaleMoroccoRules();
-    time = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-      timeZone: moroccoCorrectedZone(timeZone, new Date(latest), stale),
-    }).format(latest);
-  } catch {
-    // An unknown zone name throws a RangeError; the count alone is still true.
-    return count;
-  }
-  return `${count} · updated ${time}`;
+  const time = timeInTimeZone(new Date(latest), timeZone);
+  return time === null ? count : `${count} · updated ${time}`;
 }
 
 /**

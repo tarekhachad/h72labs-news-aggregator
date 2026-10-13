@@ -1,18 +1,21 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it, expect } from "vitest";
 
 // No feed URL reaches the browser. The outlets picker groups outlets with
 // helpers from src/lib/sourceCoverage.ts in the browser, so this walks every
 // module a "use client" file pulls in (type-only imports aside, which leave
-// no code behind) and checks that none of them loads the topic feed table,
-// and that none imports the country feed table by name: src/config/countries.ts
-// also holds COUNTRIES, which the pickers need, and a bundler leaves out an
-// export nothing imports.
+// no code behind) and checks that none of them loads either feed table: the
+// topic feeds (src/config/feeds.ts) or the country feeds
+// (src/config/countries.ts). The pickers' country names come from
+// src/config/countryNames.ts, which holds no URLs.
 
 const SRC = resolve(__dirname, "../..");
 const FEEDS_FILE = join(SRC, "config/feeds.ts");
 const COUNTRIES_FILE = join(SRC, "config/countries.ts");
+const COUNTRY_NAMES_FILE = join(SRC, "config/countryNames.ts");
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -67,22 +70,22 @@ function runtimeImports(file: string): { target: string; names: string[] }[] {
 function clientGraph() {
   const entries = sourceFiles(SRC).filter((file) => /^\s*["']use client["']/.test(readFileSync(file, "utf8")));
   const reached = new Set<string>();
-  const countriesImports: { from: string; names: string[] }[] = [];
+  const countriesImporters: string[] = [];
   const queue = [...entries];
   while (queue.length > 0) {
     const file = queue.pop()!;
     if (reached.has(file)) continue;
     reached.add(file);
-    for (const { target, names } of runtimeImports(file)) {
-      if (target === COUNTRIES_FILE) countriesImports.push({ from: relative(SRC, file), names });
+    for (const { target } of runtimeImports(file)) {
+      if (target === COUNTRIES_FILE) countriesImporters.push(relative(SRC, file));
       queue.push(target);
     }
   }
-  return { entries, reached, countriesImports };
+  return { entries, reached, countriesImporters };
 }
 
 describe("the browser's modules", () => {
-  const { entries, reached, countriesImports } = clientGraph();
+  const { entries, reached, countriesImporters } = clientGraph();
 
   it("include the outlets picker and its coverage helpers", () => {
     expect(entries.length).toBeGreaterThan(10);
@@ -95,11 +98,32 @@ describe("the browser's modules", () => {
     expect(reached.has(FEEDS_FILE)).toBe(false);
   });
 
-  it("never import the country feed table, or the whole countries module", () => {
-    expect(countriesImports.length).toBeGreaterThan(0);
-    for (const { from, names } of countriesImports) {
-      expect(names, from).not.toContain("COUNTRY_FEEDS");
-      expect(names, from).not.toContain("*");
-    }
+  it("take country names from the feed-free module", () => {
+    expect(reached.has(COUNTRY_NAMES_FILE)).toBe(true);
   });
+
+  it("never load the country feed table's module", () => {
+    // Lists the browser modules that import it, so a failure names the culprit.
+    expect(countriesImporters).toEqual([]);
+    expect(reached.has(COUNTRIES_FILE)).toBe(false);
+  });
+});
+
+// scripts/verify-feeds.mts imports src/config/countries.ts through Node's own
+// type stripping, with no bundler to resolve the @/ alias, so the re-export of
+// the names must stay a relative specifier. tsc and every other test resolve
+// @/ fine; only a real Node load catches the break.
+it("the country feed module loads under plain Node, as the feeds script loads it", () => {
+  const script = `const m = await import(${JSON.stringify(pathToFileURL(COUNTRIES_FILE).href)});
+    console.log(JSON.stringify([m.COUNTRIES_TOPIC, m.COUNTRIES.length, Object.keys(m.COUNTRY_FEEDS).length]));`;
+  const run = spawnSync(
+    process.execPath,
+    ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--input-type=module", "-e", script],
+    { encoding: "utf8" }
+  );
+  expect(run.stderr).toBe("");
+  const [topic, names, feeds] = JSON.parse(run.stdout);
+  expect(topic).toBe("Countries");
+  expect(names).toBeGreaterThan(0);
+  expect(feeds).toBe(names);
 });

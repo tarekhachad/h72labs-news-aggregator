@@ -8,7 +8,7 @@ import { tierForSeverity } from "@/lib/gridTiers";
 import { packGrid } from "@/lib/packGrid";
 import { newRunCardIds } from "@/lib/newRun";
 import { topicToSlug } from "@/lib/topicSlug";
-import { COUNTRIES_TOPIC, countryToSlug } from "@/config/countries";
+import { COUNTRIES_TOPIC, countryToSlug } from "@/config/countryNames";
 import { CountryFilter } from "@/components/newspaper/CountryFilter";
 
 // Distinct outlets, so a story carrying two articles from one preferred

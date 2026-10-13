@@ -4,7 +4,7 @@ import { getBookmarkedCardIds } from "@/lib/bookmarks";
 import { plausibleCursorLimitIso } from "@/lib/cursor";
 import { dateInTimeZone } from "@/lib/localDate";
 import { unitKey, type ReadingUnit } from "@/lib/readingUnits";
-import { COUNTRIES_TOPIC } from "@/config/countries";
+import { COUNTRIES_TOPIC } from "@/config/countryNames";
 
 export interface CardRow {
   id: string;

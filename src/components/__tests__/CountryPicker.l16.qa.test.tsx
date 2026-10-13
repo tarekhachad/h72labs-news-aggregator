@@ -9,8 +9,8 @@ import { TOPICS, type Topic } from "@/types";
 // form, and the full round trip getUserProfile -> form -> ProfileInput ->
 // saveUserProfile against an in-memory fake of the preference tables.
 
-vi.mock("@/config/countries", async (importActual) => ({
-  ...(await importActual<typeof import("@/config/countries")>()),
+vi.mock("@/config/countryNames", async (importActual) => ({
+  ...(await importActual<typeof import("@/config/countryNames")>()),
   COUNTRIES: ["Kenya", "Morocco", "Nigeria", "Uganda", "Senegal", "Ghana", "Egypt", "Tanzania", "Mali", "Zambia", "Zimbabwe"],
 }));
 
