@@ -208,7 +208,7 @@ describe("the timeline read end to end on Postgres (QA)", () => {
     const timelines = await getStoryTimelines(pgClient(alice), alice, subjects);
     expect(timelines.has(root.id)).toBe(false);
     expect(timelines.has(unrelated.id)).toBe(false);
-    expect(timelines.get(day11a.id)).toEqual({ date: "2026-10-11", day: 2, earlier: [{ id: root.id, date: "2026-10-10", title: "Talks open in Doha", topic: "Geopolitics" }] });
+    expect(timelines.get(day11a.id)).toEqual({ date: "2026-10-11", day: 2, earlier: [{ id: root.id, date: "2026-10-10", title: "Talks open in Doha", topic: "Geopolitics", subtopic: null }] });
     expect(timelines.get(day11b.id)?.day).toBe(2);
     expect(timelines.get(day12.id)?.day).toBe(3);
     expect(timelines.get(day12.id)?.earlier.map((e) => e.date)).toEqual(["2026-10-10", "2026-10-11"]);

@@ -88,6 +88,27 @@ describe("storyDayHref", () => {
     expect(storyDayHref({ id: "old-1", date: "2026-10-10", title: "t", topic: "Geopolitics" as Topic })).toBe("/history/2026-10-10/topic/geopolitics#card-old-1");
     expect(storyDayHref({ id: "x", date: "2026-10-10", title: "t", topic: "Tech/AI" as Topic })).toMatch(/^\/history\/2026-10-10\/topic\/[a-z0-9-]+#card-x$/);
   });
+
+  // The unfiltered Countries page shows only a few cards a day, so a link to a
+  // Countries card opens its country's filter, where every card of the
+  // country is listed: the URL CountryFilter builds, plus the card anchor.
+  it("opens a Countries card's day filtered to its country", () => {
+    expect(
+      storyDayHref({ id: "us-1", date: "2026-10-01", title: "t", topic: "Countries" as Topic, subtopic: "United States" })
+    ).toBe("/history/2026-10-01/topic/countries?country=united-states#card-us-1");
+    expect(
+      storyDayHref({ id: "ci-1", date: "2026-10-01", title: "t", topic: "Countries" as Topic, subtopic: "Côte d'Ivoire" })
+    ).toBe("/history/2026-10-01/topic/countries?country=cote-d-ivoire#card-ci-1");
+  });
+
+  it("leaves the Countries page unfiltered when the card has no country, and ignores a subtopic on another topic", () => {
+    expect(storyDayHref({ id: "c", date: "2026-10-01", title: "t", topic: "Countries" as Topic, subtopic: null })).toBe(
+      "/history/2026-10-01/topic/countries#card-c"
+    );
+    expect(storyDayHref({ id: "g", date: "2026-10-01", title: "t", topic: "Geopolitics" as Topic, subtopic: "France" })).toBe(
+      "/history/2026-10-01/topic/geopolitics#card-g"
+    );
+  });
 });
 
 describe("NewsCard story timeline", () => {

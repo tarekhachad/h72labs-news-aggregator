@@ -645,6 +645,8 @@ export interface StoryTimelineEntry {
   date: string;
   title: string;
   topic: Topic;
+  /** The country of a Countries card, so its link can open that country's filter; absent or null otherwise. */
+  subtopic?: string | null;
 }
 
 export interface Digest {

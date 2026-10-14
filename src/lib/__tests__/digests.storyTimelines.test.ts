@@ -57,7 +57,7 @@ describe("getStoryTimelines", () => {
     expect(urls[0].pathname).toBe("/rest/v1/cards");
     expect(urls[0].searchParams.get("story_id")).toBe("in.(S1,S2)");
     expect(urls[0].searchParams.get("digests.user_id")).toBe("eq.user-1");
-    expect(urls[0].searchParams.get("select")).toBe("id,story_id,title,topic,digests!inner(date,user_id)");
+    expect(urls[0].searchParams.get("select")).toBe("id,story_id,title,topic,subtopic,digests!inner(date,user_id)");
   });
 
   it("reads nothing when every card is its story's first", async () => {
@@ -83,10 +83,23 @@ describe("getStoryTimelines", () => {
       date: "2026-10-13",
       day: 3,
       earlier: [
-        { id: "d10", date: "2026-10-10", title: "Talks open in Doha", topic: "Geopolitics" },
-        { id: "d12a", date: "2026-10-12", title: "First on the 12th", topic: "Geopolitics" },
+        { id: "d10", date: "2026-10-10", title: "Talks open in Doha", topic: "Geopolitics", subtopic: null },
+        { id: "d12a", date: "2026-10-12", title: "First on the 12th", topic: "Geopolitics", subtopic: null },
       ],
     });
+  });
+
+  it("carries a Countries card's country into its entry, and reads an empty subtopic as none", async () => {
+    const { client } = recordingClient(() => [
+      { ...member("us", "S", "2026-10-10", "Vote in Congress", "Countries"), subtopic: "United States" },
+      { ...member("blank", "S", "2026-10-11", "Budget talks", "Countries"), subtopic: "" },
+      member("today", "S", "2026-10-13"),
+    ]);
+    const result = await getStoryTimelines(client, "user-1", [{ id: "today", storyId: "S", date: "2026-10-13" }]);
+    expect(result.get("today")?.earlier).toEqual([
+      { id: "us", date: "2026-10-10", title: "Vote in Congress", topic: "Countries", subtopic: "United States" },
+      { id: "blank", date: "2026-10-11", title: "Budget talks", topic: "Countries", subtopic: null },
+    ]);
   });
 
   it("shows a history card the story as it stood that day, never later days", async () => {
@@ -147,7 +160,7 @@ describe("the pages' card reads", () => {
     expect(digest?.cards.find((c) => c.id === "new")?.timeline).toEqual({
       date: "2026-10-13",
       day: 2,
-      earlier: [{ id: "old", date: "2026-10-11", title: "T old", topic: "Geopolitics" }],
+      earlier: [{ id: "old", date: "2026-10-11", title: "T old", topic: "Geopolitics", subtopic: null }],
     });
     expect(digest?.cards.find((c) => c.id === "first")?.timeline).toBeUndefined();
     expect(digest?.cards.map((c) => c.id)).toEqual(["new", "first"]);

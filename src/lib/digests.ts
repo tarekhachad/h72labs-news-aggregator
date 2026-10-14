@@ -577,7 +577,7 @@ export async function getStoryTimelines(
 
     const { data, error } = await supabase
       .from("cards")
-      .select("id, story_id, title, topic, digests!inner(date, user_id)")
+      .select("id, story_id, title, topic, subtopic, digests!inner(date, user_id)")
       .in("story_id", storyIds)
       .eq("digests.user_id", userId);
     if (error) throw new Error(error.message);
@@ -591,6 +591,7 @@ export async function getStoryTimelines(
         date: digest.date,
         title: typeof row.title === "string" ? row.title : "",
         topic: row.topic as Topic,
+        subtopic: typeof row.subtopic === "string" && row.subtopic !== "" ? row.subtopic : null,
       };
       const list = members.get(row.story_id);
       if (list) list.push(entry);

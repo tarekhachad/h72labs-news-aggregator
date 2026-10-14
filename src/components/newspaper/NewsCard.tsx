@@ -20,6 +20,7 @@ import { safeExternalHref } from "@/lib/safeHref";
 import { cardTopicLabel } from "@/components/cardTopicLabel";
 import { MIN_FLIP_PERSPECTIVE_PX, flipPerspectivePx } from "@/lib/flipPerspective";
 import { topicToSlug } from "@/lib/topicSlug";
+import { COUNTRIES_TOPIC, countryToSlug } from "@/config/countryNames";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -78,9 +79,17 @@ export function storyDayLabel(date: string, thisYear: string): string {
   return year === thisYear ? label : `${label}, ${year}`;
 }
 
-/** Where an earlier day's card lives: its day's topic page, scrolled to it. */
+/**
+ * Where an earlier day's card lives: its day's topic page, scrolled to it. A
+ * Countries card opens the page filtered to its country, the URL
+ * CountryFilter builds: the unfiltered Countries page shows only a few cards
+ * per day, so the card might not be on it.
+ */
 export function storyDayHref(entry: StoryTimelineEntry): string {
-  return `/history/${entry.date}/topic/${topicToSlug(entry.topic)}#card-${entry.id}`;
+  const page = `/history/${entry.date}/topic/${topicToSlug(entry.topic)}`;
+  const country =
+    entry.topic === COUNTRIES_TOPIC && entry.subtopic ? `?country=${encodeURIComponent(countryToSlug(entry.subtopic))}` : "";
+  return `${page}${country}#card-${entry.id}`;
 }
 
 /** Where a live-arriving card's scale-in starts. Small enough to read as the card settling into place rather than zooming in. */
