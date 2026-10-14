@@ -17,7 +17,7 @@ describe("getTodaysCardSummaries", () => {
     const sources = [{ title: "t", url: "https://example.com/a", source: SOURCES[0], snippet: "s" }];
     const rows = [
       { id: "card-1", topic: "Tech/AI", short_summary: "AI story", severity: 4, sources },
-      { id: "card-2", topic: "US Finance", short_summary: "Finance story", severity: null, sources: [] },
+      { id: "card-2", topic: "World Finance", short_summary: "Finance story", severity: null, sources: [] },
       { id: "card-3", topic: "Countries", subtopic: "Uganda", short_summary: "Uganda story", severity: 3, sources: [] },
     ];
     const { client, from, select, eq } = makeFakeSupabase({ data: rows, error: null });
@@ -34,7 +34,7 @@ describe("getTodaysCardSummaries", () => {
       { id: "card-1", topic: "Tech/AI", subtopic: null, shortSummary: "AI story", severity: 4, sources },
       // Null severity (a row persisted before the column existed) defaults
       // to the lowest tier, same fallback rowToCard uses.
-      { id: "card-2", topic: "US Finance", subtopic: null, shortSummary: "Finance story", severity: 1, sources: [] },
+      { id: "card-2", topic: "World Finance", subtopic: null, shortSummary: "Finance story", severity: 1, sources: [] },
       { id: "card-3", topic: "Countries", subtopic: "Uganda", shortSummary: "Uganda story", severity: 3, sources: [] },
     ]);
   });

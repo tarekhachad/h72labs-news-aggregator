@@ -123,34 +123,6 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     "STAT News": "https://www.statnews.com/category/biotech/feed/",
   },
 
-  "US Politics": {
-    "The Guardian": "https://www.theguardian.com/us-news/us-politics/rss",
-    "The Hill": "https://thehill.com/feed/",
-    "PBS NewsHour": "https://www.pbs.org/newshour/feeds/rss/politics",
-    NPR: "https://feeds.npr.org/1014/rss.xml",
-    "CBS News": "https://www.cbsnews.com/latest/rss/politics",
-    "NBC News": "https://feeds.nbcnews.com/nbcnews/public/politics",
-    "LA Times": "https://www.latimes.com/politics/rss2.0.xml",
-    NYT: "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml",
-    "ABC News": "https://feeds.abcnews.com/abcnews/politicsheadlines",
-    Politico: "https://rss.politico.com/politics-news.xml",
-  },
-
-  "Morocco Politics": {
-    "Hespress (EN)": "https://en.hespress.com/politics/feed",
-    "Hespress (FR)": "https://fr.hespress.com/politique/feed",
-    TelQuel: "https://telquel.ma/categorie/maroc/politique/feed",
-  },
-
-  "French Politics": {
-    "RFI (EN)": "https://www.rfi.fr/en/france/rss",
-    France24: "https://www.france24.com/en/france/rss",
-    "RFI (FR)": "https://www.rfi.fr/fr/france/rss",
-    "Le Monde": "https://www.lemonde.fr/politique/rss_full.xml",
-    "BFM TV": "https://www.bfmtv.com/rss/politique/",
-    "Le Figaro": "https://www.lefigaro.fr/rss/figaro_politique.xml",
-  },
-
   // Countries has no feeds of its own: each picked country reads from
   // COUNTRY_FEEDS in src/config/countries.ts.
   Countries: {},
@@ -173,13 +145,6 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
     "Foreign Policy": "https://foreignpolicy.com/feed/",
     "The Economist": "https://www.economist.com/international/rss.xml",
-  },
-
-  "UK Politics": {
-    "The Guardian": "https://www.theguardian.com/politics/rss",
-    "Sky News": "https://feeds.skynews.com/feeds/rss/politics.xml",
-    BBC: "https://feeds.bbci.co.uk/news/politics/rss.xml",
-    "The Economist": "https://www.economist.com/britain/rss.xml",
   },
 
   "European Union": {
@@ -262,23 +227,6 @@ export const FEEDS: Record<Topic, Partial<Record<Source, string>>> = {
     "Human Rights Watch": "https://www.hrw.org/rss/news",
     "The Guardian": "https://www.theguardian.com/law/human-rights/rss",
     "Amnesty International": "https://www.amnesty.org/en/feed/",
-  },
-
-  "Morocco Finance": {
-    "Hespress (EN)": "https://en.hespress.com/economy/feed",
-    "The North Africa Post": "https://northafricapost.com/category/business/feed",
-    "Hespress (FR)": "https://fr.hespress.com/economie/feed",
-    TelQuel: "https://telquel.ma/categorie/economie/feed",
-  },
-
-  "US Finance": {
-    Bloomberg: "https://feeds.bloomberg.com/markets/news.rss",
-    NPR: "https://feeds.npr.org/1006/rss.xml",
-    NYT: "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
-    Fortune: "https://fortune.com/feed/fortune-feeds/?id=3230629",
-    CNBC: "https://www.cnbc.com/id/10000664/device/rss/rss.html",
-    "CBS News": "https://www.cbsnews.com/latest/rss/moneywatch",
-    MarketWatch: "https://feeds.content.dowjones.io/public/rss/mw_topstories",
   },
 
   "World Finance": {

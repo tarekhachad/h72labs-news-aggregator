@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SOURCES, TOPICS, type Source, type Topic } from "@/types";
+
+const PICKABLE = TOPICS.filter((t) => t !== "Countries");
 import { MAX_TOPICS, ProfileInput } from "@/lib/profile";
 import { MultiSelectForm } from "./multiSelectHarness";
 
@@ -94,10 +96,10 @@ async function submit() {
 
 describe("limit guard", () => {
   it("after a filtered pick of the 10th, filtering again shows the rest disabled and unpickable", async () => {
-    await renderForm({ topics: TOPICS.slice(0, MAX_TOPICS - 1) });
+    await renderForm({ topics: PICKABLE.slice(0, MAX_TOPICS - 1) });
     const input = topicsInput();
-    const tenth = TOPICS[MAX_TOPICS - 1];
-    const eleventh = TOPICS[MAX_TOPICS];
+    const tenth = PICKABLE[MAX_TOPICS - 1];
+    const eleventh = PICKABLE[MAX_TOPICS];
 
     await open(input);
     await type(input, tenth);
@@ -105,7 +107,7 @@ describe("limit guard", () => {
     await key(input, "ArrowDown");
     await key(input, "Enter");
     await flush();
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, MAX_TOPICS));
+    expect(fieldValues("topics")).toEqual(PICKABLE.slice(0, MAX_TOPICS));
     expect(counter(input)).toBe(`${MAX_TOPICS} of ${MAX_TOPICS} · limit reached, remove one to add another`);
 
     // Same open list, new filter: the 11th is shown, disabled, and unpickable.
@@ -119,12 +121,12 @@ describe("limit guard", () => {
     await key(input, "Enter");
     await act(async () => extra!.click());
     await flush();
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, MAX_TOPICS));
+    expect(fieldValues("topics")).toEqual(PICKABLE.slice(0, MAX_TOPICS));
   });
 
   it("over the limit, removing one still blocks new picks until under 10", async () => {
-    const saved = TOPICS.slice(0, MAX_TOPICS + 2);
-    const unpicked = TOPICS[MAX_TOPICS + 2];
+    const saved = PICKABLE.slice(0, MAX_TOPICS + 2);
+    const unpicked = PICKABLE[MAX_TOPICS + 2];
     expect(unpicked).toBeTruthy();
     await renderForm({ topics: saved });
     const input = topicsInput();
@@ -145,7 +147,7 @@ describe("limit guard", () => {
   });
 
   it("over the limit, a selected item in the list can still be clicked off", async () => {
-    const saved = TOPICS.slice(0, MAX_TOPICS + 1);
+    const saved = PICKABLE.slice(0, MAX_TOPICS + 1);
     await renderForm({ topics: saved });
     const input = topicsInput();
     await open(input);
@@ -160,12 +162,12 @@ describe("limit guard", () => {
     expect(
       [...container.querySelectorAll('p[role="status"]')].find((p) => p.textContent?.includes("limit is now"))
     ).toBeUndefined();
-    expect(option(TOPICS[MAX_TOPICS + 1])!.getAttribute("aria-disabled")).toBe("true");
+    expect(option(PICKABLE[MAX_TOPICS + 1])!.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("the topics limit never disables the sources picker", async () => {
     expect(SOURCES.length).toBeGreaterThan(MAX_TOPICS);
-    await renderForm({ topics: TOPICS.slice(0, MAX_TOPICS), sources: SOURCES.slice(0, MAX_TOPICS) });
+    await renderForm({ topics: PICKABLE.slice(0, MAX_TOPICS), sources: SOURCES.slice(0, MAX_TOPICS) });
     const input = sourcesInput();
     await open(input);
     const next = option(SOURCES[MAX_TOPICS])!;
@@ -183,27 +185,27 @@ describe("limit guard", () => {
 
 describe("focus after removing a chip", () => {
   it("removing the only chip with its button leaves focus in the input", async () => {
-    await renderForm({ topics: [TOPICS[0]] });
+    await renderForm({ topics: [PICKABLE[0]] });
     const input = topicsInput();
-    await act(async () => removeButton(TOPICS[0]).click());
+    await act(async () => removeButton(PICKABLE[0]).click());
     await flush();
     expect(chipLabels(input)).toEqual([]);
     expect(document.activeElement).toBe(input);
   });
 
   it("removing the first chip with its button leaves focus in the input", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE.slice(0, 3) });
     const input = topicsInput();
-    await act(async () => removeButton(TOPICS[0]).click());
+    await act(async () => removeButton(PICKABLE[0]).click());
     await flush();
-    expect(chipLabels(input)).toEqual([TOPICS[1], TOPICS[2]]);
+    expect(chipLabels(input)).toEqual([PICKABLE[1], PICKABLE[2]]);
     expect(document.activeElement).toBe(input);
   });
 
   it.each(["Delete", "Backspace"])(
     "removing a middle chip from the keyboard (%s) keeps focus inside the picker",
     async (k) => {
-      await renderForm({ topics: TOPICS.slice(0, 3) });
+      await renderForm({ topics: PICKABLE.slice(0, 3) });
       const input = topicsInput();
       await act(async () => input.focus());
       await key(input, "ArrowLeft");
@@ -212,12 +214,12 @@ describe("focus after removing a chip", () => {
       await flush();
       const chip = document.activeElement as HTMLElement;
       expect(chip.getAttribute("data-slot")).toBe("combobox-chip");
-      expect(chip.textContent).toBe(TOPICS[1]);
+      expect(chip.textContent).toBe(PICKABLE[1]);
 
       await key(chip, k);
       await flush();
-      expect(chipLabels(input)).toEqual([TOPICS[0], TOPICS[2]]);
-      expect(fieldValues("topics")).toEqual([TOPICS[0], TOPICS[2]]);
+      expect(chipLabels(input)).toEqual([PICKABLE[0], PICKABLE[2]]);
+      expect(fieldValues("topics")).toEqual([PICKABLE[0], PICKABLE[2]]);
       const active = document.activeElement as HTMLElement;
       expect(active).not.toBe(document.body);
       expect(chipsRoot(input).contains(active)).toBe(true);
@@ -225,7 +227,7 @@ describe("focus after removing a chip", () => {
   );
 
   it("removing the last chip of the sources picker keeps focus in that picker", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3), sources: [SOURCES[0]] });
+    await renderForm({ topics: PICKABLE.slice(0, 3), sources: [SOURCES[0]] });
     const input = sourcesInput();
     await act(async () => input.focus());
     await key(input, "Backspace");
@@ -233,38 +235,38 @@ describe("focus after removing a chip", () => {
     expect(fieldValues("preferredSources")).toEqual([]);
     expect(document.activeElement).toBe(input);
     // And the topics picker is untouched.
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(fieldValues("topics")).toEqual(PICKABLE.slice(0, 3));
   });
 });
 
 describe("re-picks and submissions", () => {
   it("clicking an already-picked option toggles it off rather than duplicating it", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE.slice(0, 3) });
     const input = topicsInput();
     await open(input);
-    await act(async () => option(TOPICS[1])!.click());
+    await act(async () => option(PICKABLE[1])!.click());
     await flush();
-    expect(fieldValues("topics")).toEqual([TOPICS[0], TOPICS[2]]);
-    await act(async () => option(TOPICS[1])!.click());
+    expect(fieldValues("topics")).toEqual([PICKABLE[0], PICKABLE[2]]);
+    await act(async () => option(PICKABLE[1])!.click());
     await flush();
     const values = fieldValues("topics");
     expect(new Set(values).size).toBe(values.length);
-    expect([...values].sort()).toEqual([...TOPICS.slice(0, 3)].sort());
+    expect([...values].sort()).toEqual([...PICKABLE.slice(0, 3)].sort());
   });
 
   it("submitting twice sends the same, duplicate-free picks both times", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 4), sources: SOURCES.slice(0, 2) });
+    await renderForm({ topics: PICKABLE.slice(0, 4), sources: SOURCES.slice(0, 2) });
     const first = await submit();
     const second = await submit();
     expect(submitted).toHaveLength(2);
     for (const fd of [first, second]) {
-      expect(fd.getAll("topics")).toEqual(TOPICS.slice(0, 4));
+      expect(fd.getAll("topics")).toEqual(PICKABLE.slice(0, 4));
       expect(fd.getAll("preferredSources")).toEqual(SOURCES.slice(0, 2));
     }
   });
 
   it("one hidden field per chip, all inside the form", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 5), sources: SOURCES.slice(0, 3) });
+    await renderForm({ topics: PICKABLE.slice(0, 5), sources: SOURCES.slice(0, 3) });
     const form = container.querySelector("form")!;
     const hiddenTopics = document.querySelectorAll('input[name="topics"]');
     expect(hiddenTopics).toHaveLength(5);
@@ -274,7 +276,7 @@ describe("re-picks and submissions", () => {
   });
 
   it("submitting an over-limit selection reaches the action, where the schema rejects it", async () => {
-    await renderForm({ topics: TOPICS.slice(0, MAX_TOPICS + 1) });
+    await renderForm({ topics: PICKABLE.slice(0, MAX_TOPICS + 1) });
     const fd = await submit();
     expect(fd.getAll("topics")).toHaveLength(MAX_TOPICS + 1);
     const parsed = ProfileInput.safeParse({
@@ -297,11 +299,11 @@ describe("re-picks and submissions", () => {
   });
 
   it("filter text typed in the search box is not submitted", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE.slice(0, 3) });
     await open(topicsInput());
     await type(topicsInput(), "zzqx");
     const fd = await submit();
-    expect(fd.getAll("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(fd.getAll("topics")).toEqual(PICKABLE.slice(0, 3));
     for (const v of fd.values()) expect(v).not.toBe("zzqx");
   });
 });

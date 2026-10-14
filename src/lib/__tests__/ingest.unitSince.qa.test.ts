@@ -24,12 +24,14 @@ function hoursAgo(hours: number): string {
   return new Date(new Date(NOW).getTime() - hours * HOURS).toISOString();
 }
 
-const FRENCH_POLITICS: ReadingUnit = { topic: "French Politics" as Topic, subtopic: null };
-const FRANCE: ReadingUnit = { topic: COUNTRIES_TOPIC as Topic, subtopic: "France" };
+const SOUTH_AFRICA: ReadingUnit = { topic: COUNTRIES_TOPIC as Topic, subtopic: "South Africa" };
+const AFRICA: ReadingUnit = { topic: "Africa", subtopic: null };
 const TECH: ReadingUnit = { topic: "Tech/AI", subtopic: null };
 
-// The two feeds French Politics (FEEDS) and France (COUNTRY_FEEDS) share.
-const SHARED = ["https://www.rfi.fr/en/france/rss", "https://www.lemonde.fr/politique/rss_full.xml"];
+// The feed South Africa (COUNTRY_FEEDS) and Africa (FEEDS) both read in their
+// first six. South Africa comes first in reading order (Countries sits before
+// the regional topics in TOPICS), so it owns the feed.
+const SHARED = ["https://mg.co.za/rss/"];
 
 function ages(articles: Article[], pred: (a: Article) => boolean): number[] {
   return [...new Set(articles.filter(pred).map((a) => Number(a.title.split("|")[1])))].sort((x, y) => x - y);
@@ -56,41 +58,41 @@ afterEach(() => {
 });
 
 describe("shared feeds and per-unit cutoffs", () => {
-  it("plans each shared French feed once, owned by French Politics (earlier in TOPICS than Countries)", () => {
-    const plan = planUnitFeeds([FRENCH_POLITICS, FRANCE]);
+  it("plans the shared feed once, owned by South Africa (the earlier unit)", () => {
+    const plan = planUnitFeeds([SOUTH_AFRICA, AFRICA]);
     for (const url of SHARED) {
       const owners = plan.filter((f) => f.url === url);
       expect(owners).toHaveLength(1);
-      expect(owners[0].topic).toBe("French Politics");
+      expect(owners[0].subtopic).toBe("South Africa");
     }
   });
 
-  it("a NEW country whose shared feeds are owned by an OLD topic gets only the topic's recent slice of them", async () => {
+  it("a NEW topic whose shared feed is owned by an OLD country gets only the country's recent slice of it", async () => {
     const unitSince = new Map<string, string | null>([
-      [unitKey(FRENCH_POLITICS.topic, null), hoursAgo(6)],
-      [unitKey(FRANCE.topic, FRANCE.subtopic), null],
+      [unitKey(SOUTH_AFRICA.topic, SOUTH_AFRICA.subtopic), hoursAgo(6)],
+      [unitKey(AFRICA.topic, null), null],
     ]);
-    const articles = await ingestUnits([FRENCH_POLITICS, FRANCE], [], hoursAgo(6), unitSince);
+    const articles = await ingestUnits([SOUTH_AFRICA, AFRICA], [], hoursAgo(6), unitSince);
 
     for (const url of SHARED) {
-      // Read for French Politics, cut at French Politics' 6h, tagged French Politics.
+      // Read for South Africa, cut at South Africa's 6h, tagged South Africa.
       expect(ages(articles, fromFeed(url))).toEqual([1, 5]);
-      expect(articles.filter(fromFeed(url)).every(ofUnit(FRENCH_POLITICS))).toBe(true);
+      expect(articles.filter(fromFeed(url)).every(ofUnit(SOUTH_AFRICA))).toBe(true);
     }
-    // France's own (unshared) feeds still read the full window.
-    expect(ages(articles, ofUnit(FRANCE))).toEqual([1, 5, 20, 47]);
-    const franceFeeds = new Set(articles.filter(ofUnit(FRANCE)).map((a) => a.title.split("|")[0]));
-    for (const url of SHARED) expect(franceFeeds.has(url)).toBe(false);
+    // Africa's own (unshared) feeds still read the full window.
+    expect(ages(articles, ofUnit(AFRICA))).toEqual([1, 5, 20, 47]);
+    const africaFeeds = new Set(articles.filter(ofUnit(AFRICA)).map((a) => a.title.split("|")[0]));
+    for (const url of SHARED) expect(africaFeeds.has(url)).toBe(false);
   });
 
-  it("an OLD country cannot drag an earlier NEW topic's shared feeds back: the new topic owns them and reads 48h", async () => {
+  it("an OLD topic cannot drag an earlier NEW country's shared feed back: the new country owns it and reads 48h", async () => {
     const unitSince = new Map<string, string | null>([
-      [unitKey(FRENCH_POLITICS.topic, null), null],
-      [unitKey(FRANCE.topic, FRANCE.subtopic), hoursAgo(6)],
+      [unitKey(SOUTH_AFRICA.topic, SOUTH_AFRICA.subtopic), null],
+      [unitKey(AFRICA.topic, null), hoursAgo(6)],
     ]);
-    const articles = await ingestUnits([FRENCH_POLITICS, FRANCE], [], hoursAgo(6), unitSince);
+    const articles = await ingestUnits([SOUTH_AFRICA, AFRICA], [], hoursAgo(6), unitSince);
     for (const url of SHARED) expect(ages(articles, fromFeed(url))).toEqual([1, 5, 20, 47]);
-    expect(ages(articles, ofUnit(FRANCE))).toEqual([1, 5]);
+    expect(ages(articles, ofUnit(AFRICA))).toEqual([1, 5]);
   });
 
   it("the same article URL in an old unit's feed and a new unit's feed survives once, under the new unit", async () => {
@@ -120,11 +122,11 @@ describe("per-unit values", () => {
   it("a malformed per-unit time reads the full window for that unit only", async () => {
     const unitSince = new Map<string, string | null>([
       [unitKey(TECH.topic, null), "not a date"],
-      [unitKey(FRENCH_POLITICS.topic, null), hoursAgo(6)],
+      [unitKey(AFRICA.topic, null), hoursAgo(6)],
     ]);
-    const articles = await ingestUnits([TECH, FRENCH_POLITICS], [], hoursAgo(6), unitSince);
+    const articles = await ingestUnits([TECH, AFRICA], [], hoursAgo(6), unitSince);
     expect(ages(articles, ofUnit(TECH))).toEqual([1, 5, 20, 47]);
-    expect(ages(articles, ofUnit(FRENCH_POLITICS))).toEqual([1, 5]);
+    expect(ages(articles, ofUnit(AFRICA))).toEqual([1, 5]);
   });
 
   it("an empty-string per-unit time behaves as never read", async () => {

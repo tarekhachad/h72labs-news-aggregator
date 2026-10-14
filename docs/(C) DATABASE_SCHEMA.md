@@ -20,7 +20,7 @@ A user's selected topics of interest (curated multi-select, at least 1 and no up
 | Field | What it holds |
 |---|---|
 | `user_id` | Which user |
-| `topic` | One of the curated topic options in `TOPICS` (e.g. "Geopolitics," "US Finance," "Tech/AI," "Morocco," "Football"); the full list and its feeds are in `docs/(C) SOURCE_CATALOG.md` |
+| `topic` | One of the curated topic options in `TOPICS` (e.g. "Geopolitics," "World Finance," "Tech/AI," "Football"); the full list and its feeds are in `docs/(C) SOURCE_CATALOG.md` |
 
 One row per user per topic — a user with 4 topics has 4 rows.
 

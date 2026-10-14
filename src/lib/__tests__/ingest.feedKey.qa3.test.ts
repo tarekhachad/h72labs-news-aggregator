@@ -154,18 +154,18 @@ describe("profiles built on the catalog's shared feeds", () => {
     "Climate & Environment",
     "Energy Transition & Renewables",
     "Automotive",
-    "US Finance",
+    "Geopolitics",
     "World Finance",
     "Markets & Investing",
     "Economy",
-    "Personal Finance",
+    "Asia-Pacific",
   ] as Topic[];
 
   it("these topic names exist (guards the test itself)", () => {
     for (const t of overlapTopics) expect(TOPICS).toContain(t);
   });
 
-  it("ten topics that share Bloomberg, BBC, Economist, CBS, Engadget, Carbon Brief, InsideEVs: each shared feed fetched once, later topics fill from what is left, fetches === planFeeds", async () => {
+  it("ten topics that share Bloomberg, BBC, Economist, The Diplomat, Engadget, Carbon Brief, InsideEVs: each shared feed fetched once, later topics fill from what is left, fetches === planFeeds", async () => {
     const planned = planFeeds(overlapTopics, []);
     const articles = await ingestArticles(overlapTopics, [], null);
     const fetched = mocks.parseURL.mock.calls.map((c) => c[0] as string);
@@ -184,7 +184,7 @@ describe("profiles built on the catalog's shared feeds", () => {
       for (const f of planned.filter((f) => f.topic === u.topic)) taken.add(conservativeKey(f.url));
     }
     expect(planned.length).toBe(expected);
-    expect(expected).toBe(52);
+    expect(expected).toBe(56);
     expect(articles).toHaveLength(expected);
     expect(articles.some((a) => "subtopic" in a)).toBe(false);
   });

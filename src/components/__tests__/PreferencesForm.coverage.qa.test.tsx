@@ -343,7 +343,7 @@ describe("topic search against the real topic text", () => {
     expect(hits("ai")).toEqual(expect.arrayContaining(["Tech/AI", "Travel"]));
     expect(hits("ai")).not.toContain("Retail");
     expect(hits("ai")).not.toContain("Religion");
-    expect(hits("morocco")).toEqual(["Morocco Politics", "Morocco Finance"]);
+    expect(hits("morocco")).toEqual([]);
   });
 
   it("every topic is found by its own full name, typed in lower case", () => {

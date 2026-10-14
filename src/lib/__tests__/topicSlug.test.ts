@@ -38,14 +38,18 @@ describe("topicToSlug / slugToTopic", () => {
     expect(slugToTopic("morocco")).toBeNull();
   });
 
+  // And for the six single-country topics, whose old links redirect to the
+  // Countries page filtered to their country.
+  it.each(["us-politics", "us-finance", "uk-politics", "french-politics", "morocco-politics", "morocco-finance"])(
+    "no longer resolves the old %s slug",
+    (slug) => {
+      expect(slugToTopic(slug)).toBeNull();
+    }
+  );
+
   it("keeps the slugs old links already carry", () => {
     expect(topicToSlug("Tech/AI")).toBe("tech-ai");
-    expect(topicToSlug("US Politics")).toBe("us-politics");
-    expect(topicToSlug("Morocco Politics")).toBe("morocco-politics");
-    expect(topicToSlug("French Politics")).toBe("french-politics");
     expect(topicToSlug("Geopolitics")).toBe("geopolitics");
-    expect(topicToSlug("Morocco Finance")).toBe("morocco-finance");
-    expect(topicToSlug("US Finance")).toBe("us-finance");
     expect(topicToSlug("World Finance")).toBe("world-finance");
     expect(topicToSlug("Basketball")).toBe("basketball");
     expect(topicToSlug("Tennis")).toBe("tennis");

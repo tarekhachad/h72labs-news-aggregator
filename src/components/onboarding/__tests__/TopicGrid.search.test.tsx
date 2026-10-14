@@ -57,9 +57,9 @@ describe("searching the topic grid", () => {
     document.body.innerHTML = "";
   });
 
-  it("'morocco' finds Morocco Politics and Morocco Finance, and not Football", async () => {
+  it("'morocco' finds no topic, Football included: Morocco is a country, not a topic", async () => {
     await searchTopics("morocco");
-    expect(chipNames()).toEqual(["Morocco Politics", "Morocco Finance"]);
+    expect(chipNames()).toEqual([]);
   });
 
   it("'hollywood' finds Film & TV through its search terms, a word the chip line has no room for", async () => {

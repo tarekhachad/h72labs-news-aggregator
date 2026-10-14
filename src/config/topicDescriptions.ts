@@ -4,10 +4,9 @@ import type { COUNTRIES_TOPIC } from "@/config/countryNames";
 /**
  * One hand-written line per pickable topic, shown under its name in the topic
  * grid. Each line says what the topic's feeds (docs/(C) SOURCE_CATALOG.md)
- * actually cover, and is worded to tell near-duplicates apart: Morocco
- * Politics and Morocco Finance; Economy, World Finance and US Finance; Health &
- * Medicine and Health & Wellness. A line must not promise coverage the feeds
- * don't have.
+ * actually cover, and is worded to tell near-duplicates apart: Economy and
+ * World Finance; Health & Medicine and Health & Wellness. A line must not
+ * promise coverage the feeds don't have.
  *
  * Each line fits on one line of its chip: about 190 px of 12 px text on a
  * laptop-width screen, which is roughly 33 characters.
@@ -27,11 +26,7 @@ export const TOPIC_DESCRIPTIONS: Record<Exclude<Topic, typeof COUNTRIES_TOPIC>, 
   "Health & Medicine": "Medical research, public health",
   "Biotech & Pharma": "Drug makers, trials, approvals",
 
-  "US Politics": "White House, Congress, parties",
-  "Morocco Politics": "Morocco's government, parties",
-  "French Politics": "Élysée, government, parties",
   Geopolitics: "Wars, diplomacy, world news",
-  "UK Politics": "Westminster and the parties",
   "European Union": "EU policy, news across Europe",
   "Middle East": "The Middle East and the Gulf",
   Africa: "Nigeria, South Africa and more",
@@ -42,8 +37,6 @@ export const TOPIC_DESCRIPTIONS: Record<Exclude<Topic, typeof COUNTRIES_TOPIC>, 
   "Defense & Security": "Militaries, weapons and wars",
   "Human Rights": "Rights abuses, civil liberties",
 
-  "Morocco Finance": "Bank Al-Maghrib, bourse, firms",
-  "US Finance": "Wall Street, the Fed, US firms",
   "World Finance": "Global business, City to Asia",
   Economy: "Growth, inflation, jobs, trade",
   "Markets & Investing": "Stocks, bonds and currencies",
@@ -89,7 +82,7 @@ export const TOPIC_DESCRIPTIONS: Record<Exclude<Topic, typeof COUNTRIES_TOPIC>, 
 
 /**
  * Longer wording per topic that the topic search matches but the grid never
- * shows: the words a reader might type ("Washington", "parliament",
+ * shows: the words a reader might type ("climate change", "defence",
  * "Hollywood", "mortgage") that don't fit on a one-line chip. Held to the
  * same rule as the display line: no promise the topic's feeds don't keep.
  */
@@ -105,11 +98,7 @@ export const TOPIC_SEARCH_TERMS: Record<Exclude<Topic, typeof COUNTRIES_TOPIC>, 
   "Health & Medicine": "Medical research, public health, hospitals and health policy",
   "Biotech & Pharma": "Drug makers, clinical trials, approvals and biotech deals",
 
-  "US Politics": "Washington: the White House, Congress, the parties and campaigns",
-  "Morocco Politics": "Morocco's government, parliament, parties and policy",
-  "French Politics": "The Élysée, the government, parliament and parties in France",
   Geopolitics: "The day's world news: wars, diplomacy and relations between powers",
-  "UK Politics": "Westminster: the government, parliament and the parties",
   "European Union": "The EU's institutions and policy, and news across Europe",
   "Middle East": "News across the Middle East and the Gulf",
   Africa: "News across the continent, from Nigeria to South Africa",
@@ -120,8 +109,6 @@ export const TOPIC_SEARCH_TERMS: Record<Exclude<Topic, typeof COUNTRIES_TOPIC>, 
   "Defense & Security": "Militaries, weapons, defence budgets and the wars they fight",
   "Human Rights": "Rights abuses, civil liberties and the groups that track them",
 
-  "Morocco Finance": "Bank Al-Maghrib, the Casablanca bourse, Moroccan companies",
-  "US Finance": "Wall Street, the Fed and American companies",
   "World Finance": "International business and finance, from the City to Asia",
   Economy: "Growth, inflation, jobs, interest rates and trade",
   "Markets & Investing": "Stocks, bonds, currencies and what moves them",

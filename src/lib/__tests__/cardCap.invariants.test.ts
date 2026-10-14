@@ -134,7 +134,7 @@ describe("applyCardCap — fuzzed invariants", () => {
     };
   }
 
-  const TOPICS: Topic[] = ["Tech/AI", "Morocco Politics", "Geopolitics"];
+  const TOPICS: Topic[] = ["Tech/AI", "Science", "Geopolitics"];
   const RUN_SHAPES: RunShape[] = ["firstEver", "firstOfDay", "sameDayTopUp", "unknown"];
 
   /**

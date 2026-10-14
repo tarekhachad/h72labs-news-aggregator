@@ -2,7 +2,7 @@ import { TOPICS, type Topic } from "@/types";
 
 /**
  * Explicit lookup table, not a generic slugify() — several Topic values
- * have spaces or slashes ("Tech/AI", "US Finance") and a generic slugifier
+ * have spaces or slashes ("Tech/AI", "World Finance") and a generic slugifier
  * would be one more place topic-name changes could silently drift from the
  * URL scheme. This table is the single source of truth for the mapping.
  */
@@ -17,12 +17,8 @@ const TOPIC_TO_SLUG: Record<Topic, string> = {
   "Energy Transition & Renewables": "energy-transition-renewables",
   "Health & Medicine": "health-medicine",
   "Biotech & Pharma": "biotech-pharma",
-  "US Politics": "us-politics",
-  "Morocco Politics": "morocco-politics",
-  "French Politics": "french-politics",
   Countries: "countries",
   Geopolitics: "geopolitics",
-  "UK Politics": "uk-politics",
   "European Union": "european-union",
   "Middle East": "middle-east",
   Africa: "africa",
@@ -32,8 +28,6 @@ const TOPIC_TO_SLUG: Record<Topic, string> = {
   Immigration: "immigration",
   "Defense & Security": "defense-security",
   "Human Rights": "human-rights",
-  "Morocco Finance": "morocco-finance",
-  "US Finance": "us-finance",
   "World Finance": "world-finance",
   Economy: "economy",
   "Markets & Investing": "markets-investing",

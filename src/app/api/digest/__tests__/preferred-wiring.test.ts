@@ -341,7 +341,7 @@ describe("digest route: preferred sources", () => {
   });
 
   it("reads at most 10 topics, in curated order, and records how many were skipped", async () => {
-    const topics = TOPICS.slice(0, MAX_TOPICS_PER_DIGEST + 3) as Topic[];
+    const topics = TOPICS.filter((t) => t !== "Countries").slice(0, MAX_TOPICS_PER_DIGEST + 3) as Topic[];
     setProfile([], [...topics].reverse());
     mocks.clusterArticles.mockResolvedValue([]);
     triageReturns([]);

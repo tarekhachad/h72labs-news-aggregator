@@ -166,20 +166,20 @@ describe("filterAlreadyCovered", () => {
     const { filterAlreadyCovered } = await import("@/lib/dedup");
 
     const crossTopicCluster: Cluster = {
-      topic: "US Politics",
-      articles: [makeArticle({ topic: "US Politics", title: "CROSS_TOPIC_MARKER", snippet: "" })],
+      topic: "Geopolitics",
+      articles: [makeArticle({ topic: "Geopolitics", title: "CROSS_TOPIC_MARKER", snippet: "" })],
     };
 
     const result = await filterAlreadyCovered(
       [crossTopicCluster],
       [
         { topic: "Tech/AI", shortSummary: "EXISTING_AI_SUMMARY" },
-        { topic: "US Politics", shortSummary: "EXISTING_POLITICS_SUMMARY" }, // orthogonal vector -> dissimilar
+        { topic: "Geopolitics", shortSummary: "EXISTING_POLITICS_SUMMARY" }, // orthogonal vector -> dissimilar
       ]
     );
 
     expect(result).toEqual([crossTopicCluster]);
-    // The only same-topic existing card (US Politics) is dissimilar
+    // The only same-topic existing card (Geopolitics) is dissimilar
     // (orthogonal vector), so Haiku should never be consulted at all.
     expect(mockParse).not.toHaveBeenCalled();
   });

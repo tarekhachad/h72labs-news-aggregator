@@ -164,7 +164,8 @@ describe("schema.sql: unit_read_cursors", () => {
   });
 
   it("backfills by moving read times forward, so a second pass after the deploy catches runs in between", () => {
-    const block = schema.slice(schema.indexOf("-- V2.7 migration: each reading unit's own read time."));
+    const start = schema.indexOf("-- V2.7 migration: each reading unit's own read time.");
+    const block = schema.slice(start, schema.indexOf("-- V2.7 migration:", start + 1));
     expect(block.match(/do update\s+set read_at = greatest\(public\.unit_read_cursors\.read_at, excluded\.read_at\);/g)).toHaveLength(2);
     expect(block).not.toMatch(/do nothing/);
   });

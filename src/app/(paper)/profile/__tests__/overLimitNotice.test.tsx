@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TOPICS } from "@/types";
+
+const PICKABLE = TOPICS.filter((t) => t !== "Countries");
 import { MAX_TOPICS } from "@/lib/profile";
 
 // A reader saved more topics than the limit allows before it existed. The
@@ -54,7 +56,7 @@ afterEach(async () => {
 
 async function renderProfile(topicCount: number) {
   mocks.getUserProfile.mockResolvedValue({
-    topics: TOPICS.slice(0, topicCount),
+    topics: PICKABLE.slice(0, topicCount),
     preferredSources: [],
     timeZone: "UTC",
   });
@@ -74,7 +76,7 @@ describe("/profile with more saved topics than the limit", () => {
     const submitted = [
       ...container.querySelectorAll<HTMLInputElement>('input[name="topics"]'),
     ].map((i) => i.value);
-    expect(submitted).toEqual(TOPICS.slice(0, MAX_TOPICS + 3));
+    expect(submitted).toEqual(PICKABLE.slice(0, MAX_TOPICS + 3));
     expect(trimNotice()?.textContent).toContain("Remove 3 before you next save");
 
     // Nothing else is blocked: the save button is live.

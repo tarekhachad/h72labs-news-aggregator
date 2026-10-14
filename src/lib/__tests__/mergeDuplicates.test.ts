@@ -101,7 +101,6 @@ const UNITS: ReadingUnit[] = [
   { topic: "Defense & Security", subtopic: null },
   { topic: "Countries", subtopic: "Morocco" },
   { topic: "Countries", subtopic: "France" },
-  { topic: "French Politics", subtopic: null },
   { topic: "Education", subtopic: null },
 ];
 
@@ -403,9 +402,9 @@ describe("which cluster is kept", () => {
 
   it("keeps the kept member's country", async () => {
     const [x, y] = MUST_MERGE[3];
-    const result = await merge([item({ ...x, subtopic: "Morocco" }, { severity: 2 }), item({ ...y, topic: "Morocco Politics", subtopic: undefined }, { severity: 3 })]);
+    const result = await merge([item({ ...x, subtopic: "Morocco" }, { severity: 2 }), item({ ...y, topic: "Geopolitics", subtopic: undefined }, { severity: 3 })]);
 
-    expect(result.items[0].cluster.topic).toBe("Morocco Politics");
+    expect(result.items[0].cluster.topic).toBe("Geopolitics");
     expect("subtopic" in result.items[0].cluster).toBe(false);
   });
 });

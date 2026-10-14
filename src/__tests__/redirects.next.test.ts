@@ -130,9 +130,45 @@ describe("Morocco topic redirects, resolved the way Next's router does", () => {
 
   it("leaves the destination and look-alikes alone", () => {
     expect(follow("/topic/countries?country=morocco").hops).toEqual([]);
-    expect(follow("/topic/morocco-politics").hops).toEqual([]);
-    expect(follow("/topic/morocco-finance").hops).toEqual([]);
     expect(follow("/topic/morocco/extra").hops).toEqual([]);
     expect(follow("/history/2026/09/14/topic/morocco").hops).toEqual([]);
+  });
+});
+
+describe("single-country topic redirects, resolved the way Next's router does", () => {
+  const SIX: [slug: string, countrySlug: string][] = [
+    ["us-politics", "united-states"],
+    ["us-finance", "united-states"],
+    ["uk-politics", "united-kingdom"],
+    ["french-politics", "france"],
+    ["morocco-politics", "morocco"],
+    ["morocco-finance", "morocco"],
+  ];
+
+  it.each(SIX)("sends /topic/%s to the Countries page filtered to %s with one 308", (slug, country) => {
+    expect(follow(`/topic/${slug}`)).toEqual({
+      hops: [{ to: `/topic/countries?country=${country}`, status: 308 }],
+      final: `/topic/countries?country=${country}`,
+    });
+  });
+
+  it.each(SIX)("carries the date across for /history/…/topic/%s", (slug, country) => {
+    expect(follow(`/history/2026-09-14/topic/${slug}`).final).toBe(`/history/2026-09-14/topic/countries?country=${country}`);
+  });
+
+  it("handles a trailing slash, keeps the query string and matches case-insensitively", () => {
+    const r = follow("/topic/uk-politics/");
+    expect(r.final).toBe("/topic/countries?country=united-kingdom");
+    expect(r.hops.every((h) => h.status === 308)).toBe(true);
+    const withQuery = new URL(follow("/topic/us-finance?ref=mail").final, "https://pna.example");
+    expect(Object.fromEntries(withQuery.searchParams)).toEqual({ country: "united-states", ref: "mail" });
+    expect(follow("/Topic/French-Politics").final).toBe("/topic/countries?country=france");
+  });
+
+  it("leaves the destinations and look-alikes alone", () => {
+    expect(follow("/topic/countries?country=united-states").hops).toEqual([]);
+    expect(follow("/topic/us-politics/extra").hops).toEqual([]);
+    expect(follow("/topic/world-finance").hops).toEqual([]);
+    expect(follow("/history/2026/09/14/topic/uk-politics").hops).toEqual([]);
   });
 });

@@ -25,11 +25,7 @@ export const TOPIC_GROUPS: readonly { name: string; topics: readonly Topic[] }[]
   {
     name: "Politics and world",
     topics: [
-      "US Politics",
-      "Morocco Politics",
-      "French Politics",
       "Geopolitics",
-      "UK Politics",
       "European Union",
       "Middle East",
       "Africa",
@@ -44,8 +40,6 @@ export const TOPIC_GROUPS: readonly { name: string; topics: readonly Topic[] }[]
   {
     name: "Business and economy",
     topics: [
-      "Morocco Finance",
-      "US Finance",
       "World Finance",
       "Economy",
       "Markets & Investing",

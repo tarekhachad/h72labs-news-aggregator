@@ -135,18 +135,18 @@ describe("the topic grid", () => {
 
   it("picks a topic with a click, as a pressed chip and a form value", async () => {
     await renderForm();
-    await clickChip(TOPICS[2]);
-    expect(isPicked(TOPICS[2])).toBe(true);
-    expect(fieldValues("topics")).toEqual([TOPICS[2]]);
+    await clickChip(PICKABLE_TOPICS[2]);
+    expect(isPicked(PICKABLE_TOPICS[2])).toBe(true);
+    expect(fieldValues("topics")).toEqual([PICKABLE_TOPICS[2]]);
     expect(counter()).toBe("Pick at least 2 more");
     expect(submitted).toHaveLength(0);
   });
 
   it("unpicks a topic with a second click", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
-    await clickChip(TOPICS[1]);
-    expect(isPicked(TOPICS[1])).toBe(false);
-    expect(fieldValues("topics")).toEqual([TOPICS[0], TOPICS[2]]);
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3) });
+    await clickChip(PICKABLE_TOPICS[1]);
+    expect(isPicked(PICKABLE_TOPICS[1])).toBe(false);
+    expect(fieldValues("topics")).toEqual([PICKABLE_TOPICS[0], PICKABLE_TOPICS[2]]);
   });
 
   it("filters the grid as you type, by name or description, with a no-match line", async () => {
@@ -171,48 +171,48 @@ describe("the topic grid", () => {
     expect(chipNames()).toHaveLength(PICKABLE_TOPICS.length);
   });
 
+  // No topic's text carries an accent, so the accent is on the query side: a
+  // reader typing French-style "Élections" in capitals still finds Elections.
   it("ignores case and accents in the search", async () => {
     await renderForm();
-    const accented = Object.entries(TOPIC_DESCRIPTIONS).find(([, line]) => /[À-ÿ]/.test(line));
-    expect(accented).toBeDefined();
-    const word = accented![1].split(/\s+/).find((w) => /[À-ÿ]/.test(w))!.replace(/[^\p{L}-]/gu, "");
-    await searchTopics(word.normalize("NFD").replace(/\p{Diacritic}/gu, "").toUpperCase());
-    expect(chipNames()).toContain(accented![0]);
+    expect(Object.values(TOPIC_DESCRIPTIONS).join(" ")).not.toMatch(/É/);
+    await searchTopics("ÉLECTIONS");
+    expect(chipNames()).toContain("Elections");
   });
 
   it("Enter in the search box never submits and never picks", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
-    await searchTopics(TOPICS[5]);
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3) });
+    await searchTopics(PICKABLE_TOPICS[5]);
     expect(await key(topicSearch(), "Enter")).toBe(true);
     await searchTopics("");
     expect(await key(topicSearch(), "Enter")).toBe(true);
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(fieldValues("topics")).toEqual(PICKABLE_TOPICS.slice(0, 3));
     expect(submitted).toHaveLength(0);
   });
 
   it(`stops picks at ${MAX_TOPICS}, with the reason in the counter`, async () => {
-    await renderForm({ topics: TOPICS.slice(0, MAX_TOPICS) });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, MAX_TOPICS) });
     expect(counter()).toBe(AT_LIMIT);
-    const extra = chip(TOPICS[MAX_TOPICS])!;
+    const extra = chip(PICKABLE_TOPICS[MAX_TOPICS])!;
     expect(extra.getAttribute("aria-disabled")).toBe("true");
     expect(extra.getAttribute("aria-describedby")).toContain("preferences-topics-count");
-    expect(chip(TOPICS[0])!.getAttribute("aria-disabled")).toBeNull();
+    expect(chip(PICKABLE_TOPICS[0])!.getAttribute("aria-disabled")).toBeNull();
 
-    await clickChip(TOPICS[MAX_TOPICS]);
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, MAX_TOPICS));
+    await clickChip(PICKABLE_TOPICS[MAX_TOPICS]);
+    expect(fieldValues("topics")).toEqual(PICKABLE_TOPICS.slice(0, MAX_TOPICS));
     expect(trimNotice()).toBeUndefined();
   });
 
   it("frees a slot again when a topic is removed at the limit", async () => {
-    await renderForm({ topics: TOPICS.slice(0, MAX_TOPICS) });
-    await clickChip(TOPICS[0]);
-    expect(chip(TOPICS[MAX_TOPICS])!.getAttribute("aria-disabled")).toBeNull();
-    await clickChip(TOPICS[MAX_TOPICS]);
-    expect(fieldValues("topics")).toEqual([...TOPICS.slice(1, MAX_TOPICS), TOPICS[MAX_TOPICS]]);
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, MAX_TOPICS) });
+    await clickChip(PICKABLE_TOPICS[0]);
+    expect(chip(PICKABLE_TOPICS[MAX_TOPICS])!.getAttribute("aria-disabled")).toBeNull();
+    await clickChip(PICKABLE_TOPICS[MAX_TOPICS]);
+    expect(fieldValues("topics")).toEqual([...PICKABLE_TOPICS.slice(1, MAX_TOPICS), PICKABLE_TOPICS[MAX_TOPICS]]);
   });
 
   it("keeps a saved selection over the limit, with a notice to trim it", async () => {
-    const saved = TOPICS.slice(0, MAX_TOPICS + 3);
+    const saved = PICKABLE_TOPICS.slice(0, MAX_TOPICS + 3);
     await renderForm({ topics: saved });
     expect(fieldValues("topics")).toEqual(saved);
     expect(counter()).toBe(`${MAX_TOPICS + 3} of ${MAX_TOPICS}`);
@@ -238,29 +238,29 @@ describe("the topic grid", () => {
 
 describe("Save below the minimum", () => {
   it("is disabled with the reason beside it, and comes back once there are enough", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3) });
     expect(saveButton().disabled).toBe(false);
     expect(saveButton().getAttribute("aria-describedby")).toBeNull();
 
-    await clickChip(TOPICS[2]);
+    await clickChip(PICKABLE_TOPICS[2]);
     expect(saveButton().disabled).toBe(true);
     const reason = document.getElementById(saveButton().getAttribute("aria-describedby")!)!;
     expect(reason.textContent).toBe("Pick at least 1 more topic to save. Each country counts as one.");
 
-    await clickChip(TOPICS[1]);
+    await clickChip(PICKABLE_TOPICS[1]);
     expect(document.getElementById(saveButton().getAttribute("aria-describedby")!)!.textContent).toBe(
       "Pick at least 2 more topics to save. Each country counts as one."
     );
 
-    await clickChip(TOPICS[1]);
-    await clickChip(TOPICS[2]);
+    await clickChip(PICKABLE_TOPICS[1]);
+    await clickChip(PICKABLE_TOPICS[2]);
     expect(saveButton().disabled).toBe(false);
   });
 });
 
 describe("the sources picker", () => {
   it("never clears its picks on Escape, open or closed", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3), sources: SOURCES.slice(0, 2) });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3), sources: SOURCES.slice(0, 2) });
     const input = sourcesInput();
     await act(async () => input.focus());
     await key(input, "Escape");
@@ -268,22 +268,22 @@ describe("the sources picker", () => {
     await key(input, "Escape");
     await key(input, "Escape");
     await flush();
-    expect(fieldValues("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(fieldValues("topics")).toEqual(PICKABLE_TOPICS.slice(0, 3));
     expect(fieldValues("preferredSources")).toEqual(SOURCES.slice(0, 2));
   });
 });
 
 describe("PreferencesForm submission", () => {
   it("submits one form entry per pick, under the names the actions read", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 2), sources: [SOURCES[0]] });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 2), sources: [SOURCES[0]] });
 
-    await clickChip(TOPICS[4]);
+    await clickChip(PICKABLE_TOPICS[4]);
     await open(sourcesInput());
     await act(async () => option(SOURCES[3])!.click());
     await flush();
 
     const formData = await submit();
-    expect(formData.getAll("topics")).toEqual([TOPICS[0], TOPICS[1], TOPICS[4]]);
+    expect(formData.getAll("topics")).toEqual([PICKABLE_TOPICS[0], PICKABLE_TOPICS[1], PICKABLE_TOPICS[4]]);
     expect(formData.getAll("preferredSources")).toEqual([SOURCES[0], SOURCES[3]]);
     // Nothing else rides along: the search boxes have no name.
     expect([...new Set([...formData.keys()])].sort()).toEqual(["preferredSources", "topics"]);
@@ -296,7 +296,7 @@ describe("PreferencesForm submission", () => {
   });
 
   it("submits zero sources as no entries, which the schema accepts", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3) });
 
     const formData = await submit();
     expect(formData.getAll("preferredSources")).toEqual([]);
@@ -309,22 +309,22 @@ describe("PreferencesForm submission", () => {
   });
 
   it("drops an unpicked topic and a removed source from the submission", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 4), sources: SOURCES.slice(0, 2) });
-    await clickChip(TOPICS[3]);
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 4), sources: SOURCES.slice(0, 2) });
+    await clickChip(PICKABLE_TOPICS[3]);
     await act(async () =>
       document.querySelector<HTMLButtonElement>(`[aria-label="Remove ${SOURCES[0]}"]`)!.click()
     );
 
     const formData = await submit();
-    expect(formData.getAll("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(formData.getAll("topics")).toEqual(PICKABLE_TOPICS.slice(0, 3));
     expect(formData.getAll("preferredSources")).toEqual([SOURCES[1]]);
   });
 
   it("still submits picks the search has hidden", async () => {
-    await renderForm({ topics: TOPICS.slice(0, 3) });
+    await renderForm({ topics: PICKABLE_TOPICS.slice(0, 3) });
     await searchTopics("zzqx-no-such-topic");
     const formData = await submit();
-    expect(formData.getAll("topics")).toEqual(TOPICS.slice(0, 3));
+    expect(formData.getAll("topics")).toEqual(PICKABLE_TOPICS.slice(0, 3));
   });
 });
 
@@ -334,7 +334,7 @@ it("the harness really submits", async () => {
   const spy = vi.fn();
   await act(async () => {
     root.render(
-      <PreferencesForm action={spy} defaultTopics={TOPICS.slice(0, 3)} submitLabel="Save" />
+      <PreferencesForm action={spy} defaultTopics={PICKABLE_TOPICS.slice(0, 3)} submitLabel="Save" />
     );
   });
   await act(async () => container.querySelector("form")!.requestSubmit());

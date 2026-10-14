@@ -115,11 +115,58 @@ describe("old Morocco topic links", () => {
     expect(slugToTopic("morocco")).toBeNull();
   });
 
-  it("leaves the Morocco Politics and Morocco Finance pages, and the destination, alone", async () => {
-    expect(await resolve("/topic/morocco-politics")).toBeNull();
-    expect(await resolve("/topic/morocco-finance")).toBeNull();
-    expect(await resolve("/history/2026-09-14/topic/morocco-politics")).toBeNull();
+  it("leaves the destination and look-alikes alone", async () => {
     expect(await resolve("/topic/countries")).toBeNull();
     expect(await resolve("/topic/morocco/extra")).toBeNull();
+  });
+});
+
+// The six single-country topics: each old slug, as topicSlug.ts spelled it,
+// and the country that replaced it.
+const SINGLE_COUNTRY_TOPICS: [slug: string, country: string][] = [
+  ["us-politics", "United States"],
+  ["us-finance", "United States"],
+  ["uk-politics", "United Kingdom"],
+  ["french-politics", "France"],
+  ["morocco-politics", "Morocco"],
+  ["morocco-finance", "Morocco"],
+];
+
+describe("old single-country topic links", () => {
+  const countriesPage = `/topic/${topicToSlug(COUNTRIES_TOPIC)}`;
+
+  it("redirects exactly these six slugs, and nothing else new", async () => {
+    const rules = await redirects();
+    const retired = rules.filter((r) => r.destination.includes("?country=") && !r.source.endsWith("/morocco"));
+    expect(retired.map((r) => r.source).sort()).toEqual(
+      SINGLE_COUNTRY_TOPICS.flatMap(([slug]) => [`/topic/${slug}`, `/history/:date/topic/${slug}`]).sort()
+    );
+  });
+
+  it.each(SINGLE_COUNTRY_TOPICS)("sends /topic/%s to the Countries page filtered to %s, permanently", async (slug, country) => {
+    expect(await resolve(`/topic/${slug}`)).toEqual({ to: countryFilterHref(countriesPage, country), permanent: true });
+  });
+
+  it.each(SINGLE_COUNTRY_TOPICS)("sends an old history page for %s to the same day's Countries page filtered to %s", async (slug, country) => {
+    const day = "/history/2026-09-14";
+    expect(await resolve(`${day}/topic/${slug}`)).toEqual({
+      to: countryFilterHref(`${day}${countriesPage}`, country),
+      permanent: true,
+    });
+  });
+
+  it.each(SINGLE_COUNTRY_TOPICS)("lands %s on a page that exists, filtered by a country that exists", async (slug, country) => {
+    const to = new URL((await resolve(`/topic/${slug}`))!.to, "https://pna.example");
+    expect(slugToTopic(to.pathname.split("/").pop()!)).toBe(COUNTRIES_TOPIC);
+    expect(slugToCountry(to.searchParams.get("country")!)).toBe(country);
+    expect(slugToTopic(slug)).toBeNull();
+  });
+
+  it("leaves the regional topics and look-alikes alone", async () => {
+    for (const slug of ["european-union", "middle-east", "africa", "asia-pacific", "latin-america", "world-finance", "geopolitics"]) {
+      expect(await resolve(`/topic/${slug}`), slug).toBeNull();
+    }
+    expect(await resolve("/topic/us-politics/extra")).toBeNull();
+    expect(await resolve("/topic/countries?country=united-states")).toBeNull();
   });
 });

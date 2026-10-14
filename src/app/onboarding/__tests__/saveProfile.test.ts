@@ -58,36 +58,36 @@ const actions = [
 
 describe.each(actions)("$name", ({ run: action, ok }) => {
   it("saves 3 topics with zero sources", async () => {
-    await expect(action(form(TOPICS.slice(0, 3), []))).rejects.toThrow(`REDIRECT:${ok}`);
+    await expect(action(form(nonCountry.slice(0, 3), []))).rejects.toThrow(`REDIRECT:${ok}`);
     expect(mocks.saveUserProfile).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      TOPICS.slice(0, 3),
+      nonCountry.slice(0, 3),
       [],
       []
     );
   });
 
   it("saves 10 topics with sources", async () => {
-    await expect(action(form(TOPICS.slice(0, 10), SOURCES.slice(0, 2)))).rejects.toThrow(
+    await expect(action(form(nonCountry.slice(0, 10), SOURCES.slice(0, 2)))).rejects.toThrow(
       `REDIRECT:${ok}`
     );
     expect(mocks.saveUserProfile).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
-      TOPICS.slice(0, 10),
+      nonCountry.slice(0, 10),
       SOURCES.slice(0, 2),
       []
     );
   });
 
   it("refuses 2 topics with too_few, saving nothing", async () => {
-    await expect(action(form(TOPICS.slice(0, 2), []))).resolves.toEqual({ error: "too_few" });
+    await expect(action(form(nonCountry.slice(0, 2), []))).resolves.toEqual({ error: "too_few" });
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
   it("refuses 11 topics with too_many, saving nothing", async () => {
-    await expect(action(form(TOPICS.slice(0, 11), []))).resolves.toEqual({ error: "too_many" });
+    await expect(action(form(nonCountry.slice(0, 11), []))).resolves.toEqual({ error: "too_many" });
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 
@@ -160,7 +160,7 @@ describe.each(actions)("$name", ({ run: action, ok }) => {
 
   it("checks the session first: no user redirects to /login before anything is parsed or saved", async () => {
     mocks.getUser.mockResolvedValue({ data: { user: null } });
-    await expect(action(form(TOPICS.slice(0, 2), []))).rejects.toThrow("REDIRECT:/login");
+    await expect(action(form(nonCountry.slice(0, 2), []))).rejects.toThrow("REDIRECT:/login");
     expect(mocks.saveUserProfile).not.toHaveBeenCalled();
   });
 });

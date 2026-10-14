@@ -3,10 +3,10 @@ import { buildPageOrder, pagesBetween } from "@/lib/pageOrder";
 
 describe("buildPageOrder", () => {
   it("puts the front page first, then topics in the given order", () => {
-    expect(buildPageOrder(["Tech/AI", "US Politics"])).toEqual([
+    expect(buildPageOrder(["Tech/AI", "Science"])).toEqual([
       "/",
       "/topic/tech-ai",
-      "/topic/us-politics",
+      "/topic/science",
     ]);
   });
 
@@ -23,8 +23,8 @@ describe("buildPageOrder", () => {
 });
 
 describe("pagesBetween", () => {
-  const order = buildPageOrder(["Tech/AI", "US Politics", "Geopolitics"]);
-  // order: ["/", "/topic/tech-ai", "/topic/us-politics", "/topic/geopolitics"]
+  const order = buildPageOrder(["Tech/AI", "Science", "Geopolitics"]);
+  // order: ["/", "/topic/tech-ai", "/topic/science", "/topic/geopolitics"]
 
   it("is 0 for the same page", () => {
     expect(pagesBetween("/", "/", order)).toBe(0);

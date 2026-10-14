@@ -66,12 +66,12 @@ describe("planTriageBatches", () => {
     const { planTriageBatches } = await import("@/lib/triage");
     const batches = planTriageBatches([
       ...clustersOf("Tech/AI", 3),
-      ...clustersOf("Morocco Politics", 2),
+      ...clustersOf("Science", 2),
     ]);
 
     expect(batches).toHaveLength(2);
     expect(batches[0]).toEqual({ topic: "Tech/AI", subtopic: null, indices: [0, 1, 2] });
-    expect(batches[1]).toEqual({ topic: "Morocco Politics", subtopic: null, indices: [3, 4] });
+    expect(batches[1]).toEqual({ topic: "Science", subtopic: null, indices: [3, 4] });
   });
 
   it("never mixes topics in one batch, even when interleaved", async () => {
@@ -80,7 +80,7 @@ describe("planTriageBatches", () => {
     const { planTriageBatches } = await import("@/lib/triage");
     const clusters = [
       makeCluster("Tech/AI", "a"),
-      makeCluster("Morocco Politics", "b"),
+      makeCluster("Science", "b"),
       makeCluster("Tech/AI", "c"),
     ];
 
@@ -91,7 +91,7 @@ describe("planTriageBatches", () => {
     }
     // And the indices are into the ORIGINAL array, not a per-topic subarray.
     expect(batches.find((b) => b.topic === "Tech/AI")!.indices).toEqual([0, 2]);
-    expect(batches.find((b) => b.topic === "Morocco Politics")!.indices).toEqual([1]);
+    expect(batches.find((b) => b.topic === "Science")!.indices).toEqual([1]);
   });
 
   it("evens out batch sizes instead of leaving a runt", async () => {
@@ -137,7 +137,7 @@ describe("triageBatchCount", () => {
       clustersOf("Tech/AI", 20),
       clustersOf("Tech/AI", 21),
       clustersOf("Tech/AI", 62),
-      [...clustersOf("Tech/AI", 25), ...clustersOf("Morocco Politics", 30)],
+      [...clustersOf("Tech/AI", 25), ...clustersOf("Science", 30)],
     ];
 
     for (const shape of shapes) {
@@ -230,10 +230,10 @@ describe("triageClusters", () => {
   });
 
   it("MISALIGNMENT CANARY: batch-local indices map to global positions across topics", async () => {
-    // Interleaved topics: Tech/AI holds global 0 and 2, Morocco Politics holds 1.
+    // Interleaved topics: Tech/AI holds global 0 and 2, Science holds 1.
     // Each batch numbers its own clusters from 0, so a naive
     // "verdict.index === cluster index" would put Tech/AI's second verdict
-    // onto Morocco Politics' cluster.
+    // onto Science' cluster.
     mockParse.mockImplementation(async ({ messages }) => {
       const content = messages[0].content as string;
       return content.includes("Topic: Tech/AI")
@@ -253,7 +253,7 @@ describe("triageClusters", () => {
 
     const outcomes = await triageClusters([
       makeCluster("Tech/AI", "a"),
-      makeCluster("Morocco Politics", "b"),
+      makeCluster("Science", "b"),
       makeCluster("Tech/AI", "c"),
     ]);
 
@@ -517,7 +517,7 @@ describe("triageClusters failure handling", () => {
   it("isolates a failing batch from a healthy one in another topic", async () => {
     mockParse.mockImplementation(async ({ messages }) => {
       const content = messages[0].content as string;
-      if (content.includes("Topic: Morocco Politics")) throw new Error("this topic fails");
+      if (content.includes("Topic: Science")) throw new Error("this topic fails");
       const size = (content.match(/^\d+\. /gm) ?? []).length;
       return verdictsFor(size);
     });
@@ -525,7 +525,7 @@ describe("triageClusters failure handling", () => {
 
     const outcomes = await triageClusters([
       ...clustersOf("Tech/AI", 2),
-      ...clustersOf("Morocco Politics", 2),
+      ...clustersOf("Science", 2),
     ]);
 
     expect(outcomes[0].notable).toBe(true);
@@ -921,11 +921,11 @@ describe("triage log line", () => {
     const { triageClusters } = await import("@/lib/triage");
 
     const { lines } = await captureLines(() =>
-      triageClusters([makeCluster("Morocco Politics", "A routine ministry reshuffle")])
+      triageClusters([makeCluster("Science", "A routine ministry reshuffle")])
     );
 
     expect(lines).toEqual([
-      '[triage] Morocco Politics — reject — "A routine ministry reshuffle"',
+      '[triage] Science — reject — "A routine ministry reshuffle"',
     ]);
   });
 
@@ -985,12 +985,12 @@ describe("triage log line", () => {
 
     const { lines } = await captureLines(() =>
       triageClusters([
-        makeCluster("US Finance", 'Fed hikes rates — third\nthis year, says "the chair"'),
+        makeCluster("World Finance", 'Fed hikes rates — third\nthis year, says "the chair"'),
       ])
     );
 
     expect(lines[0]).toBe(
-      `[triage] US Finance — PASS (severity 1) — "Fed hikes rates — third this year, says 'the chair'"`
+      `[triage] World Finance — PASS (severity 1) — "Fed hikes rates — third this year, says 'the chair'"`
     );
     expect(lines[0].split("\n")).toHaveLength(1);
   });
@@ -1050,11 +1050,11 @@ describe("triage log line", () => {
     const { triageClusters } = await import("@/lib/triage");
 
     const { lines } = await captureLines(() =>
-      triageClusters([makeCluster("US Politics", "Court rules on tariffs")])
+      triageClusters([makeCluster("Geopolitics", "Court rules on tariffs")])
     );
 
     expect(lines).toEqual([
-      `[triage] US Politics — PASS (severity 3) — "Court rules on tariffs" — major ruling, not 'routine'`,
+      `[triage] Geopolitics — PASS (severity 3) — "Court rules on tariffs" — major ruling, not 'routine'`,
     ]);
     expect(lines[0].split("\n")).toHaveLength(1);
   });
@@ -1357,11 +1357,11 @@ describe("triage log line", () => {
     const { triageClusters } = await import("@/lib/triage");
 
     const { lines } = await captureLines(() =>
-      triageClusters([makeCluster("US Politics", "Court rules — tariffs struck down")])
+      triageClusters([makeCluster("Geopolitics", "Court rules — tariffs struck down")])
     );
 
     expect(lines).toEqual([
-      '[triage] US Politics — PASS (severity 3) — "Court rules — tariffs struck down" — landmark — not procedural',
+      '[triage] Geopolitics — PASS (severity 3) — "Court rules — tariffs struck down" — landmark — not procedural',
     ]);
     // The quoted span is what disambiguates; a naive dash split cannot.
     expect(lines[0].match(/"([^"]*)"/)?.[1]).toBe("Court rules — tariffs struck down");

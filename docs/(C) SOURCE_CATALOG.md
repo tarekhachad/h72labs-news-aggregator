@@ -33,10 +33,10 @@ This is a measurement on one day, not a permanent ranking. Re-run the script and
 
 ## Summary
 
-- **Topics:** 64 offered. 65 shipped of the 68 candidates (the 67 approved topics other than Countries, which is wave 5, plus the existing Morocco topic); Morocco was later retired, since the Morocco country lists all its feeds. Football replaces European Football. Dropped: Startups & Venture Capital, Work & Careers, Telecom.
-- **Sources:** 148 behind the topics. 150 shipped of about 225 approved, including 41 of the 48 existing sources; Yabiladi and Challenge.ma now come only through the Morocco country.
-- **Feeds:** 365 behind the topics, all passing on the final run (371 before the Morocco topic's 6 left).
-- **Countries:** 99 offered inside the Countries topic, with 428 more feeds and 333 more outlets (2026-10-03; see *Countries*).
+- **Topics:** 58 offered. 65 shipped of the 68 candidates (the 67 approved topics other than Countries, which is wave 5, plus the existing Morocco topic); Morocco was later retired, since the Morocco country lists all its feeds, and so were the six single-country topics, whose readers follow the matching country (see *Retired single-country topics*). Football replaces European Football. Dropped: Startups & Venture Capital, Work & Careers, Telecom.
+- **Sources:** 138 behind the topics. 150 shipped of about 225 approved, including 41 of the 48 existing sources; Yabiladi and Challenge.ma now come only through the Morocco country, and RFI (FR), Fortune and MarketWatch left with the single-country topics, which held their only feeds.
+- **Feeds:** 331 behind the topics, all passing on the final run (371 before the Morocco topic's 6 and the single-country topics' 34 left).
+- **Countries:** 99 offered inside the Countries topic, with 428 more feeds and 340 more outlets (2026-10-03; see *Countries*).
 
 ## Topics left out
 
@@ -48,14 +48,14 @@ This is a measurement on one day, not a permanent ranking. Re-run the script and
 
 - **European Football → Football**, with its feeds. Sky Sports and the English Marca feed were removed (see below); Marca returns with its Spanish La Liga feed, and Hesport is added.
 - **Tech/AI:** ZDNet removed; IEEE Spectrum, The Guardian and MIT Technology Review added.
-- **French Politics:** France24 and RFI (EN) now use their France feeds instead of their all-news feeds; BFM TV added.
-- **Morocco Politics:** Le360 removed (headlines only); TelQuel added. Still exactly 3 feeds, and TelQuel's site throttles bursts of requests, so a full verification run can fail it once and pass it the next time.
+- **French Politics:** France24 and RFI (EN) now use their France feeds instead of their all-news feeds; BFM TV added. Later retired as a topic (see *Retired single-country topics*).
+- **Morocco Politics:** Le360 removed (headlines only); TelQuel added. Still exactly 3 feeds, and TelQuel's site throttles bursts of requests, so a full verification run can fail it once and pass it the next time. Later retired as a topic (see *Retired single-country topics*).
 - **Morocco:** Le360 and Medias24 removed; TelQuel and Yabiladi added. Later retired as a topic: the Morocco country lists the same six feeds plus AllAfrica and Le Desk.
-- **Morocco Finance:** Medias24, Le Boursier and Challenge.ma's market feed now refuse our requests (403) and Le360 sends headlines only, so all four are gone. Hespress (EN and FR), The North Africa Post and TelQuel replace them, with their economy feeds.
-- **US Finance:** Yahoo Finance removed: its old feed was 10 days stale with no text, and its S&P 500 feed redirects to `feeds.finance.yahoo.com`, whose robots.txt disallows every crawler. NPR, Fortune, NYT and CBS News added (Forbes's business feed was tried and left out: it is mostly puzzle answers, sport and celebrity).
+- **Morocco Finance:** Medias24, Le Boursier and Challenge.ma's market feed now refuse our requests (403) and Le360 sends headlines only, so all four are gone. Hespress (EN and FR), The North Africa Post and TelQuel replace them, with their economy feeds. Later retired as a topic (see *Retired single-country topics*).
+- **US Finance:** Yahoo Finance removed: its old feed was 10 days stale with no text, and its S&P 500 feed redirects to `feeds.finance.yahoo.com`, whose robots.txt disallows every crawler. NPR, Fortune, NYT and CBS News added (Forbes's business feed was tried and left out: it is mostly puzzle answers, sport and celebrity). Later retired as a topic (see *Retired single-country topics*).
 - **World Finance:** Al Jazeera removed, since it has only an all-news feed. The Financial Times feed moved from its homepage (which carries US politics and more) to its Global Economy section. The Guardian, DW, CNBC and BBC added.
 - **American Football:** Sky Sports removed; The Guardian, The Athletic, BBC and RotoWire added.
-- **US Politics:** Axios removed: its feed redirects to `api.axios.com`, whose robots.txt disallows every crawler. Every other existing feed kept; NPR, PBS NewsHour, CBS, NBC, ABC, LA Times and The Guardian added.
+- **US Politics:** Axios removed: its feed redirects to `api.axios.com`, whose robots.txt disallows every crawler. Every other existing feed kept; NPR, PBS NewsHour, CBS, NBC, ABC, LA Times and The Guardian added. Later retired as a topic (see *Retired single-country topics*).
 - **Geopolitics, Basketball, Tennis:** every existing feed kept, more outlets added.
 
 ## Outlets left out
@@ -67,6 +67,7 @@ Existing sources removed:
 - **Medias24** and **Le Boursier** (hosted on medias24.com): 403 on every feed.
 - **Sky Sports:** its feeds carry no item dates, so every old item would look new on every run.
 - **Axios** and **Yahoo Finance:** their feeds redirect to hosts (`api.axios.com`, `feeds.finance.yahoo.com`) whose robots.txt disallows every crawler.
+- **RFI (FR)**, **Fortune** and **MarketWatch:** their only feeds were under French Politics and US Finance, so they left with the single-country topics.
 
 Approved outlets not added:
 
@@ -89,9 +90,9 @@ Approved outlets not added:
 These passed the final run but sit close to a limit. Re-run the script before relying on them, and first when a topic's page looks thin.
 
 - **Slow or throttling hosts:** MercoPress answers in 6.5 to 9.7 seconds against the 10-second timeout. TelQuel and Challenge.ma refuse bursts of requests now and then; the verifier sends two requests per feed (the redirect walk, then the parse), so a full run can fail them once and pass them the next time.
-- **Topics at the 3-feed floor with one slow feed:** Weather & Natural Disasters (ScienceDaily, newest item around 63 hours), Religion (NPR, around 88 hours), Banking (The Guardian, around 61 hours), and Morocco Politics (TelQuel throttling). One stale day drops any of them below 3 passing feeds.
-- **Partly on topic:** IGN's all-content feed (about half TV and merchandise deals), NYT Energy & Environment under Energy & Oil (mostly climate policy), Fortune under US Finance (mostly AI in business), The Economist's International section under Geopolitics (global social trends), and Politico Europe, about a third of whose items are in German or French.
-- **The same feed under two topics:** Bloomberg Markets (US Finance, World Finance, Markets & Investing), BBC Business and The Economist's finance section (World Finance, Economy), CBS MoneyWatch (US Finance, Personal Finance), Carbon Brief (Climate, Energy Transition), InsideEVs (Energy Transition, Automotive), The Diplomat (Geopolitics, Asia-Pacific), Engadget (Tech/AI, Consumer Tech). Ingest keeps an article only the first time it sees its link, so a reader with both topics gets those articles under the topic that comes first.
+- **Topics at the 3-feed floor with one slow feed:** Weather & Natural Disasters (ScienceDaily, newest item around 63 hours), Religion (NPR, around 88 hours) and Banking (The Guardian, around 61 hours). One stale day drops any of them below 3 passing feeds.
+- **Partly on topic:** IGN's all-content feed (about half TV and merchandise deals), NYT Energy & Environment under Energy & Oil (mostly climate policy), The Economist's International section under Geopolitics (global social trends), and Politico Europe, about a third of whose items are in German or French.
+- **The same feed under two topics:** Bloomberg Markets (World Finance, Markets & Investing), BBC Business and The Economist's finance section (World Finance, Economy), Carbon Brief (Climate, Energy Transition), InsideEVs (Energy Transition, Automotive), The Diplomat (Geopolitics, Asia-Pacific), Engadget (Tech/AI, Consumer Tech). Ingest keeps an article only the first time it sees its link, so a reader with both topics gets those articles under the topic that comes first.
 
 ## Outlet terms
 
@@ -107,6 +108,20 @@ The brief says to skip any outlet whose terms forbid automated collection. Readi
 - **Le Figaro:** web monitoring and media monitoring need a licence.
 
 All of them still publish RSS feeds, and their robots.txt rules allow our crawler on those feed paths. The app reads the feed, has Claude write its own summary, and links to the original. Whether that counts as the collection or AI use those terms forbid is a judgement for Tarek. Applying the rule strictly would remove NYT, The Athletic, Al Jazeera and Le Monde at least, and possibly The Guardian, the FT and Le Figaro. The Guardian is the first feed in most topics, so removing it would cost every topic one feed and drop any topic left with fewer than 3.
+
+## Retired single-country topics
+
+US Politics, US Finance, UK Politics, French Politics, Morocco Politics and Morocco Finance are not topics: a reader who wants one country's news picks the country (see *Countries*). A reader who had one of them follows its country instead (US → United States, UK → United Kingdom, French → France, Morocco → Morocco), their cards moved to the Countries page under that country, and old links to the topics redirect there. The regional topics (European Union, Middle East, Africa, Asia-Pacific, Latin America) stay.
+
+A digest reads 6 feeds per country, and a country's feeds are its outlets' general national news, so a moved reader keeps some outlets and loses the politics and business ones. With no preferred outlets:
+
+- **US Politics → United States:** keeps The Guardian, PBS NewsHour, NPR and NBC News, through their national feeds; loses The Hill and CBS News; gains LA Times and NYT.
+- **US Finance → United States:** keeps NPR and NYT, through their national feeds rather than business ones; loses Bloomberg, Fortune, CNBC and CBS MoneyWatch. Business news comes from World Finance, Economy and Markets & Investing.
+- **UK Politics → United Kingdom:** keeps The Guardian, Sky News and BBC; loses The Economist; gains Daily Mirror, Channel 4 News and Evening Standard.
+- **French Politics → France:** keeps RFI (EN) and Le Monde (the same two feeds), BFM TV and Le Figaro (their general feeds); loses France24 and RFI (FR); gains The Guardian and The Local France.
+- **Morocco Politics and Morocco Finance → Morocco:** keeps every outlet (Hespress EN and FR, TelQuel, The North Africa Post), through their general feeds; gains AllAfrica and Le Desk.
+
+`src/__tests__/countryTopicFeedCoverage.test.ts` pins this list.
 
 ## Topics and their feeds
 
@@ -212,34 +227,6 @@ In shipping order, with the measurement each feed passed on: median snippet leng
 
 ### Politics and world
 
-**US Politics** (10 feeds)
-
-1. The Guardian: `https://www.theguardian.com/us-news/us-politics/rss` (619 characters, newest 1.7h)
-2. The Hill: `https://thehill.com/feed/` (340 characters, newest 0.5h)
-3. PBS NewsHour: `https://www.pbs.org/newshour/feeds/rss/politics` (233 characters, newest 1.4h)
-4. NPR: `https://feeds.npr.org/1014/rss.xml` (196 characters, newest 3.5h)
-5. CBS News: `https://www.cbsnews.com/latest/rss/politics` (183 characters, newest 0.2h)
-6. NBC News: `https://feeds.nbcnews.com/nbcnews/public/politics` (165 characters, newest 0.2h)
-7. LA Times: `https://www.latimes.com/politics/rss2.0.xml` (163 characters, newest 10.4h)
-8. NYT: `https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml` (157 characters, newest 0.6h)
-9. ABC News: `https://feeds.abcnews.com/abcnews/politicsheadlines` (124 characters, newest 2.7h)
-10. Politico: `https://rss.politico.com/politics-news.xml` (122 characters, newest 5.1h)
-
-**Morocco Politics** (3 feeds)
-
-1. Hespress (EN): `https://en.hespress.com/politics/feed` (522 characters, newest 3.3h)
-2. Hespress (FR): `https://fr.hespress.com/politique/feed` (516 characters, newest 0.9h, not English)
-3. TelQuel: `https://telquel.ma/categorie/maroc/politique/feed` (354 characters, newest 9h, not English)
-
-**French Politics** (6 feeds)
-
-1. RFI (EN): `https://www.rfi.fr/en/france/rss` (270 characters, newest 11.2h)
-2. France24: `https://www.france24.com/en/france/rss` (319 characters, newest 82.5h)
-3. RFI (FR): `https://www.rfi.fr/fr/france/rss` (452 characters, newest 3.2h, not English)
-4. Le Monde: `https://www.lemonde.fr/politique/rss_full.xml` (255 characters, newest 0.4h, not English)
-5. BFM TV: `https://www.bfmtv.com/rss/politique/` (249 characters, newest 3.3h, not English)
-6. Le Figaro: `https://www.lefigaro.fr/rss/figaro_politique.xml` (195 characters, newest 6.7h, not English)
-
 **Geopolitics** (17 feeds)
 
 1. The Guardian: `https://www.theguardian.com/world/rss` (589 characters, newest 0.4h)
@@ -261,13 +248,6 @@ In shipping order, with the measurement each feed passed on: median snippet leng
 17. The Economist: `https://www.economist.com/international/rss.xml` (70 characters, newest 39.6h)
 
 Morocco is not a topic: the Morocco country (see *Countries*) lists all six of its former feeds, plus AllAfrica and Le Desk. A digest reads six feeds per country, so without preferred outlets it reads AllAfrica and Le Desk in place of Yabiladi and Challenge.ma.
-
-**UK Politics** (4 feeds)
-
-1. The Guardian: `https://www.theguardian.com/politics/rss` (616 characters, newest 7.9h)
-2. Sky News: `https://feeds.skynews.com/feeds/rss/politics.xml` (152 characters, newest 9.8h)
-3. BBC: `https://feeds.bbci.co.uk/news/politics/rss.xml` (109 characters, newest 3.7h)
-4. The Economist: `https://www.economist.com/britain/rss.xml` (57 characters, newest 36.5h)
 
 **European Union** (6 feeds)
 
@@ -352,23 +332,6 @@ Morocco is not a topic: the Morocco country (see *Countries*) lists all six of i
 3. Amnesty International: `https://www.amnesty.org/en/feed/` (519 characters, newest 9.9h)
 
 ### Business and economy
-
-**Morocco Finance** (4 feeds)
-
-1. Hespress (EN): `https://en.hespress.com/economy/feed` (471 characters, newest 9.9h)
-2. The North Africa Post: `https://northafricapost.com/category/business/feed` (374 characters, newest 8.4h)
-3. Hespress (FR): `https://fr.hespress.com/economie/feed` (517 characters, newest 2.5h, not English)
-4. TelQuel: `https://telquel.ma/categorie/economie/feed` (350 characters, newest 8.5h, not English)
-
-**US Finance** (7 feeds)
-
-1. Bloomberg: `https://feeds.bloomberg.com/markets/news.rss` (228 characters, newest 1.5h)
-2. NPR: `https://feeds.npr.org/1006/rss.xml` (180 characters, newest 6.5h)
-3. NYT: `https://rss.nytimes.com/services/xml/rss/nyt/Business.xml` (145 characters, newest 0.6h)
-4. Fortune: `https://fortune.com/feed/fortune-feeds/?id=3230629` (143 characters, newest 1.6h)
-5. CNBC: `https://www.cnbc.com/id/10000664/device/rss/rss.html` (137 characters, newest 6.4h)
-6. CBS News: `https://www.cbsnews.com/latest/rss/moneywatch` (136 characters, newest 4.4h)
-7. MarketWatch: `https://feeds.content.dowjones.io/public/rss/mw_topstories` (110 characters, newest 2.5h)
 
 **World Finance** (7 feeds)
 
@@ -693,7 +656,7 @@ The Countries topic is a container: a reader picks countries inside it, and each
 - **A country ships only with at least 3 passing feeds from at least 3 different outlets.** Two editions of one outlet (an English and a local-language feed) count as one outlet here, because they mostly carry the same stories.
 - **A feed must be about that one country.** A regional feed (East Africa, the South Caucasus, Central Asia, Latin America, Asia-Pacific) is not filed under a country, and neither is a sport-only feed or a commentary site that covers every subject.
 - **Terms are read the same way as for topics,** from the prose in each new host's robots.txt, with one addition: a host that asks not to have its content fed into AI models (a `Content-Signal: ai-input=no` line, or wording that rules out any AI-related use) is left out, because the card writer is an AI model reading the feed. Restrictions limited to training AI models, or to text and data mining, are noted below for Tarek but do not exclude a feed.
-- **A feed shared with a topic is read once.** Seven country feeds are also topic feeds: two of France's (shared with French Politics), two of South Africa's, and one each of Nigeria's, Japan's and Argentina's. A reader who picks both reads such a feed once, under whichever comes first in reading order, and the other gives that slot to its next feed.
+- **A feed shared with a topic is read once.** Five country feeds are also topic feeds: two of South Africa's, and one each of Nigeria's, Japan's and Argentina's. A reader who picks both reads such a feed once, under whichever comes first in reading order, and the other gives that slot to its next feed.
 - **Countries are listed alphabetically,** which is the order the picker shows them and the order a digest reads them. When two of a reader's countries carry the same article, the first one in this order keeps it.
 
 ### Summary
@@ -789,14 +752,14 @@ On judgement:
 - **Places that are not UN member states:** Palestine, Hong Kong and Puerto Rico are offered alongside countries, since a reader looks for them in the same list.
 - **Terms short of a ban, kept:** text and data mining reservations (NRK, Tagesschau, Gazeta Wyborcza, Die Presse) and AI-training-only restrictions (VG, Aftenposten, SVT, SRF and RTS, which explicitly allow retrieval and grounding, Seneweb, Ivoirematin, Grapevine, Divergentes, Dnevnik, Portugal Resident, Yonhap). The ai-input exclusions above are the strict reading; reversing them would restore Australia's and New Zealand's two biggest papers.
 - **Non-English countries:** the clustering model is English-only, so a country read mostly in another language groups its own stories less well. No English feed at all: Burkina Faso, Côte d'Ivoire, Guatemala, Nicaragua, Peru, Puerto Rico, Serbia, Slovakia. Fewer than 3 English feeds: Algeria, Austria, Bulgaria, Chile, Costa Rica, Croatia, Cuba, Czech Republic, DR Congo, Denmark, Dominican Republic, Finland, Indonesia, Jordan, Kazakhstan, Latvia, Mali, Mexico, Mozambique, Norway, Panama, Poland, Portugal, Romania, Senegal, Sweden, Switzerland, Tunisia, Uruguay, Venezuela.
-- **The source picker grows:** `SOURCES` goes from 150 to 481 outlets, most of them relevant to one country only. The preferred-sources picker lists all of them.
+- **The source picker grows:** `SOURCES` goes from 150 to 481 outlets, most of them relevant to one country only (478 since RFI (FR), Fortune and MarketWatch left with the single-country topics). The preferred-sources picker lists all of them.
 
 ### Fragile spots
 
 - **Countries at exactly 3 feeds:** Australia, Bangladesh, Botswana, Burkina Faso, Cambodia, Chile, Costa Rica, Côte d'Ivoire, Croatia, Denmark, Dominican Republic, Iran, Iraq, Jordan, Kazakhstan, Malta, Mozambique, Namibia, Nepal, New Zealand, Palestine, Portugal, Puerto Rico, Slovakia, South Korea, The Gambia, Uruguay. One failing feed takes any of them below the bar.
 - **At the floor with a slow host:** Chile and Uruguay each count MercoPress, which answers in 6 to 10 seconds. Iraq's third feed is The Guardian's Iraq page, newest item 75 hours old at measurement; Puerto Rico's Centro de Periodismo Investigativo posted 84 hours before.
 - **Feeds near the 96-hour line:** Congo Indépendant (DR Congo, 95h), The Guardian's Ghana page (89h), Ethiopia Insight (80h), AllAfrica's Senegal feed (88h), and The Guardian's Sudan and Japan pages (84h and 83h).
-- **Two problems in the topic catalog, found while measuring countries:** Nation (Kenya)'s feed `https://nation.africa/kenya/rss.xml` (the Africa topic) now returns 404, and France24's France feed (French Politics) was 103 hours stale. Both are outside this change; the full verifier run lists them.
+- **Two problems in the topic catalog, found while measuring countries:** Nation (Kenya)'s feed `https://nation.africa/kenya/rss.xml` (the Africa topic) now returns 404, and France24's France feed (then under French Politics, since retired) was 103 hours stale. Both are outside this change; the full verifier run lists them.
 
 ### Countries and their feeds
 

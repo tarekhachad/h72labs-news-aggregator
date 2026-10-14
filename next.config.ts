@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+// Each retired single-country topic's slug and its country's slug, as
+// topicSlug.ts and countryToSlug spelled them. Literal rather than imported,
+// so the config loads nothing from src/; src/__tests__/redirects.test.ts ties
+// both sides to the app's own slugs.
+const RETIRED_COUNTRY_TOPICS: readonly [topic: string, country: string][] = [
+  ["us-politics", "united-states"],
+  ["us-finance", "united-states"],
+  ["uk-politics", "united-kingdom"],
+  ["french-politics", "france"],
+  ["morocco-politics", "morocco"],
+  ["morocco-finance", "morocco"],
+];
+
 const nextConfig: NextConfig = {
   // These load native binaries and data files by path at runtime, which a
   // bundler cannot follow — they have to stay external and be traced as files.
@@ -36,12 +49,24 @@ const nextConfig: NextConfig = {
 
   // Old links (bookmarked pages, the history calendar's past days) still
   // carry slugs the app no longer serves: the football topic's old slug, and
-  // the retired Morocco topic, which the Morocco country replaced, so its
-  // links land on the Countries page filtered to Morocco (the URL
-  // CountryFilter builds). Permanent, so browsers and crawlers update the
-  // stored URL.
+  // the retired topics a country replaced (Morocco, and the six
+  // single-country topics), whose links land on the Countries page filtered
+  // to that country (the URL CountryFilter builds). Permanent, so browsers
+  // and crawlers update the stored URL.
   async redirects() {
     return [
+      ...RETIRED_COUNTRY_TOPICS.flatMap(([topic, country]) => [
+        {
+          source: `/topic/${topic}`,
+          destination: `/topic/countries?country=${country}`,
+          permanent: true,
+        },
+        {
+          source: `/history/:date/topic/${topic}`,
+          destination: `/history/:date/topic/countries?country=${country}`,
+          permanent: true,
+        },
+      ]),
       {
         source: "/topic/european-football",
         destination: "/topic/football",

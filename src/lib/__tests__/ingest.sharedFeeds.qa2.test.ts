@@ -81,33 +81,7 @@ beforeEach(() => {
   }));
 });
 
-describe("the three overlaps named in the brief, through readingUnits (real catalog)", () => {
-  it("Morocco country + Morocco Politics + Morocco Finance: three section feeds of the same outlets, each read in full", () => {
-    const { read } = readingUnits(["Morocco Politics", "Morocco Finance", COUNTRIES_TOPIC] as Topic[], ["Morocco"]);
-    expect(read).toEqual([T("Morocco Politics"), C("Morocco"), T("Morocco Finance")]);
-    const plan = planUnitFeeds(read);
-    const urls = plan.map((f) => f.url);
-    expect(new Set(urls).size).toBe(urls.length);
-    expect(plan.filter((f) => f.subtopic === "Morocco")).toHaveLength(MAX_FEEDS_PER_TOPIC);
-    expect(plan.filter((f) => f.topic === "Morocco Politics")).toHaveLength(Object.keys(FEEDS["Morocco Politics"]).length);
-    expect(plan.filter((f) => f.topic === "Morocco Finance")).toHaveLength(Object.keys(FEEDS["Morocco Finance"]).length);
-  });
-
-  it("France + French Politics: French Politics sorts first and keeps RFI (EN) and Le Monde; France reads 6 others", () => {
-    const { read } = readingUnits(["French Politics", COUNTRIES_TOPIC] as Topic[], ["France"]);
-    expect(read).toEqual([T("French Politics"), C("France")]);
-    const plan = planUnitFeeds(read);
-    const urls = plan.map((f) => f.url);
-    expect(new Set(urls).size).toBe(urls.length);
-    const fp = plan.filter((f) => f.topic === "French Politics").map((f) => f.source);
-    const fr = plan.filter((f) => f.subtopic === "France").map((f) => f.source);
-    expect(fp).toContain("RFI (EN)");
-    expect(fp).toContain("Le Monde");
-    expect(fr).not.toContain("RFI (EN)");
-    expect(fr).not.toContain("Le Monde");
-    expect(fr).toHaveLength(Math.min(MAX_FEEDS_PER_TOPIC, Object.keys(COUNTRY_FEEDS.France).length - 2));
-  });
-
+describe("a country and a topic that share feeds, through readingUnits (real catalog)", () => {
   it("South Africa + Africa: the country keeps Mail & Guardian and Daily Maverick; Africa still gets 6 slots", () => {
     const { read } = readingUnits(["Africa", COUNTRIES_TOPIC] as Topic[], ["South Africa"]);
     expect(read).toEqual([C("South Africa"), T("Africa")]);
@@ -229,8 +203,7 @@ describe("randomised: the real catalog against an independent model", () => {
 describe("the route's planFeeds(...).length is what ingestArticles fetches (real catalog)", () => {
   it("for every overlap profile and 300 random topic lists, parseURL calls === planFeeds length, each URL once", async () => {
     const profiles: Topic[][] = [
-      ["Morocco", "Morocco Politics", "Morocco Finance", COUNTRIES_TOPIC] as Topic[],
-      ["French Politics", "European Union", COUNTRIES_TOPIC] as Topic[],
+      ["Asia-Pacific", "Latin America", "European Union", COUNTRIES_TOPIC] as Topic[],
       ["Africa", "Middle East", "Geopolitics", COUNTRIES_TOPIC] as Topic[],
     ];
     const r = rng(3);
@@ -248,14 +221,15 @@ describe("the route's planFeeds(...).length is what ingestArticles fetches (real
     }
   });
 
-  it("ingestUnits for Morocco country + Morocco Politics fetches each planned URL once and tags each outlet's section to its own unit", async () => {
-    const units = readingUnits(["Morocco Politics", COUNTRIES_TOPIC] as Topic[], ["Morocco"]).read;
+  it("ingestUnits for South Africa + Africa fetches each planned URL once and tags the shared feed to the country that reads it", async () => {
+    const units = readingUnits(["Africa", COUNTRIES_TOPIC] as Topic[], ["South Africa"]).read;
     const articles = await ingestUnits(units, [], null);
     const fetched = mocks.parseURL.mock.calls.map((c) => c[0] as string);
     expect(fetched).toEqual(planUnitFeeds(units).map((f) => f.url));
-    const hespress = articles.filter((a) => a.source === "Hespress (EN)");
-    expect(hespress).toHaveLength(2);
-    expect(hespress.find((a) => a.url.includes("/politics/"))).toMatchObject({ topic: "Morocco Politics" });
-    expect(hespress.find((a) => !a.url.includes("/politics/"))).toMatchObject({ topic: COUNTRIES_TOPIC, subtopic: "Morocco" });
+    expect(new Set(fetched).size).toBe(fetched.length);
+    const mg = articles.filter((a) => a.source === "Mail & Guardian");
+    expect(mg).toHaveLength(1);
+    expect(mg[0]).toMatchObject({ topic: COUNTRIES_TOPIC, subtopic: "South Africa" });
+    expect(articles.filter((a) => a.topic === "Africa")).toHaveLength(MAX_FEEDS_PER_TOPIC);
   });
 });

@@ -193,14 +193,14 @@ describe("QA: profile read between deploy and migration", () => {
 });
 
 describe("QA: no catalog surface still knows Morocco as a topic", () => {
-  it("TOPICS, FEEDS, groups and descriptions all drop it; Politics and Finance stay", () => {
-    expect(TOPICS as readonly string[]).not.toContain("Morocco");
-    expect(Object.keys(FEEDS)).not.toContain("Morocco");
-    expect(TOPIC_GROUPS.flatMap((g) => g.topics as readonly string[])).not.toContain("Morocco");
-    expect(Object.keys(TOPIC_DESCRIPTIONS)).not.toContain("Morocco");
-    for (const kept of ["Morocco Politics", "Morocco Finance"]) {
-      expect(TOPICS as readonly string[]).toContain(kept);
-      expect(Object.keys(FEEDS)).toContain(kept);
+  // Morocco Politics and Morocco Finance went too, with the other
+  // single-country topics; Morocco is only a country now.
+  it("TOPICS, FEEDS, groups and descriptions drop it, and Morocco Politics and Morocco Finance", () => {
+    for (const gone of ["Morocco", "Morocco Politics", "Morocco Finance"]) {
+      expect(TOPICS as readonly string[]).not.toContain(gone);
+      expect(Object.keys(FEEDS)).not.toContain(gone);
+      expect(TOPIC_GROUPS.flatMap((g) => g.topics as readonly string[])).not.toContain(gone);
+      expect(Object.keys(TOPIC_DESCRIPTIONS)).not.toContain(gone);
     }
   });
 

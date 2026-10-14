@@ -6,7 +6,7 @@ import { MAX_TOPICS, MIN_TOPICS, ProfileInput, saveUserProfile } from "@/lib/pro
 // QA edges for the 3-to-10 topic rule, optional sources, and the empty
 // sources insert guard's error paths. Names are TOPICS/SOURCES by position.
 
-const topics = (n: number) => TOPICS.slice(0, n);
+const topics = (n: number) => TOPICS.filter((t) => t !== "Countries").slice(0, n);
 
 describe("ProfileInput edges", () => {
   it("zero topics fails with the minimum message", () => {

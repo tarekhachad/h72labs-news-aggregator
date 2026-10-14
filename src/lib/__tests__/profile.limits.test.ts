@@ -19,7 +19,7 @@ import {
 // here comes from TOPICS/SOURCES by position: the catalog is growing and
 // being renamed, so a hard-coded topic name would break on the next edit.
 
-const topics = (n: number) => TOPICS.slice(0, n);
+const topics = (n: number) => TOPICS.filter((t) => t !== "Countries").slice(0, n);
 
 describe("ProfileInput limits", () => {
   it("allows a catalog large enough to test the maximum", () => {

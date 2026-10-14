@@ -58,7 +58,8 @@ export const MUST_MERGE: FixtureCluster[][] = [
     },
     {
       id: "schools-figaro",
-      topic: "French Politics",
+      topic: "Countries",
+      subtopic: "France",
       source: "Le Figaro",
       language: "fr",
       event: "Thousands of teachers in France walked out of schools nationwide to protest planned cuts to the education budget.",
@@ -151,9 +152,9 @@ export const BACKGROUND: FixtureCluster[] = [
   { id: "bg-arsenal", topic: "Football", source: "BBC", language: "en", event: "Arsenal beat Chelsea 2-1 at the Emirates Stadium to go top of the Premier League." },
   { id: "bg-zelensky", topic: "Geopolitics", source: "BBC", language: "en", event: "Ukrainian President Volodymyr Zelensky met European leaders in London to discuss security guarantees for Ukraine." },
   { id: "bg-odesa", topic: "Defense & Security", source: "Al Jazeera", language: "en", event: "Ukrainian drones struck an oil refinery in Russia's Krasnodar region, starting a large fire." },
-  { id: "bg-france-budget", topic: "French Politics", source: "Le Monde", language: "fr", event: "France's prime minister survived a no-confidence vote in the National Assembly over the 2027 budget." },
-  { id: "bg-morocco-rate", topic: "Morocco Finance", source: "Hespress (FR)", language: "fr", event: "Morocco's central bank, Bank Al-Maghrib, held its key interest rate at 2.25 percent." },
-  { id: "bg-fed", topic: "US Finance", source: "CNBC", language: "en", event: "The US Federal Reserve held interest rates steady and signalled one more cut before the end of the year." },
+  { id: "bg-france-budget", topic: "Countries", subtopic: "France", source: "Le Monde", language: "fr", event: "France's prime minister survived a no-confidence vote in the National Assembly over the 2027 budget." },
+  { id: "bg-morocco-rate", topic: "Countries", subtopic: "Morocco", source: "Hespress (FR)", language: "fr", event: "Morocco's central bank, Bank Al-Maghrib, held its key interest rate at 2.25 percent." },
+  { id: "bg-fed", topic: "Economy", source: "CNBC", language: "en", event: "The US Federal Reserve held interest rates steady and signalled one more cut before the end of the year." },
   { id: "bg-openai", topic: "Tech/AI", source: "TechCrunch", language: "en", event: "OpenAI released a new reasoning model and cut prices for developers using its API." },
   { id: "bg-hurricane", topic: "Weather & Natural Disasters", source: "Sky News", language: "en", event: "Hurricane Melissa made landfall in Jamaica as a Category 4 storm, forcing thousands to evacuate." },
   { id: "bg-lula-cop", topic: "Climate & Environment", source: "Sky News", language: "en", event: "Brazil's President Lula opened the COP30 climate summit in Belém, urging rich nations to fund forest protection." },
@@ -185,14 +186,14 @@ export const SAME_PATTERN_DIFFERENT_EVENTS: [FixtureCluster, FixtureCluster][] =
     { id: "england-serbia", topic: "Football", source: "BBC", language: "en", event: "England beat Serbia 5–0 in Belgrade in a World Cup qualifier to secure their place at the 2026 finals." },
   ],
   [
-    { id: "rates-fed", topic: "US Finance", source: "CNBC", language: "en", event: "The US Federal Reserve held interest rates steady and signalled one more cut before the end of the year." },
+    { id: "rates-fed", topic: "Economy", source: "CNBC", language: "en", event: "The US Federal Reserve held interest rates steady and signalled one more cut before the end of the year." },
     { id: "rates-boe", topic: "World Finance", source: "Financial Times", language: "en", event: "The Bank of England held interest rates at 4 percent and signalled one more cut before the end of the year." },
   ],
 ];
 
 /** One event worded two ways with few shared words: the lowest-scoring duplicate measured. */
 export const REWORDED_SAME_EVENT: [FixtureCluster, FixtureCluster] = [
-  { id: "censure-a", topic: "French Politics", source: "Le Monde", language: "fr", event: "France's prime minister survived a no-confidence vote in the National Assembly over the 2027 budget." },
+  { id: "censure-a", topic: "Countries", subtopic: "France", source: "Le Monde", language: "fr", event: "France's prime minister survived a no-confidence vote in the National Assembly over the 2027 budget." },
   { id: "censure-b", topic: "Countries", subtopic: "France", source: "France24", language: "en", event: "The French government narrowly survived a censure motion in parliament over its budget plans." },
 ];
 

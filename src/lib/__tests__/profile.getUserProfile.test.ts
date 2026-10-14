@@ -92,13 +92,13 @@ describe("getUserProfile", () => {
   it("returns topics in curated order regardless of the order the DB hands them back", async () => {
     // The case that fails against an unordered map/filter implementation.
     const { client } = makeFakeSupabase({
-      user_topics: { data: topicRows("Tennis", "Tech/AI", "Morocco Politics", "US Politics") },
+      user_topics: { data: topicRows("Tennis", "Tech/AI", "Geopolitics", "Science") },
       user_preferred_sources: { data: sourceRows("NYT") },
     });
 
     const profile = await getUserProfile(client, "user-1");
 
-    expect(profile.topics).toEqual(["Tech/AI", "US Politics", "Morocco Politics", "Tennis"]);
+    expect(profile.topics).toEqual(["Tech/AI", "Science", "Geopolitics", "Tennis"]);
   });
 
   it("orders by the curated list, not alphabetically", async () => {
@@ -120,11 +120,11 @@ describe("getUserProfile", () => {
     // States the invariant rather than one instance of it: the function's
     // output must be a function of the row SET, not of row order.
     const forward = makeFakeSupabase({
-      user_topics: { data: topicRows("Tech/AI", "Geopolitics", "US Finance") },
+      user_topics: { data: topicRows("Tech/AI", "Geopolitics", "World Finance") },
       user_preferred_sources: { data: sourceRows("BBC", "NYT") },
     });
     const reversed = makeFakeSupabase({
-      user_topics: { data: topicRows("US Finance", "Geopolitics", "Tech/AI") },
+      user_topics: { data: topicRows("World Finance", "Geopolitics", "Tech/AI") },
       user_preferred_sources: { data: sourceRows("NYT", "BBC") },
     });
 
@@ -132,7 +132,7 @@ describe("getUserProfile", () => {
     const second = await getUserProfile(reversed.client, "user-1");
 
     expect(first).toEqual(second);
-    expect(first.topics).toEqual(["Tech/AI", "Geopolitics", "US Finance"]);
+    expect(first.topics).toEqual(["Tech/AI", "Geopolitics", "World Finance"]);
   });
 
   it("applies the same curated ordering to preferredSources", async () => {
@@ -325,6 +325,24 @@ describe("getUserProfile: countries", () => {
 
     expect(profile.topics).toEqual(["Tech/AI", "Countries", "Football"]);
     expect(profile.countries).toEqual(["Kenya"]);
+  });
+
+  // The six single-country topics, in the same window: each row is ignored,
+  // and a preferred outlet that lost its only feed with them is too.
+  it("drops stored single-country topic rows and orphaned outlets, keeping everything else", async () => {
+    const { client } = makeFakeSupabase({
+      user_topics: {
+        data: topicRows("US Politics", "Tech/AI", "US Finance", "UK Politics", "Countries", "French Politics", "Morocco Politics", "Morocco Finance", "Football"),
+      },
+      user_preferred_sources: { data: sourceRows("MarketWatch", "NYT", "Fortune", "RFI (FR)") },
+      user_subtopics: { data: countryRows("Kenya", "Morocco") },
+    });
+
+    const profile = await getUserProfile(client, "user-1");
+
+    expect(profile.topics).toEqual(["Tech/AI", "Countries", "Football"]);
+    expect(profile.preferredSources).toEqual(["NYT"]);
+    expect(profile.countries).toEqual(["Kenya", "Morocco"]);
   });
 
   it("returns no countries when the Countries topic isn't saved, whatever the rows say", async () => {

@@ -1972,3 +1972,129 @@ alter table public.cards add column if not exists story_id uuid;
 create index if not exists cards_story_id_idx
   on public.cards (story_id, digest_id)
   where story_id is not null;
+
+-- V2.7 migration: the six single-country topics become their countries. MUST
+-- be run by hand, BEFORE the deploy that drops them from TOPICS, and once more
+-- at least two minutes after that deploy is live.
+--
+-- US Politics, US Finance, UK Politics, French Politics, Morocco Politics and
+-- Morocco Finance leave the catalog: a reader who wants one country's news
+-- picks the country. Each holder gets the Countries topic and the topic's
+-- country (US → United States, UK → United Kingdom, French → France,
+-- Morocco → Morocco); the topic row, any subtopic under it and its read time
+-- are deleted; and every card filed under the topic is refiled under
+-- Countries · that country, where the Countries page's country filter finds
+-- it. The cards keep their ids, so bookmarks, front-page ranks and story
+-- timelines follow them.
+--
+-- The 10-pick limit: the country takes the topic's place, so a reader's count
+-- of reading units never goes up. Each removed topic gives at most one
+-- country, a reader holding two topics of one country (US Politics and US
+-- Finance) gets it once, and one who already had the country gains nothing.
+-- So a reader at 10 of 10 stays at 10 or fewer, and nothing else they picked
+-- is dropped to make room. The one way a count could rise is a country row
+-- saved without the Countries topic, which the app ignores (a save writes the
+-- two together, and getUserProfile reads countries only with the topic):
+-- giving that reader the Countries topic would bring such rows back to life.
+-- So for a holder without the Countries topic, those inert rows are deleted
+-- first, as their next save would delete them anyway.
+--
+-- The count can go down: by one for each removed topic whose country the
+-- reader already had or got from another removed topic. A reader can end up
+-- below the 3-unit minimum; nothing re-checks it on read, digests still run,
+-- and the next save asks for a third pick.
+--
+-- A digest reads 6 feeds per country, and the countries' general feeds stand
+-- in for the topics' politics and business sections. What a migrated reader
+-- keeps and loses, outlet by outlet, is pinned in
+-- src/__tests__/countryTopicFeedCoverage.test.ts.
+--
+-- A country the reader never read has no read time, so its first run reads
+-- the full 48-hour lookback and gets a first edition's allowance, once (the
+-- unit_read_cursors rule above); one they picked and dropped before keeps its
+-- old read time, like any re-picked unit. The run's spend hold doesn't grow:
+-- it is priced per unit, and the unit count never rises.
+--
+-- Safe before the deploy: the old code knows the Countries topic and all four
+-- countries, so the migrated rows are an ordinary profile. Between this run
+-- and the deploy a reader can still pick a removed topic on the old code; the
+-- second run moves them. It waits two minutes because a digest the old code
+-- started can run for up to 120 seconds (the digest route's maxDuration) and
+-- still save cards under a removed topic. After the deploy and before that
+-- second run, getUserProfile drops a removed topic as a name no longer in
+-- TOPICS: the reader keeps their other picks, and is sent to onboarding only
+-- if removed topics were all they had saved.
+--
+-- The lock makes a profile save wait while the block runs, which narrows,
+-- but cannot close, the window in which a save and the block interleave: a
+-- save is three parallel deletes and then inserts, each its own request, so
+-- one whose countries delete lands before the block and topics delete after
+-- it can leave the migrated country beside the saved set, one unit over the
+-- limit. Check for such a reader after the second pass by counting each
+-- reader's units (topics other than Countries, plus their countries when
+-- they hold Countries) and listing any over 10.
+--
+-- Cards are refiled before the read times are deleted, the order
+-- persist_generated_cards writes them in (a card's rank, then the unit's read
+-- time), so a digest saving at that moment can't deadlock with the block
+-- across those two tables. Within cards it still can: the block and a rank
+-- update may lock the same cards in different orders. Postgres then aborts
+-- one of the two; an aborted block has rolled back whole and is run again.
+--
+-- Only user_topics, user_subtopics, unit_read_cursors and cards are touched;
+-- digests.requested_topic is read and written by no code, and nothing else
+-- stores a topic name.
+--
+-- Safe to re-run: the inserts skip rows that already exist, and once the
+-- deletes and the update have run, nothing matches a removed topic.
+begin;
+lock table public.user_topics, public.user_subtopics in share row exclusive mode;
+
+create temporary table retired_country_topics (
+  topic text primary key,
+  country text not null
+) on commit drop;
+
+insert into retired_country_topics (topic, country) values
+  ('US Politics', 'United States'),
+  ('US Finance', 'United States'),
+  ('UK Politics', 'United Kingdom'),
+  ('French Politics', 'France'),
+  ('Morocco Politics', 'Morocco'),
+  ('Morocco Finance', 'Morocco');
+
+delete from public.user_subtopics s
+where s.topic = 'Countries'
+  and exists (
+    select 1 from public.user_topics t
+    join retired_country_topics r on r.topic = t.topic
+    where t.user_id = s.user_id
+  )
+  and not exists (
+    select 1 from public.user_topics c
+    where c.user_id = s.user_id and c.topic = 'Countries'
+  );
+
+insert into public.user_topics (user_id, topic)
+select distinct t.user_id, 'Countries'
+from public.user_topics t
+join retired_country_topics r on r.topic = t.topic
+on conflict (user_id, topic) do nothing;
+
+insert into public.user_subtopics (user_id, topic, subtopic)
+select distinct t.user_id, 'Countries', r.country
+from public.user_topics t
+join retired_country_topics r on r.topic = t.topic
+on conflict (user_id, topic, subtopic) do nothing;
+
+delete from public.user_topics where topic in (select topic from retired_country_topics);
+
+delete from public.user_subtopics where topic in (select topic from retired_country_topics);
+
+update public.cards c
+set topic = 'Countries', subtopic = r.country
+from retired_country_topics r
+where c.topic = r.topic;
+
+delete from public.unit_read_cursors where topic in (select topic from retired_country_topics);
+commit;

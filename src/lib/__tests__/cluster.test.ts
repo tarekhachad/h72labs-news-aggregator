@@ -125,9 +125,9 @@ describe("clusterArticles (post-extraction sanity check)", () => {
 
   it("tags each output cluster with the topic of its first article", async () => {
     const { clusterArticles } = await import("@/lib/cluster");
-    const a = makeArticle({ title: "BASE_MARKER", topic: "US Finance" });
+    const a = makeArticle({ title: "BASE_MARKER", topic: "World Finance" });
     const clusters = await clusterArticles([a]);
-    expect(clusters[0].topic).toBe("US Finance");
+    expect(clusters[0].topic).toBe("World Finance");
   });
 });
 

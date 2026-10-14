@@ -45,9 +45,6 @@ afterEach(async () => {
 const CUT_WORDS: [string, string[]][] = [
   ["climate change", ["Climate & Environment"]],
   ["electric", ["Energy Transition & Renewables"]],
-  ["washington", ["US Politics"]],
-  ["parliament", ["Morocco Politics", "French Politics", "UK Politics"]],
-  ["casablanca", ["Morocco Finance"]],
   ["hollywood", ["Film & TV"]],
   ["mortgage", ["Personal Finance", "Real Estate"]],
   ["earthquake", ["Weather & Natural Disasters"]],
@@ -69,8 +66,8 @@ describe("topic grid search with TOPIC_SEARCH_TERMS", () => {
     expect(chipNames()).toEqual(expect.arrayContaining(expected));
   });
 
-  it("'morocco' finds Morocco Politics and Morocco Finance only", async () => {
+  it("'morocco' finds no topic: Morocco is a country, picked in the countries step", async () => {
     await searchTopics("morocco");
-    expect(chipNames()).toEqual(["Morocco Politics", "Morocco Finance"]);
+    expect(chipNames()).toEqual([]);
   });
 });
