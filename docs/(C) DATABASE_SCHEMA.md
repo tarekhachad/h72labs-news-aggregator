@@ -109,6 +109,8 @@ One row per story card — the core unit of content. A single `digest` can (and 
 | `title` | Short headline (5-8 words), written by the same Sonnet call as `short_summary` (Phase 5.5). Nullable; a pre-5.5 row has none, and the app renders that as no title row rather than a migration backfill |
 | `labels` | 1-2 free-form, LLM-generated tags for the story's specific angle — `string[]` stored as `jsonb`, matching `sources`' precedent. Color-coded client-side via a deterministic hash (`src/lib/labelColor.ts`), not a stored color (Phase 5.5). Defaults to `'[]'::jsonb`, never null |
 | `subtopic` | The country a Countries card covers (e.g. "Uganda"), which the Countries page filters on; null for every other topic's card and for rows written before the column existed (V2.5) |
+| `embedding` | 384 numbers (`real[]`) from the local embedding model (all-MiniLM-L6-v2) over the card's title and short summary, used only to find the same story among the reader's own cards from the last 30 days. Never shown or sent to the browser. Null until `scripts/backfill-card-embeddings.mts` fills cards written before the column existed, and for any value `persist_generated_cards` refuses (anything but 384 numbers) (V2.7) |
+| `story_id` | Shared by every card of one ongoing story, and the id of the story's first card. A new card takes the matched earlier card's `story_id` when Haiku confirms it is the same story, otherwise its own `id`. The card's "Day N" chip and its "Earlier on this story" list are read from the cards sharing it. Indexed with `digest_id` (`cards_story_id_idx`). Null only on cards written before the column existed, until the backfill (V2.7) |
 
 ## `bookmarks`
 

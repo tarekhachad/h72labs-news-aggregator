@@ -120,12 +120,12 @@ describe("QA: saveGeneratedCards payload keys", () => {
     expect(JSON.parse(JSON.stringify(sent)).subtopic).toBeNull();
   });
 
-  it("zero-country invariant: a plain card's payload is the old payload plus subtopic: null only", async () => {
+  it("zero-country invariant: a plain card's payload is the old payload plus subtopic: null and the story timeline's two keys only", async () => {
     const { client, calls } = rpcRecorder();
     await saveGeneratedCards(client, "d1", [{ ...base, subtopic: null }], "2026-10-03T00:00:00Z", [], []);
     const sent = (calls[0].args.p_cards as Record<string, unknown>[])[0];
     expect(Object.keys(sent).sort()).toEqual(
-      ["frontPageRank", "id", "labels", "publishedAt", "severity", "shortSummary", "sources", "subtopic", "title", "topic"].sort()
+      ["embedding", "frontPageRank", "id", "labels", "publishedAt", "severity", "shortSummary", "sources", "storyId", "subtopic", "title", "topic"].sort()
     );
   });
 });

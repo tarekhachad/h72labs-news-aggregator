@@ -627,6 +627,33 @@ export interface Card {
   frontPageRank: number | null;
   /** The country within Countries this card covers; null or absent for every other topic. */
   subtopic?: string | null;
+  /**
+   * Where this card sits in an ongoing story the reader has seen before
+   * (src/lib/storyTimeline.ts). Absent on a story's first day, and whenever
+   * the lookup failed: a card then simply shows no chip.
+   */
+  timeline?: StoryTimeline;
+}
+
+/**
+ * The story as it stood on this card's own day: a history page never shows
+ * days that came after it.
+ */
+export interface StoryTimeline {
+  /** This card's own digest date, YYYY-MM-DD, in the reader's zone. */
+  date: string;
+  /** Distinct digest dates in the story up to and including this card's; always 2 or more. */
+  day: number;
+  /** One card per earlier day, oldest first. */
+  earlier: StoryTimelineEntry[];
+}
+
+export interface StoryTimelineEntry {
+  id: string;
+  /** The entry's digest date, YYYY-MM-DD. */
+  date: string;
+  title: string;
+  topic: Topic;
 }
 
 export interface Digest {

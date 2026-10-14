@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Card, Digest, Topic } from "@/types";
+import type { Card, Digest, StoryTimeline, StoryTimelineEntry, Topic } from "@/types";
 import { getBookmarkedCardIds } from "@/lib/bookmarks";
 import { plausibleCursorLimitIso } from "@/lib/cursor";
 import { dateInTimeZone } from "@/lib/localDate";
 import { unitKey, type ReadingUnit } from "@/lib/readingUnits";
 import { COUNTRIES_TOPIC } from "@/config/countryNames";
+import { bestEffortLog } from "@/lib/bestEffortLog";
+import type { StoryLink } from "@/lib/storyTimeline";
 
 export interface CardRow {
   id: string;
@@ -20,6 +22,8 @@ export interface CardRow {
   labels: string[] | null;
   /** Null for every card but a Countries one, and on rows written before the column existed. */
   subtopic: string | null;
+  /** The card's story (storyTimeline.ts); null on a row the timeline backfill hasn't reached. */
+  story_id?: string | null;
 }
 
 /**
@@ -28,7 +32,7 @@ export interface CardRow {
  * together rather than in whichever select someone remembered to edit.
  */
 export const CARD_COLUMNS =
-  "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic";
+  "id, topic, short_summary, expanded_report, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic, story_id";
 
 /** Shared DB-row -> Card mapper — also used by bookmarks.ts's getSavedCards
  * so the two don't hand-roll the same field mapping independently. */
@@ -104,11 +108,16 @@ export async function getDigestForDate(
     throw new Error(`getDigestForDate: failed to load cards: ${cardsError.message}`);
   }
 
+  const rows = (cardRows ?? []) as CardRow[];
   return {
     id: digestRow.id,
     date: digestRow.date,
     lastGeneratedAt: digestRow.last_generated_at,
-    cards: (cardRows ?? []).map((row) => rowToCard(row as CardRow, bookmarkedIds)),
+    cards: await withStoryTimelines(
+      supabase,
+      userId,
+      rows.map((row) => ({ card: rowToCard(row, bookmarkedIds), storyId: row.story_id ?? null, date: digestRow.date }))
+    ),
   };
 }
 
@@ -199,7 +208,11 @@ export async function getCardsForTopicOnDate(
     throw new Error(`getCardsForTopicOnDate: failed to load cards: ${cardsError.message}`);
   }
 
-  return (cardRows ?? []).map((row) => rowToCard(row as CardRow, bookmarkedIds));
+  return withStoryTimelines(
+    supabase,
+    userId,
+    ((cardRows ?? []) as CardRow[]).map((row) => ({ card: rowToCard(row, bookmarkedIds), storyId: row.story_id ?? null, date }))
+  );
 }
 
 /**
@@ -429,13 +442,18 @@ export async function getUnitReadTimes(
  * It takes no user id: the function reads auth.uid() itself, so the row it
  * returns always belongs to the session making the call. A caller-supplied id
  * would be a parameter the database has to distrust anyway.
+ *
+ * `date` is the row's own date, computed once here: the story timeline looks
+ * back from it, and a second reading of the clock could fall on the other
+ * side of midnight.
  */
 export async function upsertDigestForToday(
   supabase: SupabaseClient,
   timeZone: string
-): Promise<{ digestId: string }> {
+): Promise<{ digestId: string; date: string }> {
+  const date = todayDateString(timeZone);
   const { data, error } = await supabase.rpc("ensure_digest_for_today", {
-    p_date: todayDateString(timeZone),
+    p_date: date,
   });
 
   if (error) throw new Error(`upsertDigestForToday: ${error.message}`);
@@ -443,7 +461,7 @@ export async function upsertDigestForToday(
     throw new Error("upsertDigestForToday: ensure_digest_for_today returned no digest id");
   }
 
-  return { digestId: data };
+  return { digestId: data, date };
 }
 
 /**
@@ -478,6 +496,11 @@ export async function upsertDigestForToday(
  * unitsRead marks every unit this run read as read at generatedAt, in the
  * same transaction, so the next run reads each of them from here and a unit
  * not among them (added later) from the full lookback window.
+ *
+ * storyLinks carries each card's embedding and story (storyTimeline.ts). They
+ * travel beside the cards rather than on them because the same Card objects
+ * go to the browser, and an embedding is never sent there. A card missing
+ * from it is saved with no embedding and as a story of its own.
  */
 export async function saveGeneratedCards(
   supabase: SupabaseClient,
@@ -485,7 +508,8 @@ export async function saveGeneratedCards(
   cards: Card[],
   generatedAt: string,
   existingRankUpdates: { id: string; frontPageRank: number | null }[],
-  unitsRead: readonly ReadingUnit[]
+  unitsRead: readonly ReadingUnit[],
+  storyLinks: ReadonlyMap<string, StoryLink> = new Map()
 ): Promise<void> {
   const { error } = await supabase.rpc("persist_generated_cards", {
     p_digest_id: digestId,
@@ -500,6 +524,8 @@ export async function saveGeneratedCards(
       severity: card.severity,
       frontPageRank: card.frontPageRank,
       subtopic: card.subtopic ?? null,
+      embedding: storyLinks.get(card.id)?.embedding ?? null,
+      storyId: storyLinks.get(card.id)?.storyId ?? card.id,
     })),
     p_generated_at: generatedAt,
     p_existing_rank_updates: existingRankUpdates,
@@ -509,4 +535,98 @@ export async function saveGeneratedCards(
   if (error) {
     throw new Error(`saveGeneratedCards: ${error.message}`);
   }
+}
+
+/** A card the timeline read is asked about: its story and its own digest date. */
+export interface TimelineSubject {
+  id: string;
+  storyId: string | null;
+  date: string;
+}
+
+function byDateThenId(a: StoryTimelineEntry, b: StoryTimelineEntry): number {
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * Each card's place in its story, by card id, from one query however many
+ * cards there are. Only cards that joined an earlier story are looked up: a
+ * story's id is its first card's id, so a card whose story is itself has no
+ * earlier day and needs no read.
+ *
+ * Day N counts the story's distinct digest dates up to and including the
+ * card's own, and `earlier` holds one card per earlier date (the first by id
+ * when a day had two), oldest first. Nothing on or after the card's date is
+ * listed, so a history page shows the story as it stood that day. A card on
+ * its story's first day gets no entry.
+ *
+ * Never throws: a failed read is logged and every card shows no chip, which
+ * is never worth failing a page for.
+ */
+export async function getStoryTimelines(
+  supabase: SupabaseClient,
+  userId: string,
+  subjects: readonly TimelineSubject[]
+): Promise<Map<string, StoryTimeline>> {
+  const timelines = new Map<string, StoryTimeline>();
+  try {
+    const continuing = subjects.filter((s) => s.storyId !== null && s.storyId !== s.id && s.date !== "");
+    const storyIds = [...new Set(continuing.map((s) => s.storyId as string))];
+    if (storyIds.length === 0) return timelines;
+
+    const { data, error } = await supabase
+      .from("cards")
+      .select("id, story_id, title, topic, digests!inner(date, user_id)")
+      .in("story_id", storyIds)
+      .eq("digests.user_id", userId);
+    if (error) throw new Error(error.message);
+
+    const members = new Map<string, StoryTimelineEntry[]>();
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const digest = row.digests as { date?: unknown } | null;
+      if (typeof row.id !== "string" || typeof row.story_id !== "string" || typeof digest?.date !== "string") continue;
+      const entry: StoryTimelineEntry = {
+        id: row.id,
+        date: digest.date,
+        title: typeof row.title === "string" ? row.title : "",
+        topic: row.topic as Topic,
+      };
+      const list = members.get(row.story_id);
+      if (list) list.push(entry);
+      else members.set(row.story_id, [entry]);
+    }
+
+    for (const subject of continuing) {
+      const story = [...(members.get(subject.storyId as string) ?? [])].sort(byDateThenId);
+      const earlier: StoryTimelineEntry[] = [];
+      for (const entry of story) {
+        if (entry.date >= subject.date || entry.id === subject.id) continue;
+        if (earlier.length > 0 && earlier[earlier.length - 1].date === entry.date) continue;
+        earlier.push(entry);
+      }
+      if (earlier.length > 0) timelines.set(subject.id, { date: subject.date, day: earlier.length + 1, earlier });
+    }
+    return timelines;
+  } catch (err) {
+    bestEffortLog("error", "[timeline] could not read story timelines; cards show none:", err);
+    return new Map();
+  }
+}
+
+/** The cards, in the order given, each with its timeline when it has one. */
+export async function withStoryTimelines<C extends Card>(
+  supabase: SupabaseClient,
+  userId: string,
+  items: readonly { card: C; storyId: string | null; date: string }[]
+): Promise<C[]> {
+  const timelines = await getStoryTimelines(
+    supabase,
+    userId,
+    items.map(({ card, storyId, date }) => ({ id: card.id, storyId, date }))
+  );
+  return items.map(({ card }) => {
+    const timeline = timelines.get(card.id);
+    return timeline === undefined ? card : { ...card, timeline };
+  });
 }

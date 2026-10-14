@@ -52,7 +52,10 @@ describe("upsertDigestForToday", () => {
   it("returns the id the function minted", async () => {
     const client = clientReturning({ data: VALID_ID, error: null });
 
-    expect(await upsertDigestForToday(client as never, "UTC")).toEqual({ digestId: VALID_ID });
+    expect(await upsertDigestForToday(client as never, "UTC")).toEqual({
+      digestId: VALID_ID,
+      date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
   });
 
   it("throws when the RPC fails", async () => {

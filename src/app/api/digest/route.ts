@@ -22,7 +22,9 @@ import {
   getUnitReadTimes,
   saveGeneratedCards,
   getTodaysCardSummaries,
+  getStoryTimelines,
 } from "@/lib/digests";
+import { linkStories, loadStoryCandidates, type StoryLink, type StoryLinkResult } from "@/lib/storyTimeline";
 import {
   claimGenerationForUser,
   releaseGenerationClaim,
@@ -108,6 +110,9 @@ async function* runDigestPipeline(
   // one place in this function that must not acquire new ways to fail.
   userId: string,
   digestId: string,
+  // The digest row's own date, which the story timeline looks back from.
+  // Null leaves every card a story of its own and saves no embeddings.
+  digestDate: string | null,
   profile: { topics: Topic[]; preferredSources: Source[]; countries: string[] },
   sinceIso: string | null,
   // Each unit's own read time (getUnitReadTimes), or null when that lookup
@@ -136,6 +141,11 @@ async function* runDigestPipeline(
   // directly instead.
   const expectedCalls: Partial<Record<UsageStage, number>> = {};
   let reachedDone = false;
+  // The story timeline's calls, while they may still be running. Waited for
+  // in the finally block, so a run that throws while they're out can't
+  // report and settle its spend before they're recorded. It never rejects
+  // and ends within TIMELINE_BUDGET_MS.
+  let inFlightTimeline: Promise<unknown> | null = null;
 
   // The run's own shape, filled in as each fact becomes known — the same
   // idiom as `expectedCalls` and `reachedDone` above, and out here for the
@@ -398,6 +408,18 @@ async function* runDigestPipeline(
     }
 
     yield { stage: "writing", notableCount: notableClusters.length };
+    // The reader's earlier cards for the story timeline, read now so the
+    // read (up to a few MB of embeddings) waits behind card writing rather
+    // than adding to the run. Caught here, at creation, so a failure can
+    // never surface as an unhandled rejection; null means "no earlier cards
+    // to compare with", and the timeline fails open on it.
+    const storyCandidates =
+      digestDate === null
+        ? Promise.resolve(null)
+        : loadStoryCandidates(supabase, userId, digestDate).catch((err: unknown) => {
+            bestEffortLog("error", "[timeline] could not read earlier cards; every new card starts its own story:", err);
+            return null;
+          });
     // One verbose cluster failing to write shouldn't take down the rest of
     // the digest — log it and drop that card instead of rejecting the batch.
     expectedCalls.writeCard = notableClusters.length;
@@ -454,6 +476,20 @@ async function* runDigestPipeline(
     );
 
     yield { stage: "ranking" };
+    // The story timeline runs beside ranking: neither reads the other's
+    // result, and both must finish before the save. Started after the yield
+    // so a run cancelled at it never has calls in flight past its finally.
+    // linkStories never rejects, and waits for the earlier cards only within
+    // its own time budget; the catch is defense-in-depth.
+    const timelinePromise: Promise<StoryLinkResult | null> = (inFlightTimeline =
+      digestDate === null
+        ? Promise.resolve(null)
+        : withUsageCollector(usage, () => linkStories(cards, digestDate, storyCandidates)).catch(
+            (err: unknown) => {
+              bestEffortLog("error", "[timeline] failed; every new card starts its own story:", err);
+              return null;
+            }
+          ));
     // Cross-topic front-page ranking, re-run against the FULL cumulative
     // pool every run (today's already-persisted cards + this run's brand
     // new ones) — not just this run's new cards — so a bigger story landing
@@ -548,7 +584,28 @@ async function* runDigestPipeline(
     // next run's since-cutoff and won't be retried. Consciously accepted for
     // now (documented in ROADMAP.md's deferred section) rather than adding
     // per-cluster retry tracking; see that entry for the reasoning.
-    await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates, units.read);
+    const timeline = await timelinePromise;
+    // Set from the calls actually started, after the fact, as merge's is:
+    // which cards are worth asking about is only known once they're embedded.
+    if (timeline !== null) expectedCalls.timeline = timeline.haikuCalls;
+    const storyLinks = timeline?.links ?? new Map<string, StoryLink>();
+
+    await saveGeneratedCards(supabase, digestId, cards, generatedAt, existingCardRankUpdates, units.read, storyLinks);
+
+    // Each new card that joined an earlier story gets its chip in this
+    // response, read after the save so the list is exactly what a reload
+    // would show. One query; a failure only leaves the chips off until then.
+    if (digestDate !== null && cards.some((card) => (storyLinks.get(card.id)?.storyId ?? card.id) !== card.id)) {
+      const timelines = await getStoryTimelines(
+        supabase,
+        userId,
+        cards.map((card) => ({ id: card.id, storyId: storyLinks.get(card.id)?.storyId ?? null, date: digestDate }))
+      );
+      for (const card of cards) {
+        const cardTimeline = timelines.get(card.id);
+        if (cardTimeline !== undefined) card.timeline = cardTimeline;
+      }
+    }
 
     reachedDone = true;
     yield {
@@ -564,6 +621,7 @@ async function* runDigestPipeline(
     // summary per run. `report` swallows its own failures, so it can't stop
     // the generation claim below from being released and lock the user out
     // of generating again.
+    if (inFlightTimeline !== null) await inFlightTimeline;
     const label = reachedDone ? "digest complete" : "digest ended early (error or cancelled)";
     usage.report({ label, expectedCalls });
 
@@ -684,6 +742,7 @@ export async function POST() {
   // hand it back, or a transient database error locks the user out of
   // generating until the staleness window expires.
   let digestId: string;
+  let digestDate: string | null;
   let sinceCursor: string | null;
   let unitReadTimes: Map<string, string> | null;
   try {
@@ -702,6 +761,9 @@ export async function POST() {
       }),
     ]);
     digestId = upserted.digestId;
+    // Checked rather than trusted: the timeline is optional, and a run that
+    // somehow lacks the date runs without it instead of failing.
+    digestDate = typeof upserted.date === "string" ? upserted.date : null;
     sinceCursor = cursor;
     unitReadTimes = readTimes;
   } catch (err) {
@@ -726,7 +788,7 @@ export async function POST() {
 
   return new Response(
     toNdjsonStream(
-      runDigestPipeline(supabase, user.id, digestId, profile, sinceCursor, unitReadTimes, reservation, claim),
+      runDigestPipeline(supabase, user.id, digestId, digestDate, profile, sinceCursor, unitReadTimes, reservation, claim),
       async () => {
         await settleAbandonedRun(supabase, reservation, claim);
       }

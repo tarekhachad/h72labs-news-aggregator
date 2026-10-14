@@ -29,7 +29,7 @@ function cut(from: string, to: string): string {
   return schema.slice(i, j);
 }
 const invitesBlock = cut("create table public.invites", "-- spend_config + spend_ledger");
-const requestsBlock = schema.slice(schema.indexOf("-- V2.7 migration: invite requests."));
+const requestsBlock = cut("-- V2.7 migration: invite requests.", "-- V2.7 migration: the story timeline.");
 
 const KEY = "s".repeat(48);
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");

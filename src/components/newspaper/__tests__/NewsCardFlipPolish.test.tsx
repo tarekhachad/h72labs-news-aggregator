@@ -199,7 +199,9 @@ describe("NewsCard hover border", () => {
 describe("NewsCard sources list", () => {
   it("leaves bottom room so the last link's hover underline isn't clipped", async () => {
     await render();
-    const list = container.querySelector("ul");
+    // The scroll box holds the sources list and, when the story has earlier
+    // days, the timeline list under it.
+    const list = container.querySelector("ul")?.parentElement;
     expect(list).not.toBeNull();
     const classes = list!.className.split(/\s+/);
     expect(classes).toContain("overflow-y-auto");

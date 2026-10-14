@@ -375,7 +375,7 @@ begin
   -- as digests.last_generated_at below, byte-for-byte — that's what the
   -- feed's run-divider relies on to group a run's cards, rather than
   -- trusting two separate now() calls to agree.
-  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic)
+  insert into public.cards (id, digest_id, topic, short_summary, sources, published_at, created_at, severity, front_page_rank, title, labels, subtopic, embedding, story_id)
   select
     (c->>'id')::uuid,
     p_digest_id,
@@ -396,7 +396,39 @@ begin
     -- The country a Countries card covers. A missing key gives null, which
     -- is every other topic's card and every card sent by code older than
     -- the V2.5 block at the bottom of this file.
-    c->>'subtopic'
+    c->>'subtopic',
+    -- The story timeline (V2.7 block at the bottom of this file). Stored only
+    -- when it is exactly 384 numbers a real can hold, the local model's
+    -- output; anything else is stored as no embedding rather than failing the
+    -- run's save, so a direct caller can't use the column as unbounded
+    -- storage. The range test sits inside a CASE so a non-number is never
+    -- cast: an OR's operands may be evaluated in any order. A missing key
+    -- (code older than that block) gives null, which the backfill fills.
+    case
+      when jsonb_typeof(c->'embedding') = 'array'
+        and jsonb_array_length(c->'embedding') = 384
+        and not exists (
+          select 1 from jsonb_array_elements(c->'embedding') as e
+          where case
+            when jsonb_typeof(e) <> 'number' then true
+            else abs(e::numeric) > 3.4028235e38 or (e::numeric <> 0 and abs(e::numeric) < 1e-45)
+          end
+        )
+      then array(
+        select t.e::real
+        from jsonb_array_elements_text(c->'embedding') with ordinality as t(e, i)
+        order by t.i
+      )
+    end,
+    -- A card with no story, or one that isn't a uuid, is a story of its own
+    -- rather than a failed save. Who else shares an id is only ever read back
+    -- through `select own cards`, so a caller naming another user's story
+    -- links nothing of theirs.
+    case
+      when c->>'storyId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      then (c->>'storyId')::uuid
+      else (c->>'id')::uuid
+    end
   from jsonb_array_elements(p_cards) as c;
 
   -- rank.ts's cross-topic front-page ranking pass, applied to cards already
@@ -1902,3 +1934,41 @@ revoke execute on function public.approve_invite_request(uuid, text) from public
 grant execute on function public.approve_invite_request(uuid, text) to authenticated;
 revoke execute on function public.decline_invite_request(uuid) from public, anon;
 grant execute on function public.decline_invite_request(uuid) to authenticated;
+
+-- V2.7 migration: the story timeline. MUST be run by hand, BEFORE the deploy,
+-- and then followed by re-running the persist_generated_cards definition above
+-- (its insert now names cards.embedding and cards.story_id, which have to
+-- exist first).
+--
+-- A card about a story the reader already saw on an earlier day carries a
+-- "Day N" chip and lists the earlier days on its back. Each card keeps the
+-- local model's 384-number embedding of its title and short summary, and a
+-- story_id shared by every card of one story; the digest run matches a new
+-- card against the reader's own cards from the last 30 days in code (a few
+-- hundred to a thousand rows per reader, so no pgvector extension).
+--
+-- Safe to run before the new code deploys, and that is the order to use: it
+-- only adds nullable columns and an index, and persist_generated_cards keeps
+-- its signature. The old code never sends `embedding` or `storyId`, so its
+-- cards are stored with no embedding and as a story of their own, which is
+-- what the backfill gives every older card. The other order is the broken
+-- one: new code selecting cards.story_id before it exists fails every page
+-- that shows cards.
+--
+-- No new policy: both columns sit on cards, whose `select own cards` already
+-- limits every read to the owner's digests, and cards has no insert or update
+-- policy. An embedding is deleted with its card, and so with the account.
+--
+-- Then run scripts/backfill-card-embeddings.mts with --write, which fills
+-- every older card's embedding and story_id from the local model (free).
+--
+-- Safe to re-run: `if not exists` on both columns and the index.
+alter table public.cards add column if not exists embedding real[];
+alter table public.cards add column if not exists story_id uuid;
+
+-- Serves the timeline read, "the cards with these story ids", whose `select
+-- own cards` check then needs each row's digest_id; partial because only
+-- cards written before this block have no story.
+create index if not exists cards_story_id_idx
+  on public.cards (story_id, digest_id)
+  where story_id is not null;

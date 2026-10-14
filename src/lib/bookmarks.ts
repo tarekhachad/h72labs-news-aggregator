@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Card } from "@/types";
-import { CARD_COLUMNS, rowToCard, type CardRow } from "@/lib/digests";
+import { CARD_COLUMNS, rowToCard, withStoryTimelines, type CardRow } from "@/lib/digests";
 
 // Postgres unique_violation — see https://www.postgresql.org/docs/current/errcodes-appendix.html
 const UNIQUE_VIOLATION = "23505";
@@ -103,16 +103,30 @@ export async function getSavedCards(
 
   if (error) throw new Error(`getSavedCards: ${error.message}`);
 
-  return (data ?? [])
+  const rows = (data ?? [])
     .map((row) => row.cards as unknown as SavedCardRow | null)
     // Defensive: on delete cascade means an orphaned bookmark shouldn't
     // exist, but a missing joined card should never crash this page.
-    .filter((card): card is SavedCardRow => card !== null)
-    .map((card) => ({
-      // Every card reachable from getSavedCards is bookmarked by
-      // construction — no need to look it up, unlike rowToCard's normal
-      // callers which annotate a mixed set of cards.
-      ...rowToCard(card, new Set([card.id])),
-      date: card.digests?.date ?? "",
-    }));
+    .filter((card): card is SavedCardRow => card !== null);
+
+  // Each saved card's timeline as it stood on its own day, like the history
+  // page that card links back to.
+  return withStoryTimelines(
+    supabase,
+    userId,
+    rows.map((card) => {
+      const date = card.digests?.date ?? "";
+      return {
+        card: {
+          // Every card reachable from getSavedCards is bookmarked by
+          // construction — no need to look it up, unlike rowToCard's normal
+          // callers which annotate a mixed set of cards.
+          ...rowToCard(card, new Set([card.id])),
+          date,
+        },
+        storyId: card.story_id ?? null,
+        date,
+      };
+    })
+  );
 }

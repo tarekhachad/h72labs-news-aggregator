@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
-import type { Card } from "@/types";
+import type { Card, StoryTimelineEntry } from "@/types";
 import { formatRelativeTime } from "@/lib/time";
 import { expandErrorMessage } from "@/lib/spendMessage";
 import type { GridTier } from "@/lib/gridTiers";
@@ -18,6 +19,7 @@ import { ENTRANCE_DURATION_SECONDS } from "@/lib/entranceTiming";
 import { safeExternalHref } from "@/lib/safeHref";
 import { cardTopicLabel } from "@/components/cardTopicLabel";
 import { MIN_FLIP_PERSPECTIVE_PX, flipPerspectivePx } from "@/lib/flipPerspective";
+import { topicToSlug } from "@/lib/topicSlug";
 
 // Card.shortSummary is one 2-4 sentence paragraph (not a separate
 // headline + body) — font-size/line-height still come from this per-tier
@@ -62,6 +64,24 @@ const CARD_FACE_STYLE = {
 // applies on devices that really hover, so a tap doesn't leave it stuck on.
 const CARD_FACE_CLASS =
   "absolute inset-0 flex flex-col overflow-hidden rounded-md border border-[var(--color-border)] p-5 transition-[border-color] duration-200 ease-out group-hover/card:border-[var(--color-foreground)] group-focus-visible/card:border-[var(--color-foreground)]";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * "Oct 10", or "Dec 30, 2025" in another year than `thisYear`. Read straight
+ * from the YYYY-MM-DD string, never through Date or a locale: the card also
+ * renders on the server, and a date can't shift a day across time zones.
+ */
+export function storyDayLabel(date: string, thisYear: string): string {
+  const [year, month, day] = date.split("-");
+  const label = `${MONTHS[Number(month) - 1] ?? month} ${Number(day)}`;
+  return year === thisYear ? label : `${label}, ${year}`;
+}
+
+/** Where an earlier day's card lives: its day's topic page, scrolled to it. */
+export function storyDayHref(entry: StoryTimelineEntry): string {
+  return `/history/${entry.date}/topic/${topicToSlug(entry.topic)}#card-${entry.id}`;
+}
 
 /** Where a live-arriving card's scale-in starts. Small enough to read as the card settling into place rather than zooming in. */
 const ENTRANCE_START_SCALE = 0.97;
@@ -169,6 +189,8 @@ export function NewsCard({
   const prevFocused = useRef(focused);
   const { faceRef, summaryRef, footerRef, clampLines } = useDynamicLineClamp();
   const [perspectivePx, setPerspectivePx] = useState(MIN_FLIP_PERSPECTIVE_PX);
+  // The year an earlier day's label leaves out: the card's own, in the reader's zone.
+  const timelineYear = card.timeline?.date.slice(0, 4) ?? "";
 
   // The flip's camera distance follows the card's own layout size (see
   // flipPerspective.ts), so a full-width hero stays on screen mid-flip.
@@ -418,12 +440,16 @@ export function NewsCard({
           // mount/unmount handoff to FocusOverlay, which Motion tracks via
           // componentWillUnmount regardless of layoutDependency. See Phase 6.5.
           layoutDependency={card.id}
+          // The target of a story timeline's "earlier day" link (storyDayHref).
+          id={`card-${card.id}`}
           role="button"
           tabIndex={0}
           onClick={openOrFlipBack}
           onKeyDown={handleOpenKeyDown}
           className="group/card relative cursor-pointer"
-          style={{ ...gridPosition, perspective: `${perspectivePx}px` }}
+          // Lands a linked card below the sticky masthead and topic band
+          // rather than under them.
+          style={{ ...gridPosition, perspective: `${perspectivePx}px`, scrollMarginTop: "calc(var(--masthead-height) + 7rem)" }}
           // The entrance is a scale-in over a card that is already fully
           // visible, never a fade from opacity 0: it runs on
           // requestAnimationFrame, which a hidden tab never fires, so it can
@@ -536,6 +562,18 @@ export function NewsCard({
                       New
                     </span>
                   )}
+                  {/* Outlined rather than filled: it's a fact about the
+                      story, quieter than the topic and New chips. py-px plus
+                      the 1 px border matches their height exactly. */}
+                  {card.timeline && (
+                    <span
+                      className="w-fit shrink-0 rounded border px-2 py-px text-xs font-semibold"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-muted-foreground)" }}
+                    >
+                      Day {card.timeline.day}
+                      <span className="sr-only"> of this story</span>
+                    </span>
+                  )}
                 </div>
                 <span
                   className="shrink-0 text-xs"
@@ -643,26 +681,55 @@ export function NewsCard({
                 </button>
               </div>
 
-              {/* pb-1: the list is a scroll box, clipped at its padding edge,
-                  and a hovered link's underline drops to a 4 px offset, past
-                  the last line's own box. */}
-              <ul className="mt-2 flex flex-col gap-2 overflow-y-auto pb-1">
-                {card.sources.map((s) => (
-                  <li key={s.url} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-                    <span className="font-medium">{s.source}</span> —{" "}
-                    <a
-                      href={safeExternalHref(s.url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={stopEnterSpacePropagation}
-                      className="underline underline-offset-2 transition-all hover:text-[var(--color-accent)] hover:underline-offset-4"
-                    >
-                      {s.title}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {/* pb-1: the lists share one scroll box, clipped at its padding
+                  edge, and a hovered link's underline drops to a 4 px
+                  offset, past the last line's own box. */}
+              <div className="mt-2 flex flex-col gap-3 overflow-y-auto pb-1">
+                <ul className="flex flex-col gap-2">
+                  {card.sources.map((s) => (
+                    <li key={s.url} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+                      <span className="font-medium">{s.source}</span> —{" "}
+                      <a
+                        href={safeExternalHref(s.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={stopEnterSpacePropagation}
+                        className="underline underline-offset-2 transition-all hover:text-[var(--color-accent)] hover:underline-offset-4"
+                      >
+                        {s.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Each link's name is its date and its title, both inside the
+                    link, so a screen reader's links list says which day it
+                    opens. Stops propagation like the source links: a click
+                    here must navigate, not flip the card back. */}
+                {card.timeline && card.timeline.earlier.length > 0 && (
+                  <div>
+                    <span className="text-xs font-semibold" style={{ color: "var(--color-muted-foreground)" }}>
+                      EARLIER ON THIS STORY
+                    </span>
+                    <ul className="mt-2 flex flex-col gap-2">
+                      {card.timeline.earlier.map((entry) => (
+                        <li key={entry.id} className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+                          <Link
+                            href={storyDayHref(entry)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={stopEnterSpacePropagation}
+                            className="underline underline-offset-2 transition-all hover:text-[var(--color-accent)] hover:underline-offset-4"
+                          >
+                            <span className="font-medium">{storyDayLabel(entry.date, timelineYear)}</span>{" "}
+                            {entry.title || entry.topic}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         </motion.div>
