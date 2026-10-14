@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MODELS } from "@/lib/models";
 import { SOURCES, TOPICS, type Cluster, type Source, type Topic } from "@/types";
 import type { ExtractResult } from "@/lib/extract";
 
@@ -154,10 +155,10 @@ describe("writeCard with full-text extraction", () => {
     expect(sentContent(1)).toContain(textFor("https://example.com/0"));
   });
 
-  it("keeps the model choice on article count: a one-article cluster is still Haiku with full text", async () => {
+  it("keeps the model choice on article count: a one-article cluster is still on the single-source model with full text", async () => {
     extractWith(["https://example.com/0"]);
     await writeCard(makeCluster([OTHER]), 2);
-    expect(mockParse.mock.calls[0][0].model).toBe("claude-haiku-4-5");
+    expect(mockParse.mock.calls[0][0].model).toBe(MODELS.writeCardSingle);
     expect(sentContent()).toContain(textFor("https://example.com/0"));
     expect(sentContent()).not.toContain("Other coverage");
   });

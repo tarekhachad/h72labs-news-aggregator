@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { MODELS } from "@/lib/models";
 import { SOURCES, type Card, type Cluster, type Source, type Topic } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
 import type { TriageVerdict } from "@/lib/triage";
@@ -212,7 +213,7 @@ describe("digest route: the duplicate check", () => {
     expect(record.clustersMerged).toBe(1);
     expect(record.notableCount).toBe(2);
     const merge = record.stages.find((s) => s.stage === "merge");
-    expect(merge).toMatchObject({ calls: 1, callsWithoutUsage: 0, model: "claude-haiku-4-5" });
+    expect(merge).toMatchObject({ calls: 1, callsWithoutUsage: 0, model: MODELS.merge });
   });
 
   it("boosts each copy on its own outlets before the cap, and writes the merged card with triage's grade", async () => {

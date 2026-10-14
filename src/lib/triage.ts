@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Cluster, Topic } from "@/types";
-import { boundOf, recordCall } from "@/lib/usageCollector";
+import { MODELS, callModel, requestFor } from "@/lib/models";
 import { FAIL_CLOSED, type TriageOutcome } from "@/lib/triageOutcome";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
@@ -28,9 +28,12 @@ export interface TriageVerdict extends TriageOutcome {
  * Clusters per batch. F.3's cost analysis found triage was 65% of a
  * digest's spend with 91% of its input pure repetition — ~770 tokens of
  * fixed prompt and schema re-sent against ~80 tokens of actual content,
- * once per cluster. Prompt caching can't help: Haiku 4.5's minimum
- * cacheable prefix is 4,096 tokens against a ~600-token prompt. The only
- * lever is call count, which this constant is.
+ * once per cluster. Whether prompt caching can help depends on the model:
+ * Haiku 4.5's minimum cacheable prefix is 4,096 tokens, above this
+ * ~600-token prompt, while Haiku 5.5's is far lower (512 per the migration
+ * guide; confirm against current docs), so on it caching the fixed prompt
+ * is a lever nobody has measured yet. Without caching, the lever is call
+ * count, which this constant is.
  *
  * 20 rather than more: the cost curve is nearly flat past this point
  * (20→40 saves a further ~$0.013) while doubling how much a single failed
@@ -390,8 +393,7 @@ async function judgeBatch(
     )
     .join("\n\n");
 
-  const params = {
-    model: "claude-haiku-4-5",
+  const params = requestFor(MODELS.triage, {
     max_tokens: withReasons ? MAX_TOKENS_WITH_REASONS : MAX_TOKENS,
     system: SYSTEM_PROMPT + EVENT_INSTRUCTION + (withReasons ? REASON_INSTRUCTION : ""),
     messages: [
@@ -401,8 +403,10 @@ async function judgeBatch(
       },
     ],
     output_config: { format: zodOutputFormat(verdictSchema(withReasons)) },
-  } satisfies Parameters<typeof client.messages.parse>[0];
-  const response = await recordCall("triage", "claude-haiku-4-5", () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
+  });
+  // A refusal throws RefusalError: the batch fails like any other failed
+  // call, so the split-retry ladder runs and anything left fails closed.
+  const response = await callModel(client, "triage", params);
 
   if (!response.parsed_output) {
     throw new Error(

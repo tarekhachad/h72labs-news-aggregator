@@ -32,6 +32,7 @@ const R = (c: number) => ({ inputPerMTok: c, outputPerMTok: c * 5, cacheReadMult
 function tableWith(rate: ReturnType<typeof R>, from = "2026-01-01", through = "2026-12-31"): Record<TrackedModel, ModelPricing> {
   return {
     "claude-haiku-4-5": PRICING["claude-haiku-4-5"],
+    "claude-haiku-5-5": PRICING["claude-haiku-5-5"],
     "claude-sonnet-5": { list: R(3), promo: { rate, fromUtcDate: from, throughUtcDate: through } },
   };
 }

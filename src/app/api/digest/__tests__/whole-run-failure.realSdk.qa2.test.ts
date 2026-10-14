@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
+import { MODELS } from "@/lib/models";
 import type { Article, Cluster, Source } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
 import { RUN_FAILED_MESSAGE } from "@/lib/runFailure";
@@ -182,8 +183,8 @@ describe("real SDK, real writeCard: what classifyCardFailure actually sees", () 
     expect(last).toEqual({ stage: "error", message: RUN_FAILED_MESSAGE });
     expect(h.saveGeneratedCards).not.toHaveBeenCalled();
     expect(record.cardFailures).toEqual([
-      { reason: "apiError", model: "claude-haiku-4-5", articleCount: 1, status: 400 },
-      { reason: "apiError", model: "claude-sonnet-5", articleCount: 2, status: 400 },
+      { reason: "apiError", model: MODELS.writeCardSingle, articleCount: 1, status: 400 },
+      { reason: "apiError", model: MODELS.writeCardMulti, articleCount: 2, status: 400 },
     ]);
     // 400 is not retried by the SDK: one request per card.
     expect(h.state.calls.filter((c) => c.kind === "writeCard")).toHaveLength(2);
@@ -281,8 +282,8 @@ describe("real SDK, real writeCard: what classifyCardFailure actually sees", () 
     setHandler(() => creditOut());
     const { last, record } = await run();
     expect(last).toEqual({ stage: "error", message: RUN_FAILED_MESSAGE });
-    expect(record.cardFailures).toEqual([{ reason: "apiError", model: "claude-sonnet-5", articleCount: 2, status: 400 }]);
-    expect(h.state.calls).toEqual([{ kind: "writeCard", model: "claude-sonnet-5" }]);
+    expect(record.cardFailures).toEqual([{ reason: "apiError", model: MODELS.writeCardMulti, articleCount: 2, status: 400 }]);
+    expect(h.state.calls).toEqual([{ kind: "writeCard", model: MODELS.writeCardMulti }]);
   });
 
   it("a merged story whose only card is truncated: saves (the refusal rule holds after a merge)", async () => {

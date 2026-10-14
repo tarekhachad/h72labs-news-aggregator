@@ -24,7 +24,7 @@
  */
 
 /** The models this app actually calls. Anything else can't be priced. */
-export const TRACKED_MODELS = ["claude-haiku-4-5", "claude-sonnet-5"] as const;
+export const TRACKED_MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-haiku-5-5"] as const;
 
 export type TrackedModel = (typeof TRACKED_MODELS)[number];
 
@@ -61,7 +61,17 @@ export interface ModelPricing {
    * and the only exposure is a few hours either side of a window's edge.
    */
   promo?: { rate: Rate; fromUtcDate: string; throughUtcDate: string };
+  /**
+   * A second rate card for a long prompt, when the model has one: a call whose
+   * prompt is over `aboveTokens` bills every token at `rate`. Each call is
+   * priced on its own, so the card is chosen per call and never from a stage's
+   * summed tokens (see `rateCardFor`).
+   */
+  longContext?: { aboveTokens: number; rate: Rate };
 }
+
+/** Which of a model's rate cards a call bills at. */
+export type RateCard = "standard" | "longContext";
 
 /**
  * Frozen all the way down, for the reason ZERO_TOKENS and every RecordedCall
@@ -78,8 +88,8 @@ export interface ModelPricing {
  * OBJECT — add `{ tiers: {...} }` to ModelPricing and its contents stay
  * writable with nothing here to say so. A recursive walk would close that at
  * the cost of freezing shapes this module does not own. The enumeration is
- * kept because ModelPricing is a two-field type defined ten lines above; if it
- * gains a nested object, this function is the second place to edit.
+ * kept because ModelPricing is a small type defined just above; when it gains
+ * a nested object, this function is the second place to edit.
  */
 function deepFreezePricing(
   table: Record<TrackedModel, ModelPricing>
@@ -89,6 +99,10 @@ function deepFreezePricing(
     if (entry.promo !== undefined) {
       Object.freeze(entry.promo.rate);
       Object.freeze(entry.promo);
+    }
+    if (entry.longContext !== undefined) {
+      Object.freeze(entry.longContext.rate);
+      Object.freeze(entry.longContext);
     }
     Object.freeze(entry);
   }
@@ -103,9 +117,10 @@ const CACHE_WRITE_MULTIPLIER = 1.25;
  * unexercised — they're here so that if prompt caching is ever added, the
  * first run prices it correctly instead of quietly billing cached tokens at
  * the full input rate. (Worth checking before reaching for it: each model
- * has a minimum cacheable prefix length, and Haiku 4.5's is far longer than
- * the triage system prompt — so caching may not be available at all for the
- * highest-volume call site. Confirm against current docs, not this comment.)
+ * has a minimum cacheable prefix length. Haiku 4.5's is far longer than the
+ * triage system prompt; Haiku 5.5's is far shorter, so caching is possible
+ * there. Confirm against current docs, not this comment. A cache read still
+ * counts toward Haiku 5.5's long-context threshold: see `promptTokens`.)
  *
  * Note one unverified assumption in that future: the multipliers apply to
  * whichever base rate is active, so during a promo a cached token is priced
@@ -146,6 +161,31 @@ export const PRICING: Record<TrackedModel, ModelPricing> = deepFreezePricing({
       cacheWriteMultiplier: CACHE_WRITE_MULTIPLIER,
     },
   },
+  "claude-haiku-5-5": {
+    // Two rate cards chosen by prompt length: $0.10 / $0.50 per MTok for a
+    // prompt up to 100,000 tokens, $0.50 / $2.50 over it. "Prompt length
+    // counts all of its input tokens, including cache reads and cache
+    // writes," and each request is priced on its own. Cache multipliers are
+    // the usual 0.1x / 1.25x on both cards. Source: Anthropic's pricing page
+    // (platform.claude.com/docs/en/about-claude/pricing, "Model pricing" and
+    // "Long context pricing") and the claude-api skill's Haiku 5.5 migration
+    // section, which agree.
+    list: {
+      inputPerMTok: 0.1,
+      outputPerMTok: 0.5,
+      cacheReadMultiplier: CACHE_READ_MULTIPLIER,
+      cacheWriteMultiplier: CACHE_WRITE_MULTIPLIER,
+    },
+    longContext: {
+      aboveTokens: 100_000,
+      rate: {
+        inputPerMTok: 0.5,
+        outputPerMTok: 2.5,
+        cacheReadMultiplier: CACHE_READ_MULTIPLIER,
+        cacheWriteMultiplier: CACHE_WRITE_MULTIPLIER,
+      },
+    },
+  },
 });
 
 /**
@@ -173,7 +213,7 @@ export const PRICING: Record<TrackedModel, ModelPricing> = deepFreezePricing({
  * Nothing inside this app can detect a list-price change. Only re-checking the
  * published rates against this date can.
  */
-export const PRICING_VERIFIED_ON = "2026-09-11";
+export const PRICING_VERIFIED_ON = "2026-10-13";
 
 /** Billable token counts for one API call. */
 export interface CallTokens {
@@ -334,6 +374,34 @@ export function addTokens(a: CallTokens, b: CallTokens): CallTokens {
   };
 }
 
+/** `a - b`, for taking a part back out of a sum it was added to. */
+function subtractTokens(a: CallTokens, b: CallTokens): CallTokens {
+  return {
+    inputTokens: a.inputTokens - b.inputTokens,
+    outputTokens: a.outputTokens - b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens - b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens - b.cacheWriteTokens,
+  };
+}
+
+/**
+ * Two costs for the same model and instant as one. `promoApplied` is
+ * re-derived from the sum rather than OR-ed, so it keeps meaning "the promo
+ * reduced this spend".
+ */
+function addCosts(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
+  const billedUsd = a.billedUsd + b.billedUsd;
+  const listUsd = a.listUsd + b.listUsd;
+  const promoLive = a.promoLive || b.promoLive;
+  return {
+    billedUsd,
+    listUsd,
+    promoLive,
+    promoApplied: promoLive && billedUsd < listUsd,
+    promoEndsOn: a.promoEndsOn ?? b.promoEndsOn,
+  };
+}
+
 function applyRate(tokens: CallTokens, rate: Rate): number {
   const inputUsd =
     tokens.inputTokens * rate.inputPerMTok +
@@ -452,6 +520,50 @@ export function costFor(
   at: Date,
   table: Record<TrackedModel, ModelPricing> = PRICING
 ): CostBreakdown {
+  return costOnCard(model, tokens, at, table, rateCardFor(model, tokens, table));
+}
+
+/**
+ * Every input token of one call, cached ones included: what a long-context
+ * card's threshold is measured against.
+ */
+export function promptTokens(tokens: CallTokens): number {
+  return tokens.inputTokens + tokens.cacheReadTokens + tokens.cacheWriteTokens;
+}
+
+/**
+ * Which rate card ONE call's tokens bill at. Only ever pass a single call's
+ * tokens: a stage's summed tokens can cross the threshold when no call did,
+ * and would then be priced at five times the real bill.
+ *
+ * Never throws, so the summary can sort calls before it knows whether a model
+ * is priceable; an unpriceable model is reported by `costOnCard`.
+ */
+export function rateCardFor(
+  model: TrackedModel,
+  tokens: CallTokens,
+  table: Record<TrackedModel, ModelPricing> = PRICING
+): RateCard {
+  const pricing = Object.hasOwn(table, model) ? table[model] : undefined;
+  if (pricing === null || typeof pricing !== "object") return "standard";
+  const long = pricing.longContext;
+  if (long === undefined) return "standard";
+  // A malformed entry can't prove a call is short, so the call takes the
+  // dearer card, where `costOnCard` then reports the entry as unpriceable.
+  if (long === null || typeof long !== "object") return "longContext";
+  // Infinity included: it would put every call on the cheaper card.
+  if (typeof long.aboveTokens !== "number" || !Number.isFinite(long.aboveTokens)) return "longContext";
+  return promptTokens(tokens) > long.aboveTokens ? "longContext" : "standard";
+}
+
+/** `costFor` on a named rate card rather than the one the tokens select. */
+function costOnCard(
+  model: TrackedModel,
+  tokens: CallTokens,
+  at: Date,
+  table: Record<TrackedModel, ModelPricing>,
+  card: RateCard
+): CostBreakdown {
   // Indexed here rather than taken pre-resolved. Accepting a bare
   // ModelPricing would leave `model` unused whenever a caller passed one,
   // so costFor("claude-haiku-4-5", t, at, PRICING["claude-sonnet-5"]) would
@@ -471,6 +583,22 @@ export function costFor(
     // TypeError there is indistinguishable from a run that made no calls.
     throw new Error(`costFor: no pricing entry for model ${model}`);
   }
+
+  if (card === "longContext") {
+    const long = pricing.longContext;
+    if (long === null || typeof long !== "object" || long.rate === null || typeof long.rate !== "object") {
+      throw new Error(`costFor: no usable long-context rate for model ${model}`);
+    }
+    // A promotion is defined against the standard card only. Which card it
+    // would discount on a long prompt is unknown, and a guess could
+    // under-report, so a model carrying both can't be priced on this card.
+    if (pricing.promo !== undefined) {
+      throw new Error(`costFor: ${model} has both a promotion and a long-context card`);
+    }
+    const longUsd = applyRate(tokens, long.rate);
+    return { billedUsd: longUsd, listUsd: longUsd, promoLive: false, promoApplied: false, promoEndsOn: null };
+  }
+
   const listUsd = applyRate(tokens, pricing.list);
 
   const promo = pricing.promo;
@@ -656,14 +784,17 @@ export interface UsageSummary {
 /**
  * Aggregates recorded calls into per-stage totals.
  *
- * Grouped by the **(stage, model) pair**, not by stage alone. This is not
- * defensive futureproofing — **a stage already mixes models today.**
- * `modelForCluster` in writeCard.ts routes single-article clusters to Haiku
- * and multi-source ones to Sonnet, so a single run's writeCard stage routinely
- * emits both. Summing that stage's tokens and pricing them once would be wrong
- * by up to 2x — Sonnet bills 2x Haiku on both input and output — and wrong
- * quietly. Grouping on the pair makes that structurally impossible, so do not
- * collapse it on the assumption that a stage uses one model.
+ * Grouped by the **(stage, model) pair**, not by stage alone. A stage can mix
+ * models: `modelForCluster` in cardModel.ts picks the writeCard model per
+ * cluster from two separate entries in `MODELS` (models.ts), and a step put
+ * back on its old model leaves usage_runs history on another. Summing such a
+ * stage's tokens and pricing them once would be wrong by the ratio of the two
+ * models' rates, and wrong quietly. Grouping on the pair makes that
+ * structurally impossible, so do not collapse it on the assumption that a
+ * stage uses one model.
+ *
+ * Within a group, each call's tokens are priced on the rate card that call's
+ * own prompt selects (`rateCardFor`), never on the card the group's sum would.
  */
 export function summarizeUsage(
   calls: RecordedCall[],
@@ -671,6 +802,9 @@ export function summarizeUsage(
   table: Record<TrackedModel, ModelPricing> = PRICING
 ): UsageSummary {
   const groups = new Map<string, StageTotals>();
+  // Each group's long-context calls, summed apart from its total. The rate
+  // card is chosen per call, so the group's summed tokens can't choose it.
+  const longContextTokens = new Map<StageTotals, CallTokens>();
 
   for (const call of calls) {
     const key = `${call.stage} ${call.model}`;
@@ -699,13 +833,23 @@ export function summarizeUsage(
     } else {
       group.calls += 1;
       group.tokens = addTokens(group.tokens, call.tokens);
+      if (rateCardFor(call.model, call.tokens, table) === "longContext") {
+        longContextTokens.set(group, addTokens(longContextTokens.get(group) ?? ZERO_TOKENS, call.tokens));
+      }
     }
   }
 
   const stages = [...groups.values()];
   for (const group of stages) {
     try {
-      group.cost = costFor(group.model, group.tokens, at, table);
+      const long = longContextTokens.get(group);
+      group.cost =
+        long === undefined
+          ? costOnCard(group.model, group.tokens, at, table, "standard")
+          : addCosts(
+              costOnCard(group.model, subtractTokens(group.tokens, long), at, table, "standard"),
+              costOnCard(group.model, long, at, table, "longContext")
+            );
     } catch {
       // Per-group, so one unpriceable model costs this stage's figure and
       // nothing else. The zeros left in `cost` are flagged by `priced: false`

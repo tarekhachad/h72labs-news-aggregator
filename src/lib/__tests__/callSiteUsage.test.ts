@@ -12,7 +12,13 @@ vi.mock("@/lib/extract", async (importOriginal) => {
   };
 });
 import { createUsageCollector, withUsageCollector } from "@/lib/usageCollector";
+import { MODELS, requestFor, type ModelStep } from "@/lib/models";
 import type { Card, Cluster, Topic } from "@/types";
+
+// What a step sends as max_tokens for a written cap, on whichever model
+// MODELS gives it, so these tests survive a step being moved back.
+const cap = (step: ModelStep, written: number) =>
+  requestFor(MODELS[step], { max_tokens: written, messages: [] }).max_tokens;
 
 // Pins that each of the five Claude call sites is actually wrapped in
 // `recordCall`, with the right stage label and the right model.
@@ -132,7 +138,7 @@ async function recordedDuring(fn: () => Promise<unknown>) {
 }
 
 describe("Claude call sites report their token usage", () => {
-  it("triageClusters records one triage call per batch on Haiku", async () => {
+  it("triageClusters records one triage call per batch on its model", async () => {
     mockParse.mockResolvedValue({
       parsed_output: { verdicts: [{ index: 0, notable: true, severity: 4 }] },
       usage: USAGE,
@@ -142,20 +148,20 @@ describe("Claude call sites report their token usage", () => {
     const calls = await recordedDuring(() => triageClusters([makeCluster()]));
 
     expect(calls).toEqual([
-      { stage: "triage", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS },
+      { stage: "triage", model: MODELS.triage, tokens: EXPECTED_TOKENS },
     ]);
   });
 
-  it("isSameStory records against the dedup stage on Haiku", async () => {
+  it("isSameStory records against the dedup stage on its model", async () => {
     mockParse.mockResolvedValue({ parsed_output: { sameStory: true }, usage: USAGE });
     const { isSameStory } = await import("@/lib/dedup");
 
     const calls = await recordedDuring(() => isSameStory("candidate text", "existing summary"));
 
-    expect(calls).toEqual([{ stage: "dedup", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS }]);
+    expect(calls).toEqual([{ stage: "dedup", model: MODELS.dedup, tokens: EXPECTED_TOKENS }]);
   });
 
-  it("rankFrontPage records against the rank stage on Haiku", async () => {
+  it("rankFrontPage records against the rank stage on its model", async () => {
     mockParse.mockResolvedValue({ parsed_output: { picks: [{ index: 0, rank: 1 }] }, usage: USAGE });
     const { rankFrontPage } = await import("@/lib/rank");
 
@@ -163,13 +169,13 @@ describe("Claude call sites report their token usage", () => {
       rankFrontPage([{ topic: "Tech/AI", severity: 4, text: "a summary" }])
     );
 
-    expect(calls).toEqual([{ stage: "rank", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS }]);
+    expect(calls).toEqual([{ stage: "rank", model: MODELS.rank, tokens: EXPECTED_TOKENS }]);
   });
 
   // Both writeCard paths are pinned, because the stage now spans two models
   // and the summary prices them separately — a routing bug would misprice a
   // whole stage rather than just changing quality.
-  it("writeCard records a single-source cluster against Haiku", async () => {
+  it("writeCard records a single-source cluster against its model", async () => {
     mockParse.mockResolvedValue({
       parsed_output: {
         title: "A Headline",
@@ -184,14 +190,15 @@ describe("Claude call sites report their token usage", () => {
     const calls = await recordedDuring(() => writeCard(makeCluster(), 4));
 
     expect(calls).toEqual([
-      { stage: "writeCard", model: "claude-haiku-4-5", tokens: EXPECTED_TOKENS },
+      { stage: "writeCard", model: MODELS.writeCardSingle, tokens: EXPECTED_TOKENS },
     ]);
-    // Haiku has no adaptive thinking to disable, and no other Haiku call
-    // site in this app sends the parameter.
-    expect(mockParse.mock.calls[0][0].thinking).toBeUndefined();
+    // The request settings follow the model, never the step.
+    expect(mockParse.mock.calls[0][0].thinking).toEqual(
+      (requestFor(MODELS.writeCardSingle, { max_tokens: 1, messages: [] }) as { thinking?: unknown }).thinking
+    );
   });
 
-  it("writeCard records a multi-source cluster against Sonnet", async () => {
+  it("writeCard records a multi-source cluster against its model", async () => {
     mockParse.mockResolvedValue({
       parsed_output: {
         title: "A Headline",
@@ -206,12 +213,14 @@ describe("Claude call sites report their token usage", () => {
     const calls = await recordedDuring(() => writeCard(makeMultiSourceCluster(), 4));
 
     expect(calls).toEqual([
-      { stage: "writeCard", model: "claude-sonnet-5", tokens: EXPECTED_TOKENS },
+      { stage: "writeCard", model: MODELS.writeCardMulti, tokens: EXPECTED_TOKENS },
     ]);
-    expect(mockParse.mock.calls[0][0].thinking).toEqual({ type: "disabled" });
+    expect(mockParse.mock.calls[0][0].thinking).toEqual(
+      (requestFor(MODELS.writeCardMulti, { max_tokens: 1, messages: [] }) as { thinking?: unknown }).thinking
+    );
   });
 
-  it("generateExpandedReport records against the expand stage on Sonnet", async () => {
+  it("generateExpandedReport records against the expand stage on its model", async () => {
     mockParse.mockResolvedValue({
       parsed_output: { report: "A complete report." },
       stop_reason: "end_turn",
@@ -221,7 +230,7 @@ describe("Claude call sites report their token usage", () => {
 
     const calls = await recordedDuring(() => generateExpandedReport(makeCardForExpand()));
 
-    expect(calls).toEqual([{ stage: "expand", model: "claude-sonnet-5", tokens: EXPECTED_TOKENS }]);
+    expect(calls).toEqual([{ stage: "expand", model: MODELS.expand, tokens: EXPECTED_TOKENS }]);
   });
 });
 
@@ -236,7 +245,7 @@ describe("Claude call sites still report on their failure paths", () => {
     await withUsageCollector(collector, () => isSameStory("candidate", "existing"));
 
     expect(collector.calls()).toEqual([
-      { stage: "dedup", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 256, attempts: 3 } },
+      { stage: "dedup", model: MODELS.dedup, tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: cap("dedup", 256), attempts: 3 } },
     ]);
     expect(collector.summarize().totalCallsWithoutUsage).toBe(1);
   });
@@ -252,7 +261,7 @@ describe("Claude call sites still report on their failure paths", () => {
 
     expect(result).toBeNull();
     expect(collector.calls()).toEqual([
-      { stage: "rank", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 1024, attempts: 3 } },
+      { stage: "rank", model: MODELS.rank, tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: cap("rank", 1024), attempts: 3 } },
     ]);
   });
 
@@ -273,9 +282,9 @@ describe("Claude call sites still report on their failure paths", () => {
 
     // The initial attempt plus one retry at each of the two split depths.
     expect(collector.calls()).toEqual([
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
-      { stage: "triage", model: "claude-haiku-4-5", tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: 2048, attempts: 3 } },
+      { stage: "triage", model: MODELS.triage, tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: cap("triage", 2048), attempts: 3 } },
+      { stage: "triage", model: MODELS.triage, tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: cap("triage", 2048), attempts: 3 } },
+      { stage: "triage", model: MODELS.triage, tokens: null, bound: { requestBytes: expect.any(Number), maxOutputTokens: cap("triage", 2048), attempts: 3 } },
     ]);
   });
 

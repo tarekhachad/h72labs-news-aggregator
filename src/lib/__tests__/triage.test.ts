@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 import type { Cluster, Topic } from "@/types";
 
 // Same fake-Anthropic-constructor pattern as dedup.test.ts's isSameStory
@@ -703,7 +704,7 @@ describe("F.4.5 round 2: split-retry ladder edge cases", () => {
     process.env.TRIAGE_REASONS = "1";
     let first = true;
     mockParse.mockImplementation(async ({ messages, max_tokens }) => {
-      expect(max_tokens).toBe(3072);
+      expect(max_tokens).toBe(requestFor(MODELS.triage, { max_tokens: 3072, messages: [] }).max_tokens);
       const content = messages[0].content as string;
       const size = (content.match(/^\d+\. /gm) ?? []).length;
       if (first && size === 20) {

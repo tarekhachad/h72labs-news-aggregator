@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 import type { Cluster, Source } from "@/types";
 import type { ReadingUnit } from "@/lib/readingUnits";
 import {
@@ -275,6 +276,25 @@ describe("failures merge nothing and never reject", () => {
     expect(result.haikuCalls).toBe(1);
   });
 
+  it("a refusal, even one that came back carrying a 'same' verdict, logged once with its category", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.parse.mockResolvedValue({
+      parsed_output: { verdicts: [{ pair: 0, same: true }] },
+      stop_reason: "refusal",
+      stop_details: { type: "refusal", category: "general_harms", explanation: null },
+      usage: { input_tokens: 100, output_tokens: 3 },
+    });
+    const items = pair();
+
+    const result = await merge(items);
+
+    expect(result).toEqual({ items, merged: 0, haikuCalls: 1 });
+    const refusalLines = error.mock.calls.filter((c) => String(c[1]).includes("refused"));
+    expect(refusalLines).toHaveLength(1);
+    expect(String(refusalLines[0][0])).toMatch(/^\[merge\]/);
+    expect(String(refusalLines[0][1])).toContain("merge refused by the model (category: general_harms)");
+  });
+
   it("a failed embedding, before any call", async () => {
     mocks.embed.mockRejectedValue(new Error("model missing"));
 
@@ -513,12 +533,12 @@ describe("merging articles", () => {
 });
 
 describe("the call", () => {
-  it("is one Haiku call stating Tarek's rule, with a bounded output", async () => {
+  it("is one call on the merge model stating Tarek's rule, with a bounded output", async () => {
     await merge(MUST_NOT_MERGE[0].map((f) => item(f)).concat(MUST_MERGE[0].map((f) => item(f))));
 
     const params = mocks.parse.mock.calls[0][0];
-    expect(params.model).toBe("claude-haiku-4-5");
-    expect(params.max_tokens).toBe(1024);
+    expect(params.model).toBe(MODELS.merge);
+    expect(params.max_tokens).toBe(requestFor(MODELS.merge, { max_tokens: 1024, messages: [] }).max_tokens);
     expect(params.system).toContain("same real-world event");
     expect(params.system).toContain("Related angles on one situation");
     expect(params.system).toContain("A follow-up or a later development");
@@ -533,7 +553,7 @@ describe("the call", () => {
 
     await withUsageCollector(usage, () => merge(MUST_MERGE[0].map((f) => item(f))));
 
-    expect(usage.calls().map((c) => [c.stage, c.model, c.tokens?.inputTokens])).toEqual([["merge", "claude-haiku-4-5", 100]]);
+    expect(usage.calls().map((c) => [c.stage, c.model, c.tokens?.inputTokens])).toEqual([["merge", MODELS.merge, 100]]);
   });
 
   it("logs one line per absorbed cluster with its score", async () => {

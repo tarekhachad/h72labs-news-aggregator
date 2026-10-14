@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { MODELS } from "@/lib/models";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Card, Cluster } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
@@ -177,7 +178,7 @@ describe("digest route: why a card was lost is recorded", () => {
     expect(record.cardFailures).toEqual([
       {
         reason: "incompleteAfterRetry",
-        model: "claude-sonnet-5",
+        model: MODELS.writeCardMulti,
         articleCount: 3,
         stopReason: "end_turn",
         tail: "ends with a dash —",
@@ -200,10 +201,10 @@ describe("digest route: why a card was lost is recorded", () => {
 
     expect(record.cardsFailed).toBe(2);
     expect(record.cardFailures).toEqual([
-      { reason: "apiError", model: "claude-haiku-4-5", articleCount: 1, status: 529 },
+      { reason: "apiError", model: MODELS.writeCardSingle, articleCount: 1, status: 529 },
       {
         reason: "truncated",
-        model: "claude-sonnet-5",
+        model: MODELS.writeCardMulti,
         articleCount: 2,
         stopReason: "max_tokens",
         tail: "cut off mid",

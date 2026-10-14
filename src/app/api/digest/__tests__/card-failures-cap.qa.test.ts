@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { MODELS } from "@/lib/models";
 import type { Card, Cluster } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
 import { GenerationRejectedError } from "@/lib/claudeText";
@@ -176,7 +177,7 @@ describe("digest route: card-cap interaction with card-failure attribution", () 
     expect(record.cardFailures).toEqual([
       {
         reason: "truncated",
-        model: "claude-sonnet-5",
+        model: MODELS.writeCardMulti,
         articleCount: 3,
         stopReason: "max_tokens",
         tail: "cut off",

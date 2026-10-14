@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 import type { Cluster } from "@/types";
 import { isFailClosed } from "@/lib/triageOutcome";
 
@@ -105,7 +106,7 @@ describe("triage event sentence", () => {
     process.env.TRIAGE_REASONS = "1";
     await triageClusters([cluster("a")]);
 
-    expect(mockParse.mock.calls.map((c) => c[0].max_tokens)).toEqual([2048, 3072]);
+    expect(mockParse.mock.calls.map((c) => c[0].max_tokens)).toEqual([requestFor(MODELS.triage, { max_tokens: 2048, messages: [] }).max_tokens, requestFor(MODELS.triage, { max_tokens: 3072, messages: [] }).max_tokens]);
   });
 
   it("declares the event as an optional string in the output schema", async () => {

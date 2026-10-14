@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 
 // No real DNS query: names resolve to a public address, except
 // inside.example, which resolves to the cloud metadata address.
@@ -46,7 +47,7 @@ beforeEach(() => {
   mockParse.mockReset();
   // The report call is the one with the larger output budget.
   mockParse.mockImplementation(async (params: { max_tokens: number }) =>
-    params.max_tokens === 4096
+    params.max_tokens === requestFor(MODELS.expand, { max_tokens: 4096, messages: [] }).max_tokens
       ? { parsed_output: { report: "A full report." }, stop_reason: "end_turn" }
       : { parsed_output: { title: "T", shortSummary: "A complete sentence.", labels: ["Tag"] }, stop_reason: "end_turn" }
   );

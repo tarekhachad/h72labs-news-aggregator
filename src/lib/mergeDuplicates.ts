@@ -8,7 +8,7 @@ import type { Article, Cluster } from "@/types";
 import type { ReadingUnit } from "@/lib/readingUnits";
 import { cosineSimilarity, embed } from "@/lib/embeddings";
 import { normalizeArticleUrl } from "@/lib/ingest";
-import { boundOf, recordCall } from "@/lib/usageCollector";
+import { MODELS, callModel, requestFor } from "@/lib/models";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
 /**
@@ -35,8 +35,6 @@ import { bestEffortLog } from "@/lib/bestEffortLog";
  * Related angles on one situation stay separate (two takes on Brazil's
  * election, two takes on a bond sell-off): only the same event merges.
  */
-
-const MODEL = "claude-haiku-4-5";
 
 /**
  * The lowest sentence similarity worth asking Haiku about.
@@ -193,8 +191,7 @@ function buildParams(items: readonly MergeCandidate[], pairs: readonly Candidate
   const list = pairs
     .map((pair, k) => `${k}.\n${storyLines(items[pair.a], "A")}\n${storyLines(items[pair.b], "B")}`)
     .join("\n\n");
-  return {
-    model: MODEL,
+  return requestFor(MODELS.merge, {
     max_tokens: MAX_TOKENS,
     system: SYSTEM_PROMPT,
     messages: [
@@ -204,7 +201,7 @@ function buildParams(items: readonly MergeCandidate[], pairs: readonly Candidate
       },
     ],
     output_config: { format: zodOutputFormat(verdictSchema) },
-  } satisfies Parameters<typeof client.messages.parse>[0];
+  });
 }
 
 /**
@@ -219,7 +216,8 @@ async function askSameEvent(
 ): Promise<Set<number>> {
   const same = new Set<number>();
   try {
-    const response = await recordCall("merge", MODEL, () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
+    // A refusal throws RefusalError, so the catch below merges nothing.
+    const response = await callModel(client, "merge", params);
     if (!response.parsed_output) {
       bestEffortLog("error", `[merge] same-event check returned no verdicts (stop_reason: ${response.stop_reason}); merging nothing`);
       return same;

@@ -6,7 +6,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { cosineSimilarity, embed } from "@/lib/embeddings";
-import { boundOf, recordCall } from "@/lib/usageCollector";
+import { MODELS, RefusalError, callModel, requestFor } from "@/lib/models";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
 /**
@@ -25,8 +25,6 @@ import { bestEffortLog } from "@/lib/bestEffortLog";
  * running out leaves a card as a story of its own, and linkStories never
  * rejects, so the digest never fails because of the timeline.
  */
-
-const MODEL = "claude-haiku-4-5";
 
 /** How far back a story is looked for: digests dated in the 30 days before today. */
 export const STORY_LOOKBACK_DAYS = 30;
@@ -217,8 +215,7 @@ export function buildParams(
   earlier: readonly StoryCandidate[]
 ) {
   const list = earlier.map((c, i) => `${i + 1}. ${c.date}: ${cardLine(c.title, c.shortSummary)}`).join("\n");
-  return {
-    model: MODEL,
+  return requestFor(MODELS.timeline, {
     max_tokens: MAX_TOKENS,
     system: SYSTEM_PROMPT,
     messages: [
@@ -228,7 +225,7 @@ export function buildParams(
       },
     ],
     output_config: { format: zodOutputFormat(verdictSchema) },
-  } satisfies Parameters<typeof client.messages.parse>[0];
+  });
 }
 
 /**
@@ -263,16 +260,17 @@ async function askSameStory(
   onError: (err: unknown) => void
 ): Promise<StoryCandidate | null> {
   try {
-    const response = await recordCall(
-      "timeline",
-      MODEL,
-      () => client.messages.parse(params, { timeout }),
-      boundOf(params, client.maxRetries + 1)
-    );
+    const response = await callModel(client, "timeline", params, { timeout });
     const match = response.parsed_output?.match;
     if (typeof match !== "number" || !Number.isInteger(match) || match < 1 || match > earlier.length) return null;
     return earlier[match - 1];
   } catch (err) {
+    // A refusal is logged on its own line, once, with its category. Counted
+    // with the failures, only the run's first error would ever be printed.
+    if (err instanceof RefusalError) {
+      bestEffortLog("warn", `[timeline] ${err.message}; this card starts its own story`);
+      return null;
+    }
     onError(err);
     return null;
   }

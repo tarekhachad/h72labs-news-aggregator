@@ -7,8 +7,9 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Article, Card, Cluster, Source } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
-import { boundOf, recordCall } from "@/lib/usageCollector";
 import { modelForCluster } from "@/lib/cardModel";
+import { callModel, RefusalError, requestFor } from "@/lib/models";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 import { orderPreferredFirst, type PreferredSources } from "@/lib/preferredSources";
 import { signSourceLink, sourceLinkSecret } from "@/lib/sourceLinks";
 import {
@@ -123,25 +124,11 @@ async function generateSummary(
   preferred: PreferredSources,
   extracted: readonly (ExtractResult | undefined)[]
 ) {
-  const model = modelForCluster(cluster);
-  // Sonnet 5 runs adaptive thinking by default, and max_tokens caps
-  // thinking + output combined — thinking was eating the budget and
-  // truncating this short, bounded writing task. Not worth the cost or
-  // latency here anyway. Sent only on the Sonnet path: Haiku 4.5 has no
-  // adaptive thinking to turn off, and every other Haiku call site in this
-  // app (triage, dedup, rank) passes no `thinking` at all. Undefined is
-  // omitted from the serialized request rather than sent as null.
-  const thinking = model === "claude-sonnet-5" ? ({ type: "disabled" } as const) : undefined;
-
-  // Wrapped here rather than around writeCard() as a whole so that the
-  // ambiguous-truncation retry in generateWithRetryOnAmbiguousTruncation
-  // records BOTH attempts — that retry is the single most expensive event
-  // in the pipeline, and counting only the winning one would under-report
-  // exactly where it hurts most.
-  const params = {
-    model,
+  // Thinking is turned off by `requestFor` on every model that would think
+  // by default: max_tokens caps thinking + output combined, and thinking ate
+  // the budget and truncated this short, bounded writing task.
+  const params = requestFor(modelForCluster(cluster), {
     max_tokens: 2048,
-    thinking,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -150,8 +137,23 @@ async function generateSummary(
       },
     ],
     output_config: { format: zodOutputFormat(CardSummary) },
-  } satisfies Parameters<typeof client.messages.parse>[0];
-  const response = await recordCall("writeCard", model, () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
+  });
+  // Called here rather than around writeCard() as a whole so that the
+  // ambiguous-truncation retry in generateWithRetryOnAmbiguousTruncation
+  // records BOTH attempts — that retry is the single most expensive event
+  // in the pipeline, and counting only the winning one would under-report
+  // exactly where it hurts most.
+  let response;
+  try {
+    response = await callModel(client, "writeCard", params);
+  } catch (err) {
+    if (!(err instanceof RefusalError)) throw err;
+    // A refusal carries no card. Returned as an empty answer with its stop
+    // reason, so the retry helper fails it at once, unretried, and the run
+    // records it as `empty` with stop_reason "refusal".
+    bestEffortLog("warn", `[writeCard] ${err.message}`);
+    return { text: "", title: "", labels: [], stopReason: "refusal" as const };
+  }
 
   // Trimmed/filtered defensively here at the JS level, not via a zod
   // `.min(1)` constraint on the schema fed to zodOutputFormat — a schema
@@ -211,14 +213,11 @@ export class EmptyClusterError extends Error {
 }
 
 /**
- * One Claude call per triaged cluster, on the model `modelForCluster` picks:
- * Haiku for a single-article cluster, Sonnet for a multi-source one. A second
- * call only happens on the rare ambiguous-completion retry inside
- * generateWithRetryOnAmbiguousTruncation, not on the normal path.
- *
- * Do not describe this stage as "one Sonnet call per cluster": most clusters
- * are single-article and go to Haiku, so the stage routinely mixes both models.
- * Nor is card writing the pipeline's dominant cost — triage is.
+ * One Claude call per triaged cluster, on the model `modelForCluster` picks
+ * from `MODELS`: one entry for a single-article cluster, another for a
+ * multi-source one. A second call only happens on the rare
+ * ambiguous-completion retry inside generateWithRetryOnAmbiguousTruncation,
+ * not on the normal path.
  *
  * The reader's preferred outlets lead: their articles go first in the
  * prompt, with a sentence asking the writer to lead with them, and first in

@@ -46,6 +46,8 @@ You ask for news (either "give me today's news," or something ad-hoc like "what'
                     avoids paying for reports nobody reads.
 ```
 
+**Which model runs each step (V2.7, from 2026-10-13):** every Claude step in this pipeline and around it (triage, the same-day dedup check, the duplicate merge, front-page ranking, the story-timeline check, card writing for single- and multi-source clusters, and the expanded report) runs on Claude Haiku 5.5 with thinking off, as set in one map in `src/lib/models.ts`, where putting any one step back on its earlier model (the Haiku/Sonnet split described above) is a one-line change.
+
 Steps 1–2 cost nothing. **Step 3 (triage) is the largest single cost, not step 4** — this line claimed the reverse until the Final Phase measured it, and the inversion mattered: it pointed optimization effort at the writing step for months while triage was ~65% of spend, because triage fires once per *cluster* (hundreds a day) while writing fires once per *card* (dozens). Batching triage in F.4.5 cut its call count ~95%, and it is still the biggest stage. Step 6 is per-expand and only for cards someone actually opens. Current per-digest figures live in `(C) TECH_STACK.md`.
 
 ---
@@ -63,6 +65,7 @@ Steps 1–2 cost nothing. **Step 3 (triage) is the largest single cost, not step
 ## Accounts & auth
 
 Real signup/login from v1 (not a hardcoded single user) — handled by a managed auth provider (see Tech Stack) rather than hand-built, so password/session security isn't something built from scratch. On signup, a user picks:
+
 - **Topics of interest** — curated multi-select from a fixed list, **no hard cap on how many** (`profile.ts` enforces only `.min(1)`; Tarek's own profile runs 9). What bounds a digest is the per-topic card cap, not the topic count: 8 per topic on the day's first run, 2 on each later same-day run, and never more than 14 per topic in one digest. This said "up to 5" until 2026-08-14 — a number nothing ever enforced, and every cost measurement was taken at 9 topics. Free-text topic entry stays a v2 idea, deferred: it needs its own step to interpret arbitrary text into a source query, real added complexity for not much MVP value.
 - **Preferred sources** — same pattern, curated multi-select (NYT, WaPo, Reuters, BBC, etc.), used as the weighting signal described above.
 

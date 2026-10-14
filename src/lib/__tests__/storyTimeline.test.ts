@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 import {
   CHECK_CONCURRENCY,
   MAX_CANDIDATES_PER_CARD,
@@ -124,7 +125,7 @@ describe("buildParams", () => {
     expect(text).toContain("1. 2026-10-10: Earlier a. Summary a.");
     expect(text).toContain("2. 2026-10-11: Earlier b. Summary b.");
     expect(text).toContain("New card (2026-10-13): Title n. Summary of n.");
-    expect(params.model).toBe("claude-haiku-4-5");
+    expect(params.model).toBe(MODELS.timeline);
     expect(params.system).toMatch(/follow-up/);
     expect(params.system).toMatch(/related but separate events/i);
     expect(params.system).toMatch(/When in doubt, answer 0/);
@@ -138,7 +139,7 @@ describe("buildParams", () => {
     const worst = buildParams({ title: long, shortSummary: long }, "2026-10-13", [1, 2, 3].map((i) => candidate(String(i), 0.9, { title: long, shortSummary: long })));
     const bound = boundOf(worst, 1)!;
     expect(bound.requestBytes).toBeLessThanOrEqual(3400);
-    expect(bound.maxOutputTokens).toBeLessThanOrEqual(32);
+    expect(bound.maxOutputTokens).toBeLessThanOrEqual(requestFor(MODELS.timeline, { max_tokens: 32, messages: [] }).max_tokens);
     expect(MAX_CHECKS_PER_RUN).toBeLessThanOrEqual(80);
   });
 });
@@ -299,9 +300,35 @@ describe("linkStories", () => {
     await withUsageCollector(usage, () => linkStories([card("x"), card("y")], "2026-10-13", [candidate("a", 0.9)]));
     const calls = usage.calls();
     expect(calls).toHaveLength(2);
-    expect(calls.every((c) => c.stage === "timeline" && c.model === "claude-haiku-4-5")).toBe(true);
+    expect(calls.every((c) => c.stage === "timeline" && c.model === MODELS.timeline)).toBe(true);
     expect(calls.filter((c) => c.tokens !== null)).toHaveLength(1);
-    expect(calls.find((c) => c.tokens === null)?.bound).toMatchObject({ maxOutputTokens: 32, attempts: 1 });
+    expect(calls.find((c) => c.tokens === null)?.bound).toMatchObject({ maxOutputTokens: requestFor(MODELS.timeline, { max_tokens: 32, messages: [] }).max_tokens, attempts: 1 });
+  });
+
+  it("treats a refusal as no match, even one carrying a match, and logs each one once with its category", async () => {
+    const refused = {
+      parsed_output: { match: 1 },
+      stop_reason: "refusal",
+      stop_details: { type: "refusal", category: "cyber", explanation: null },
+      usage: { input_tokens: 700, output_tokens: 2 },
+    };
+    mocks.parse.mockResolvedValue(refused);
+    const usage = createUsageCollector(new Date("2026-10-13T12:00:00Z"));
+    const result = await withUsageCollector(usage, () =>
+      linkStories([card("x"), card("y")], "2026-10-13", [candidate("a", 0.9)])
+    );
+    expect(result.linked).toBe(0);
+    expect(result.links.get("x")?.storyId).toBe("x");
+    expect(result.links.get("y")?.storyId).toBe("y");
+    const warn = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).filter((l) => l.includes("refused"));
+    expect(warn).toEqual([
+      "[timeline] timeline refused by the model (category: cyber); this card starts its own story",
+      "[timeline] timeline refused by the model (category: cyber); this card starts its own story",
+    ]);
+    // Not counted again among the failures, whose line prints only the first error.
+    expect(vi.mocked(console.error).mock.calls.some((c) => String(c[0]).includes("story check(s) failed"))).toBe(false);
+    // Both refused calls completed, so their usage is measured.
+    expect(usage.calls().map((c) => c.tokens?.inputTokens)).toEqual([700, 700]);
   });
 });
 

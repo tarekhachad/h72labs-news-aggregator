@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS } from "@/lib/models";
 import {
   CHECK_CONCURRENCY,
   MAX_CANDIDATES_PER_CARD,
@@ -166,7 +167,7 @@ describe("linkStories, budget and spend accounting", () => {
     const bound = boundOf(buildParams({ title: long, shortSummary: long }, "2026-10-13", earlier), 1)!;
     const usage = createUsageCollector(new Date("2026-10-13T12:00:00Z"));
     const perUnit = MAX_CHECKS_PER_RUN / 10;
-    for (let i = 0; i < perUnit; i++) usage.add({ stage: "timeline", model: "claude-haiku-4-5", tokens: null, bound });
+    for (let i = 0; i < perUnit; i++) usage.add({ stage: "timeline", model: MODELS.timeline, tokens: null, bound });
     const usd = usage.summarize().unmeasuredBoundUsd!;
     // spend_config.digest_per_topic_usd is 0.065.
     expect(usd).toBeLessThan(0.065);

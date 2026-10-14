@@ -49,6 +49,7 @@ function call(stage: RecordedCall["stage"], model: TrackedModel, t: CallTokens):
 const SPEC: Record<TrackedModel, { in: number; out: number }> = {
   "claude-haiku-4-5": { in: 1.0, out: 5.0 },
   "claude-sonnet-5": { in: 2.0, out: 10.0 },
+  "claude-haiku-5-5": { in: 0.1, out: 0.5 },
 };
 
 function oracleUsd(model: TrackedModel, t: CallTokens): number {
@@ -114,6 +115,7 @@ describe("A. arithmetic, re-derived independently of the table", () => {
 function promoTable(promoRate: Partial<ModelPricing["promo"]> & { rate: ModelPricing["list"] }): Record<TrackedModel, ModelPricing> {
   return {
     "claude-haiku-4-5": PRICING["claude-haiku-4-5"],
+    "claude-haiku-5-5": PRICING["claude-haiku-5-5"],
     "claude-sonnet-5": {
       list: { inputPerMTok: 3, outputPerMTok: 15, cacheReadMultiplier: 0.1, cacheWriteMultiplier: 1.25 },
       promo: {

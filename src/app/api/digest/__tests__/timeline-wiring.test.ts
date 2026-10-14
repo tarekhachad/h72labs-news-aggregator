@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { MODELS } from "@/lib/models";
 import { SOURCES, type Card, type Cluster, type Source, type Topic } from "@/types";
 import type { UsageRunRecord } from "@/lib/usageRecord";
 import type { StoryCandidate, StoryLink } from "@/lib/storyTimeline";
@@ -207,7 +208,7 @@ describe("digest route: the story timeline", () => {
 
   it("records the check under its own stage and expects exactly the calls it made", async () => {
     const { record } = await run();
-    expect(record.stages.find((s) => s.stage === "timeline")).toMatchObject({ calls: 1, callsWithoutUsage: 0, model: "claude-haiku-4-5" });
+    expect(record.stages.find((s) => s.stage === "timeline")).toMatchObject({ calls: 1, callsWithoutUsage: 0, model: MODELS.timeline });
     expect(mocks.parse).toHaveBeenCalledTimes(1);
   });
 

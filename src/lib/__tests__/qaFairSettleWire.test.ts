@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 
 // Every page "blocked": the writer gets exactly the snippet-only prompt, and
 // nothing in this file can reach the live web.
@@ -93,8 +94,8 @@ async function runCapturing(fn: () => Promise<unknown>) {
 
 describe("the recorded bound covers the bytes the SDK actually sends", () => {
   const cases: [string, () => Promise<unknown>][] = [
-    ["writeCard (Haiku)", () => mods.writeCard.writeCard(cluster(1), 3)],
-    ["writeCard (Sonnet, thinking disabled)", () => mods.writeCard.writeCard(cluster(4), 3, ["BBC"] as never)],
+    ["writeCard (single source)", () => mods.writeCard.writeCard(cluster(1), 3)],
+    ["writeCard (multi-source)", () => mods.writeCard.writeCard(cluster(4), 3, ["BBC"] as never)],
     [
       "expand",
       () =>
@@ -142,8 +143,9 @@ describe("the recorded bound covers the bytes the SDK actually sends", () => {
       const c = await runCapturing(() => mods.triage.triageClusters([cluster(1)]));
       expect(sent.length).toBe(c.calls().length);
       c.calls().forEach((call, i) => {
-        expect(JSON.parse(sent[i].body).max_tokens).toBe(3072);
-        expect(call.bound!.maxOutputTokens).toBe(3072);
+        const sentCap = requestFor(MODELS.triage, { max_tokens: 3072, messages: [] }).max_tokens;
+        expect(JSON.parse(sent[i].body).max_tokens).toBe(sentCap);
+        expect(call.bound!.maxOutputTokens).toBe(sentCap);
         expect(call.bound!.requestBytes).toBe(sent[i].bytes);
       });
     } finally {
@@ -151,26 +153,34 @@ describe("the recorded bound covers the bytes the SDK actually sends", () => {
     }
   });
 
-  it("Sonnet writeCard sends thinking disabled; Haiku sends no thinking key at all", async () => {
+  it("writeCard puts each model's own request settings on the wire, and no parser", async () => {
+    const settings = (model: string) => {
+      const r = requestFor(model as never, { max_tokens: 2048, messages: [] }) as Record<string, unknown>;
+      return { thinking: r.thinking, effort: (r.output_config as { effort?: string } | undefined)?.effort, max_tokens: r.max_tokens };
+    };
     await runCapturing(() => mods.writeCard.writeCard(cluster(4), 3));
-    const sonnet = JSON.parse(sent[0].body);
-    expect(sonnet.model).toBe("claude-sonnet-5");
-    expect(sonnet.thinking).toEqual({ type: "disabled" });
-    expect(sonnet.output_config.format.type).toBe("json_schema");
-    expect(sonnet.output_config.format.parse).toBeUndefined();
+    const multi = JSON.parse(sent[0].body);
+    expect(multi.model).toBe(MODELS.writeCardMulti);
+    expect({ thinking: multi.thinking, effort: multi.output_config.effort, max_tokens: multi.max_tokens }).toEqual(settings(multi.model));
+    expect(multi.output_config.format.type).toBe("json_schema");
+    expect(multi.output_config.format.parse).toBeUndefined();
     sent.length = 0;
     await runCapturing(() => mods.writeCard.writeCard(cluster(1), 3));
-    const haiku = JSON.parse(sent[0].body);
-    expect(haiku.model).toBe("claude-haiku-4-5");
-    expect("thinking" in haiku).toBe(false);
+    const single = JSON.parse(sent[0].body);
+    expect(single.model).toBe(MODELS.writeCardSingle);
+    expect({ thinking: single.thinking, effort: single.output_config.effort, max_tokens: single.max_tokens }).toEqual(settings(single.model));
+    expect(single.output_config.format.parse).toBeUndefined();
   });
 });
 
-/** The most one HTTP request with this wire body could have been billed, priced independently of addBoundCost. */
-function worstCaseOf(body: string, model: "claude-haiku-4-5" | "claude-sonnet-5" = "claude-haiku-4-5"): number {
+/**
+ * The most one HTTP request with this wire body could have been billed,
+ * priced independently of addBoundCost, on the model the body names.
+ */
+function worstCaseOf(body: string): number {
   const parsed = JSON.parse(body);
   const cost = mods.usage.costFor(
-    model,
+    parsed.model,
     {
       inputTokens: Buffer.byteLength(body, "utf8") + mods.usage.REQUEST_OVERHEAD_TOKENS,
       outputTokens: parsed.max_tokens,
@@ -227,7 +237,7 @@ describe("SDK-level retries behind one recordCall are covered by the ceiling", (
     expect(settled!).toBeLessThan(0.7);
   }, 15_000);
 
-  it("a Sonnet writeCard failing three times on the wire settles at or above three Sonnet worst cases", async () => {
+  it("a multi-source writeCard failing three times on the wire settles at or above three worst cases", async () => {
     respond = async () =>
       new Response(JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "qa" } }), {
         status: 529,
@@ -235,8 +245,8 @@ describe("SDK-level retries behind one recordCall are covered by the ceiling", (
       });
     const c = await runCapturing(() => mods.writeCard.writeCard(cluster(4), 3));
     expect(sent.length).toBe(3);
-    expect(JSON.parse(sent[0].body).model).toBe("claude-sonnet-5");
-    const possible = sent.reduce((sum, s) => sum + worstCaseOf(s.body, "claude-sonnet-5"), 0);
+    expect(JSON.parse(sent[0].body).model).toBe(MODELS.writeCardMulti);
+    const possible = sent.reduce((sum, s) => sum + worstCaseOf(s.body), 0);
     const { settled } = settleOf(c, { writeCard: 1 }, 5);
     expect(settled!).toBeGreaterThanOrEqual(possible - 1e-12);
   });

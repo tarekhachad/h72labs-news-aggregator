@@ -63,6 +63,7 @@ const PROMO_FIXTURE: ModelPricing = {
  */
 const PROMO_TABLE: Record<TrackedModel, ModelPricing> = {
   "claude-haiku-4-5": PRICING["claude-haiku-4-5"],
+  "claude-haiku-5-5": PRICING["claude-haiku-5-5"],
   "claude-sonnet-5": PROMO_FIXTURE,
 };
 

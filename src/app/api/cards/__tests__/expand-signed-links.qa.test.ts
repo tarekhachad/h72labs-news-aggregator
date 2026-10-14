@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
+
+const REPORT_CAP = requestFor(MODELS.expand, { max_tokens: 4096, messages: [] }).max_tokens;
 
 // QA (v2.6.3): the expand route end to end, with the real cards.ts,
 // sourceLinks.ts and extract.ts against a fake web and fake DNS. Proves no
@@ -86,7 +89,7 @@ function fakeWeb() {
 
 const requested = () => vi.mocked(fetch).mock.calls.map((c) => String(c[0] instanceof Request ? c[0].url : c[0]));
 const reportPrompt = () => {
-  const call = mocks.parse.mock.calls.find((c) => c[0].max_tokens === 4096);
+  const call = mocks.parse.mock.calls.find((c) => c[0].max_tokens === REPORT_CAP);
   return call![0].messages[0].content as string;
 };
 
@@ -115,7 +118,7 @@ beforeEach(() => {
   mocks.rpc.mockResolvedValue({ data: true, error: null });
   mocks.defaultUsageSinks.mockReturnValue([async () => {}]);
   mocks.parse.mockImplementation(async (params: { max_tokens: number }) =>
-    params.max_tokens === 4096
+    params.max_tokens === REPORT_CAP
       ? { parsed_output: { report: "A full report." }, stop_reason: "end_turn" }
       : { parsed_output: { title: "T", shortSummary: "A complete sentence.", labels: ["Tag"] }, stop_reason: "end_turn" }
   );

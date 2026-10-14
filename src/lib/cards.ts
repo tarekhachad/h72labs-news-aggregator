@@ -7,7 +7,8 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Card } from "@/types";
 import { generateWithRetryOnAmbiguousTruncation, QUOTATION_STYLE } from "@/lib/claudeText";
-import { boundOf, recordCall } from "@/lib/usageCollector";
+import { MODELS, callModel, RefusalError, requestFor } from "@/lib/models";
+import { bestEffortLog } from "@/lib/bestEffortLog";
 import { sourceLinkSecret, verifySourceLink } from "@/lib/sourceLinks";
 import {
   extractForStory,
@@ -67,15 +68,11 @@ async function generateReport(
   card: Pick<Card, "topic" | "shortSummary" | "sources">,
   extracted: readonly (ExtractResult | undefined)[]
 ) {
-  // Inside generateReport, not around generateExpandedReport, so the
-  // ambiguous-truncation retry records both attempts — see writeCard.ts.
-  const params = {
-    model: "claude-sonnet-5",
+  // Same reasoning as writeCard.ts: `requestFor` turns thinking off, which
+  // would otherwise eat into max_tokens on a bounded writing task that
+  // doesn't need it.
+  const params = requestFor(MODELS.expand, {
     max_tokens: 4096,
-    // Same reasoning as writeCard.ts: Sonnet 5's adaptive thinking would
-    // otherwise eat into max_tokens on a bounded writing task that doesn't
-    // need it.
-    thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -84,8 +81,19 @@ async function generateReport(
       },
     ],
     output_config: { format: zodOutputFormat(ExpandedReport) },
-  } satisfies Parameters<typeof client.messages.parse>[0];
-  const response = await recordCall("expand", "claude-sonnet-5", () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
+  });
+  // Inside generateReport, not around generateExpandedReport, so the
+  // ambiguous-truncation retry records both attempts — see writeCard.ts.
+  let response;
+  try {
+    response = await callModel(client, "expand", params);
+  } catch (err) {
+    if (!(err instanceof RefusalError)) throw err;
+    // As in writeCard.ts: an empty answer with its stop reason fails at once,
+    // unretried, and the route answers with its usual error.
+    bestEffortLog("warn", `[cards/expand] ${err.message}`);
+    return { text: "", stopReason: "refusal" as const };
+  }
 
   return {
     text: response.parsed_output?.report ?? "",
@@ -120,7 +128,7 @@ async function extractSignedSources(
 }
 
 /**
- * One Sonnet call, made lazily the first time a user expands a card (see
+ * One Claude call, made lazily the first time a user expands a card (see
  * `POST /api/cards/[id]/expand`) — never pre-generated for every card, so
  * cost is only paid for reports someone actually reads. Reuses the same
  * source data already persisted on the card row (including snippet), not a

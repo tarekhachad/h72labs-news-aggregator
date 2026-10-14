@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MODELS, requestFor } from "@/lib/models";
 
 // linkStories through the REAL Anthropic SDK, with only `fetch` replaced, so
 // what the other timeline tests stub out is exercised for real: the request
@@ -88,20 +89,20 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("linkStories through the real SDK (QA)", () => {
-  it("sends one Haiku request shaped by buildParams and joins the story from the parsed answer", async () => {
+  it("sends one request shaped by buildParams and joins the story from the parsed answer", async () => {
     const usage = createUsageCollector(new Date("2026-10-13T12:00:00Z"));
     const result = await withUsageCollector(usage, () => linkStories([card("x")], "2026-10-13", [earlier]));
     expect(net.state.requests).toHaveLength(1);
     const { url, body } = net.state.requests[0];
     expect(url).toMatch(/\/v1\/messages$/);
-    expect(body.model).toBe("claude-haiku-4-5");
-    expect(body.max_tokens).toBe(32);
+    expect(body.model).toBe(MODELS.timeline);
+    expect(body.max_tokens).toBe(requestFor(MODELS.timeline, { max_tokens: 32, messages: [] }).max_tokens);
     expect((body.output_config as { format: { type: string } }).format.type).toBe("json_schema");
     expect(result.links.get("x")).toEqual({ embedding: NEW, storyId: earlier.storyId });
     expect(result).toMatchObject({ haikuCalls: 1, linked: 1 });
     const calls = usage.calls();
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ stage: "timeline", model: "claude-haiku-4-5", tokens: { inputTokens: 650, outputTokens: 6 } });
+    expect(calls[0]).toMatchObject({ stage: "timeline", model: MODELS.timeline, tokens: { inputTokens: 650, outputTokens: 6 } });
   });
 
   it.each([['{"match":0}'], ['{"match":2}'], ['{"match":1.5}'], ['{"nope":1}']])("treats the answer %s as no match", async (text) => {

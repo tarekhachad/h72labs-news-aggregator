@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import type { Topic } from "@/types";
-import { boundOf, recordCall } from "@/lib/usageCollector";
+import { MODELS, callModel, requestFor } from "@/lib/models";
 import { bestEffortLog } from "@/lib/bestEffortLog";
 
 const client = new Anthropic();
@@ -92,8 +92,7 @@ export async function rankFrontPage(
   try {
     const { system, list } = buildRankPrompt(candidates);
 
-    const params = {
-      model: "claude-haiku-4-5",
+    const params = requestFor(MODELS.rank, {
       max_tokens: 1024,
       system,
       messages: [
@@ -103,8 +102,9 @@ export async function rankFrontPage(
         },
       ],
       output_config: { format: zodOutputFormat(RankResult) },
-    } satisfies Parameters<typeof client.messages.parse>[0];
-    const response = await recordCall("rank", "claude-haiku-4-5", () => client.messages.parse(params), boundOf(params, client.maxRetries + 1));
+    });
+    // A refusal throws RefusalError, so it reaches the null fallback below.
+    const response = await callModel(client, "rank", params);
 
     if (!response.parsed_output) {
       // A missing parsed_output isn't the same thing as "the model
