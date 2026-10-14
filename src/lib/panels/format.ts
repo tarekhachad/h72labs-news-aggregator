@@ -1,4 +1,5 @@
 import type { YearValue } from "./worldBank";
+import { isIsoDay } from "./isoDay";
 
 // The World Bank's annual figures are estimates; one decimal at the scale
 // a reader thinks in is as precise as the box claims to be.
@@ -46,4 +47,35 @@ export function formatPercent(figure: YearValue): string {
   // A value that rounds to 0.0 gets no sign.
   const sign = figure.value < 0 && rounded !== "0.0" ? "−" : "";
   return withYear(`${sign}${rounded}%`, figure);
+}
+
+const TWO_DECIMALS = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const FOUR_DECIMALS = new Intl.NumberFormat("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
+/** A typographic minus, unless the value rounds to zero. */
+function signed(n: number, format: Intl.NumberFormat, unit = ""): string {
+  const rounded = format.format(Math.abs(n));
+  const sign = n < 0 && /[1-9]/.test(rounded) ? "−" : "";
+  return `${sign}${unit}${rounded}`;
+}
+
+/** "5.21%": a yield, to two decimals. */
+export function formatYield(n: number): string {
+  return `${signed(n, TWO_DECIMALS)}%`;
+}
+
+/** "1.1199": an exchange rate, to four decimals. */
+export function formatFxRate(n: number): string {
+  return signed(n, FOUR_DECIMALS);
+}
+
+/** "$96.24" per barrel, to two decimals; "−$37.63" too, as WTI has traded below zero. */
+export function formatOilPrice(n: number): string {
+  return signed(n, TWO_DECIMALS, "$");
+}
+
+/** "Oct 6, 2026" for "2026-10-06", or null for anything that is not a real day. */
+export function formatDay(isoDay: string): string | null {
+  return isIsoDay(isoDay) ? DAY.format(new Date(`${isoDay}T00:00:00Z`)) : null;
 }

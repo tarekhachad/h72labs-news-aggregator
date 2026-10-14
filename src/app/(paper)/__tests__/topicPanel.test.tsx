@@ -4,13 +4,15 @@ import type { Card } from "@/types";
 import { TOPICS } from "@/types";
 
 // Today's topic route hands TopicPage the Countries fact box only when the
-// page is filtered to one country among today's cards. The route is called as
+// page is filtered to one country among today's cards, and the rates strip on
+// Markets & Investing. The route is called as
 // a function, as in countryParam.test.tsx, and the panel element it builds is
 // inspected, not rendered: no upstream call happens here.
 
 const mocks = vi.hoisted(() => ({
   getCardsForTopicOnDate: vi.fn(),
   getCountryFacts: vi.fn(),
+  getRatesStrip: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -37,6 +39,7 @@ vi.mock("@/lib/digests", () => ({
   todayDateString: vi.fn(() => "2026-10-13"),
 }));
 vi.mock("@/lib/panels/countryFacts", () => ({ getCountryFacts: mocks.getCountryFacts }));
+vi.mock("@/lib/panels/rates", () => ({ getRatesStrip: mocks.getRatesStrip }));
 vi.mock("@/components/newspaper/TopicPage", () => ({ TopicPage: () => null }));
 vi.mock("@/components/TimeZoneSync", () => ({ TimeZoneSync: () => null }));
 
@@ -44,6 +47,8 @@ const { default: TopicRoutePage } = await import("@/app/(paper)/topic/[slug]/pag
 const { default: HistoryTopicPage } = await import("@/app/(paper)/history/[date]/topic/[slug]/page");
 const { TopicPage } = await import("@/components/newspaper/TopicPage");
 const { CountryFactsPanel } = await import("@/components/newspaper/panels/CountryFactsPanel");
+const { RatesStripPanel } = await import("@/components/newspaper/panels/RatesStripPanel");
+const { topicToSlug } = await import("@/lib/topicSlug");
 
 function card(id: string, subtopic: string | null): Card {
   return {
@@ -109,7 +114,7 @@ describe("today's topic route: the Countries fact box", () => {
   });
 
   it("passes no panel on another topic, even with ?country=", async () => {
-    const other = TOPICS.find((t) => t !== "Countries")!;
+    const other = TOPICS.find((t) => t !== "Countries" && t !== "Markets & Investing")!;
     const slug = other.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     mocks.getCardsForTopicOnDate.mockResolvedValue([{ ...card("k", "Kenya"), topic: other }]);
     expect(await panelFor(slug, "kenya")).toBeUndefined();
@@ -120,12 +125,44 @@ describe("today's topic route: the Countries fact box", () => {
     expect(mocks.getCountryFacts).not.toHaveBeenCalled();
   });
 
-  it("history topic pages pass no panel", async () => {
+  it.each(["countries", "markets-investing"])("history topic pages pass no panel (%s)", async (slug) => {
     const tree = (await HistoryTopicPage({
-      params: Promise.resolve({ date: "2026-09-01", slug: "countries" }),
+      params: Promise.resolve({ date: "2026-09-01", slug }),
       searchParams: Promise.resolve({ country: "kenya" }),
     })) as ReactNode;
     const page = findElement(tree, TopicPage) as ReactElement<{ panel?: ReactNode }>;
     expect(page.props.panel).toBeUndefined();
+  });
+});
+
+describe("today's topic route: the Markets & Investing rates strip", () => {
+  it("is the slug the route maps to Markets & Investing", () => {
+    expect(topicToSlug("Markets & Investing")).toBe("markets-investing");
+  });
+
+  it.each([
+    ["with cards today", [{ ...card("m", null), topic: "Markets & Investing" }]],
+    ["before today's first digest, with no cards", []],
+  ])("passes the strip %s", async (_name, cards) => {
+    mocks.getCardsForTopicOnDate.mockResolvedValue(cards);
+    const panel = await panelFor("markets-investing");
+    expect(panel?.type).toBe(RatesStripPanel);
+  });
+
+  it("ignores ?country= on the Markets page", async () => {
+    mocks.getCardsForTopicOnDate.mockResolvedValue([{ ...card("m", "Kenya"), topic: "Markets & Investing" }]);
+    expect((await panelFor("markets-investing", "kenya"))?.type).toBe(RatesStripPanel);
+  });
+
+  it("never fetches rates while building the page: the strip loads them inside its own boundary", async () => {
+    await panelFor("markets-investing");
+    expect(mocks.getRatesStrip).not.toHaveBeenCalled();
+  });
+
+  it("no other topic gets the strip", async () => {
+    for (const topic of TOPICS.filter((t) => t !== "Markets & Investing" && t !== "Countries")) {
+      mocks.getCardsForTopicOnDate.mockResolvedValue([{ ...card("x", null), topic }]);
+      expect(await panelFor(topicToSlug(topic))).toBeUndefined();
+    }
   });
 });

@@ -22,6 +22,7 @@ All of it sits in Supabase (Postgres + Auth), a managed provider — not self-ho
 ## What's not done with it
 
 - Nothing is sold or shared with third parties. Two services process data only to do their one job: Cloudflare Turnstile sees a visitor's IP address and browser signals when it checks the invite-request form for bots, and Resend receives an email address and the message when the app sends an invite, a decline or a new-request notice.
+- The Markets & Investing rates strip sends no reader data to its sources (the U.S. Treasury, Frankfurter, the EIA): the server fetches the same public figures for everyone, at most about once a day, and shares one cached copy among all readers.
 - News source content (articles pulled via RSS/GNews) is used only to generate a user's own digest — not redistributed or resold.
 - No tracking/analytics beyond what's needed to see whether the product is actually being used (return visits) — see the instrumentation step in `(C) ROADMAP.md` Phase 5.
 

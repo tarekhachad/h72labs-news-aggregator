@@ -56,6 +56,7 @@ Steps 1–2 cost nothing. **Step 3 (triage) is the largest single cost, not step
 2. **Ad-hoc request** — a request outside the user's default topics (e.g. "what's happening with the Fed today") runs the same pipeline for that one topic and **appends** the resulting card(s) to the existing feed, rather than replacing it.
 3. **Calendar history** — each day's digest is persisted, so past days are browsable via a calendar view. This is also what makes bookmarking cheap to build (see below).
 4. **Bookmarking** — a card already exists permanently in storage the moment it's generated (because of the calendar history above). Bookmarking a card doesn't copy or re-store its content — it just adds a record linking the user to that card's ID. A dedicated "Saved" view pulls all of a user's bookmarked cards regardless of which day they came from.
+5. **Rates strip** — today's Markets & Investing page shows the US 10-year Treasury yield (Treasury XML feed), EUR/USD and USD/MAD (Frankfurter) and Brent and WTI (EIA API, key in `EIA_API_KEY`), each with its date and credit, in the topic page's panel band; each source is cached a day in Next's data cache (`src/lib/panels/rates.ts`), a failure is never cached, and the strip streams in after the cards.
 
 ---
 

@@ -7,6 +7,10 @@ import { TopicPage } from "@/components/newspaper/TopicPage";
 import { TimeZoneSync } from "@/components/TimeZoneSync";
 import { CountryFactsPanel } from "@/components/newspaper/panels/CountryFactsPanel";
 import { filteredCountry } from "@/lib/panels/filteredCountry";
+import { RatesStripPanel } from "@/components/newspaper/panels/RatesStripPanel";
+import type { Topic } from "@/types";
+
+const MARKETS_TOPIC: Topic = "Markets & Investing";
 
 export default async function TopicRoutePage({
   params,
@@ -57,6 +61,11 @@ export default async function TopicRoutePage({
   const country = typeof countryParam === "string" ? countryParam : undefined;
   // Today's page only: history topic pages show no panel.
   const factsCountry = filteredCountry(topic, cards, country);
+  const panel = factsCountry ? (
+    <CountryFactsPanel country={factsCountry} />
+  ) : topic === MARKETS_TOPIC ? (
+    <RatesStripPanel />
+  ) : undefined;
 
   return (
     <>
@@ -68,7 +77,7 @@ export default async function TopicRoutePage({
         preferredSources={preferredSources}
         country={country}
         digestExistsToday={digestExistsToday}
-        panel={factsCountry ? <CountryFactsPanel country={factsCountry} /> : undefined}
+        panel={panel}
       />
     </>
   );

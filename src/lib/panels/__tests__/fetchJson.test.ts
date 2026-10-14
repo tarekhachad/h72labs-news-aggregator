@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchCappedJson, PANEL_TIMEOUT_MS, PANEL_USER_AGENT, PanelFetchError } from "../fetchJson";
+import { fetchCappedJson, fetchCappedText, PANEL_TIMEOUT_MS, PANEL_USER_AGENT, PanelFetchError } from "../fetchJson";
 import { jsonResponse } from "./fixtures";
 
 const URL_ = "https://api.example.org/data";
@@ -110,5 +110,53 @@ describe("fetchCappedJson", () => {
   it.each(["", "<html>error</html>", '{"truncated":'])("throws on a body that is not JSON: %j", async (text) => {
     stubFetch(async () => new Response(text, { status: 200 }));
     await expect(fetchCappedJson(URL_, { maxBytes: 1000 })).rejects.toBeInstanceOf(PanelFetchError);
+  });
+
+  it("takes a longer timeout and extra headers, which cannot override the panel User-Agent", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = stubFetch(async () => jsonResponse({ ok: 1 }));
+    await fetchCappedJson(URL_, {
+      maxBytes: 1000,
+      timeoutMs: 25_000,
+      headers: { "X-Api-Key": "secret", "User-Agent": "spoofed" },
+    });
+    expect(timeout).toHaveBeenLastCalledWith(25_000);
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers["X-Api-Key"]).toBe("secret");
+    expect(headers["User-Agent"]).toBe(PANEL_USER_AGENT);
+    timeout.mockRestore();
+  });
+
+  it("names only the host in an error, never the query string", async () => {
+    stubFetch(async () => jsonResponse({}, { status: 500 }));
+    const error = await fetchCappedJson(`${URL_}?api_key=secret`, { maxBytes: 1000 }).catch((err: unknown) => err);
+    expect((error as Error).message).toBe("status 500: api.example.org");
+  });
+});
+
+describe("fetchCappedText", () => {
+  it("returns the body as text with the same request rules", async () => {
+    const fetchMock = stubFetch(async () => new Response(streamOf(["<feed>", "é</feed>"]), { status: 200 }));
+    await expect(fetchCappedText(URL_, { maxBytes: 1000, accept: "application/xml" })).resolves.toBe("<feed>é</feed>");
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.cache).toBe("no-store");
+    expect(init.redirect).toBe("error");
+    expect((init.headers as Record<string, string>).Accept).toBe("application/xml");
+  });
+
+  it("caps the body on its declared length and while streaming", async () => {
+    stubFetch(async () => new Response("<a/>", { status: 200, headers: { "content-length": "5000" } }));
+    await expect(fetchCappedText(URL_, { maxBytes: 1000 })).rejects.toThrow(/over 1000 bytes/);
+    stubFetch(async () => new Response(streamOf(["<a>", "x".repeat(600), "x".repeat(600), "</a>"]), { status: 200 }));
+    await expect(fetchCappedText(URL_, { maxBytes: 1000 })).rejects.toThrow(/over 1000 bytes/);
+  });
+
+  it("throws only PanelFetchError, on HTTP errors and network errors alike", async () => {
+    stubFetch(async () => new Response("busy", { status: 503 }));
+    await expect(fetchCappedText(URL_, { maxBytes: 1000 })).rejects.toBeInstanceOf(PanelFetchError);
+    stubFetch(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(fetchCappedText(URL_, { maxBytes: 1000 })).rejects.toBeInstanceOf(PanelFetchError);
   });
 });

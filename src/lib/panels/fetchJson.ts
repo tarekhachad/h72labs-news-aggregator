@@ -22,6 +22,15 @@ export class PanelFetchError extends Error {
   }
 }
 
+type FetchOptions = {
+  maxBytes: number;
+  accept?: string;
+  /** Longer than PANEL_TIMEOUT_MS only for an upstream measured to be slow. */
+  timeoutMs?: number;
+  /** Extra request headers, such as an API key. Never echoed into an error message. */
+  headers?: Record<string, string>;
+};
+
 /**
  * GETs a JSON document from an upstream data API with a timeout and a size
  * cap, and returns it parsed but unvalidated: callers check its shape. Not
@@ -30,15 +39,32 @@ export class PanelFetchError extends Error {
  */
 export async function fetchCappedJson(
   url: string,
-  { maxBytes, accept = "application/json" }: { maxBytes: number; accept?: string }
+  { accept = "application/json", ...options }: FetchOptions
 ): Promise<unknown> {
+  const text = await fetchCappedText(url, { accept, ...options });
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (err) {
+    throw new PanelFetchError(`unparseable JSON: ${hostOf(url)}`, { cause: err });
+  }
+}
+
+/**
+ * fetchCappedJson's rules for a text body such as XML: the same timeout
+ * covering the body, size cap and no-redirect rule, and only PanelFetchError
+ * thrown. Returns the body unparsed.
+ */
+export async function fetchCappedText(
+  url: string,
+  { maxBytes, accept = "text/plain", timeoutMs = PANEL_TIMEOUT_MS, headers = {} }: FetchOptions
+): Promise<string> {
   let res: Response;
   try {
     res = await fetch(url, {
       cache: "no-store",
       redirect: "error",
-      signal: AbortSignal.timeout(PANEL_TIMEOUT_MS),
-      headers: { "User-Agent": PANEL_USER_AGENT, Accept: accept },
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { ...headers, "User-Agent": PANEL_USER_AGENT, Accept: accept },
     });
   } catch (err) {
     throw new PanelFetchError(`request failed: ${hostOf(url)}`, { cause: err });
@@ -54,12 +80,7 @@ export async function fetchCappedJson(
     throw new PanelFetchError(`body over ${maxBytes} bytes: ${hostOf(url)}`);
   }
 
-  const text = await readCappedText(res, maxBytes, url);
-  try {
-    return JSON.parse(text) as unknown;
-  } catch (err) {
-    throw new PanelFetchError(`unparseable JSON: ${hostOf(url)}`, { cause: err });
-  }
+  return readCappedText(res, maxBytes, url);
 }
 
 async function readCappedText(res: Response, maxBytes: number, url: string): Promise<string> {
