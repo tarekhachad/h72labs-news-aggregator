@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import type { Card } from "@/types";
+import type { RankUpdate } from "@/lib/rankUpdates";
 
 /**
  * FIXTURE ONLY. Invented headlines for the scripted stream below, so the
@@ -24,7 +25,9 @@ const FIXTURE_WIRE_TITLES = [
 
 type ScriptStep = { atMs: number; event: Record<string, unknown> };
 
-function script(stepMs: number, doneCards: Card[]): ScriptStep[] {
+const NO_RANK_UPDATES: RankUpdate[] = [];
+
+function script(stepMs: number, doneCards: Card[], rankUpdates: RankUpdate[]): ScriptStep[] {
   return [
     { atMs: 0, event: { stage: "ingesting" } },
     {
@@ -34,7 +37,7 @@ function script(stepMs: number, doneCards: Card[]): ScriptStep[] {
     { atMs: stepMs * 4, event: { stage: "triaging", clusterCount: 265 } },
     { atMs: stepMs * 6, event: { stage: "writing", notableCount: doneCards.length } },
     { atMs: stepMs * 9, event: { stage: "ranking" } },
-    { atMs: stepMs * 10, event: { stage: "done", cards: doneCards, rankUpdates: [] } },
+    { atMs: stepMs * 10, event: { stage: "done", cards: doneCards, rankUpdates } },
   ];
 }
 
@@ -43,14 +46,17 @@ function script(stepMs: number, doneCards: Card[]): ScriptStep[] {
  * scripted NDJSON stream on a timer, in place of the real route, so the
  * edition loaders run end to end through the real provider with dead keys.
  * `hold` stops the script at that stage (for screenshots); the run then
- * never finishes. Every other request goes to the real fetch.
+ * never finishes. `rankUpdates` re-ranks cards already on the page, as a
+ * later run of the day does. Every other request goes to the real fetch.
  */
 export function ScriptedDigestStream({
   doneCards,
+  rankUpdates = NO_RANK_UPDATES,
   stepMs = 2500,
   hold,
 }: {
   doneCards: Card[];
+  rankUpdates?: RankUpdate[];
   stepMs?: number;
   hold?: string;
 }) {
@@ -64,7 +70,7 @@ export function ScriptedDigestStream({
       }
       const generatedAt = new Date().toISOString();
       const cards = doneCards.map((c) => ({ ...c, id: `${c.id}-${generatedAt}`, generatedAt }));
-      const steps = script(stepMs, cards);
+      const steps = script(stepMs, cards, rankUpdates);
       const holdIndex = hold ? steps.findIndex((s) => s.event.stage === hold) : -1;
       const playable = holdIndex >= 0 ? steps.slice(0, holdIndex + 1) : steps;
       const encoder = new TextEncoder();
@@ -89,7 +95,7 @@ export function ScriptedDigestStream({
     return () => {
       window.fetch = realFetch;
     };
-  }, [doneCards, stepMs, hold]);
+  }, [doneCards, rankUpdates, stepMs, hold]);
 
   return (
     <p

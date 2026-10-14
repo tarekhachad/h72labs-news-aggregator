@@ -13,6 +13,20 @@ import { TOPICS, type Topic } from "@/types";
 import { FIXTURE_CARDS, FIXTURE_TOPICS } from "./fixtureCards";
 import { ScriptedDigestStream } from "./ScriptedDigestStream";
 
+/**
+ * view=loader-rerank: a later run of the day whose two new stories take the
+ * top two front-page slots, pushing the earlier six down and the last two off,
+ * the way a real second run re-ranks the page.
+ */
+const RERANK_DONE_CARDS = FIXTURE_CARDS.filter((c) => c.id === "f-t1" || c.id === "f-t2").map((c, i) => ({
+  ...c,
+  frontPageRank: i + 1,
+}));
+const RERANK_UPDATES = FIXTURE_CARDS.filter((c) => c.frontPageRank !== null).map((c) => {
+  const rank = (c.frontPageRank as number) + RERANK_DONE_CARDS.length;
+  return { id: c.id, frontPageRank: rank <= 6 ? rank : null };
+});
+
 /** The dead database address `npm run dev:fixtures` sets; see package.json. */
 const FIXTURE_SUPABASE_URL = "http://127.0.0.1:9";
 
@@ -26,7 +40,8 @@ const FIXTURE_SUPABASE_URL = "http://127.0.0.1:9";
  *
  * The edition loaders: view=loader-empty (an empty day, first edition) and
  * view=loader-complete (a day with cards) answer the button with a scripted
- * stream instead of a run. `hold=<stage>` stops it at that stage, `step=<ms>`
+ * stream instead of a run; view=loader-rerank is a later run whose new
+ * stories re-rank the front page. `hold=<stage>` stops it at that stage, `step=<ms>`
  * sets its pace, and `topics=all` gives every topic, so the topic bar wraps.
  *
  * view=onboarding is the stepped onboarding form as a new reader sees it,
@@ -79,6 +94,17 @@ export default async function DevFixturesPage({
           stepMs={stepMs}
           hold={hold}
         />
+        <FrontPage
+          initialDigest={{ id: "fixture-digest", date: today, lastGeneratedAt: "2026-10-08T07:12:00.000Z", cards: FIXTURE_CARDS }}
+          userTopics={userTopics}
+          timeZone="UTC"
+        />
+      </>
+    );
+  } else if (view === "loader-rerank") {
+    content = (
+      <>
+        <ScriptedDigestStream doneCards={RERANK_DONE_CARDS} rankUpdates={RERANK_UPDATES} stepMs={stepMs} hold={hold} />
         <FrontPage
           initialDigest={{ id: "fixture-digest", date: today, lastGeneratedAt: "2026-10-08T07:12:00.000Z", cards: FIXTURE_CARDS }}
           userTopics={userTopics}
