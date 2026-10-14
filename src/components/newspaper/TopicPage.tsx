@@ -36,15 +36,44 @@ export function orderBySeverity(cards: Card[], preferredSources: readonly Source
   );
 }
 
+/** How many cards the Countries page's "All" view shows. A filtered country shows all of its own. */
+export const COUNTRIES_ALL_LIMIT = 8;
+
+// "Balanced, then by importance": each country's best card first, taken in
+// the order those best cards rank (so with more countries than slots, the
+// countries whose best card ranks highest win), then the most important of
+// what's left. Importance is orderBySeverity's order throughout.
+function pickBalanced(cards: Card[], preferredSources: readonly Source[], limit: number): Set<string> {
+  const ordered = orderBySeverity(cards, preferredSources);
+  const picked = new Set<string>();
+  const countriesSeen = new Set<string>();
+  for (const card of ordered) {
+    if (picked.size === limit) return picked;
+    if (!card.subtopic) continue;
+    const slug = countryToSlug(card.subtopic);
+    if (countriesSeen.has(slug)) continue;
+    countriesSeen.add(slug);
+    picked.add(card.id);
+  }
+  for (const card of ordered) {
+    if (picked.size === limit) break;
+    picked.add(card.id);
+  }
+  return picked;
+}
+
 /**
  * The Countries page's filter. Its options are the countries among the day's
  * cards, not the reader's current picks, so a past day still filters by a
- * country the reader has since dropped. A slug that names none of them shows
- * every card.
+ * country the reader has since dropped, and a country the "All" view leaves
+ * out is still offered. A slug that names none of them shows the "All" view.
+ *
+ * `shown` is which cards appear, in the order given; the page orders them.
  */
 export function filterCountryCards(
   cards: Card[],
-  countrySlug: string | undefined
+  countrySlug: string | undefined,
+  preferredSources: readonly Source[] = []
 ): { countries: string[]; activeSlug: string | null; shown: Card[] } {
   const bySlug = new Map<string, string>();
   for (const card of cards) {
@@ -54,11 +83,13 @@ export function filterCountryCards(
   }
   const countries = [...bySlug.values()].sort((a, b) => a.localeCompare(b));
   const activeSlug = countrySlug !== undefined && bySlug.has(countrySlug) ? countrySlug : null;
-  const shown =
-    activeSlug === null
-      ? cards
-      : cards.filter((card) => card.subtopic && countryToSlug(card.subtopic) === activeSlug);
-  return { countries, activeSlug, shown };
+  if (activeSlug !== null) {
+    const shown = cards.filter((card) => card.subtopic && countryToSlug(card.subtopic) === activeSlug);
+    return { countries, activeSlug, shown };
+  }
+  if (cards.length <= COUNTRIES_ALL_LIMIT) return { countries, activeSlug, shown: cards };
+  const picked = pickBalanced(cards, preferredSources, COUNTRIES_ALL_LIMIT);
+  return { countries, activeSlug, shown: cards.filter((card) => picked.has(card.id)) };
 }
 
 /**
@@ -96,7 +127,7 @@ export function TopicPage({
    */
   panel?: ReactNode;
 }) {
-  const filter = topic === COUNTRIES_TOPIC ? filterCountryCards(cards, country) : null;
+  const filter = topic === COUNTRIES_TOPIC ? filterCountryCards(cards, country, preferredSources) : null;
   const ordered = orderBySeverity(filter?.shown ?? cards, preferredSources);
   const gridPositions = packGrid(
     ordered.map((card) => ({ id: card.id, tier: tierForSeverity(card.severity) }))
